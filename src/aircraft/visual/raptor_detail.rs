@@ -118,52 +118,73 @@ fn exit_outline() -> [Vec3; 5] {
 }
 
 fn flap_plate(sign: f32, length: f32) -> Mesh {
-    let mut v = Vec::new();
-    let mut ix = Vec::new();
-    for side in [-1., 1.] {
-        for j in 0..24 {
-            for k in 0..24 {
-                let at = |j: usize, k: usize| {
-                    Vec3::new(
-                        -0.76 + 1.52 * k as f32 / 24.,
-                        side * 0.018,
-                        length * j as f32 / 24.,
-                    )
-                };
-                let q = [at(j, k), at(j + 1, k), at(j + 1, k + 1), at(j, k + 1)];
-                quad(
-                    &mut v,
-                    &mut ix,
-                    if side > 0. {
-                        q
-                    } else {
-                        [q[3], q[2], q[1], q[0]]
-                    },
-                );
-            }
-        }
-    }
     let corners = [
         Vec3::new(-0.76, 0., 0.),
         Vec3::new(0.76, 0., 0.),
         Vec3::new(0.76, 0., length),
         Vec3::new(-0.76, 0., length),
     ];
-    for k in 0..4 {
-        let a = corners[k];
-        let b = corners[(k + 1) % 4];
-        quad(
-            &mut v,
-            &mut ix,
-            [
-                a - Vec3::Y * 0.018,
-                b - Vec3::Y * 0.018,
-                b + Vec3::Y * 0.018,
-                a + Vec3::Y * 0.018,
-            ],
-        );
+    nozzle_panel(sign, &corners, 0.10)
+}
+
+fn nozzle_panel(sign: f32, outline: &[Vec3], depth: f32) -> Mesh {
+    // Closed wedge: a shallow inner liner, narrow edge bevel, and broad
+    // outer facets meeting at a raised spine. Depth grows away from the gas
+    // passage, preserving its existing clearance and the pointed aft perimeter.
+    // Proportions are inferred from photographs, not production F119 CAD.
+    let mut points = Vec::new();
+    let mut indices = Vec::new();
+    let mut triangle = |mut p: [Vec3; 3]| {
+        if (p[1] - p[0]).cross(p[2] - p[0]).length_squared() < 1e-12 {
+            return;
+        }
+        // The input outline winds around the inner face; mirror both geometry
+        // and winding for the lower assembly so all normals remain outward.
+        if sign < 0. {
+            p.swap(1, 2);
+        }
+        let n = points.len() as u32;
+        points.extend(p.map(|p| Vec3::new(p.x, p.y * sign, p.z)));
+        indices.extend([n, n + 1, n + 2]);
+    };
+    let section = |z: f32, width: f32, height: f32| {
+        let bevel = if width == 0. { height } else { height * 0.45 };
+        [
+            (-width, 0.018),
+            (-width * 0.90, bevel),
+            (0., height),
+            (width * 0.90, bevel),
+            (width, 0.018),
+            (width, -0.018),
+            (-width, -0.018),
+        ]
+        .map(|(x, y)| Vec3::new(x, y, z))
+    };
+    // Keep the rectangular roof planar along its length. Otherwise the
+    // triangulation introduces a diagonal highlight across each broad face.
+    let front = section(0., 0.76, depth);
+    let rear = section(outline[2].z, 0.76, depth);
+    let mut sections = vec![front, rear];
+    if outline.len() == 5 {
+        // Collapse the roof onto a thin chevron tip, retaining the existing
+        // rectangular base + aft triangle rather than a pyramid-like crown.
+        sections.push(section(outline[3].z, 0., 0.018));
     }
-    weathered_plate(mesh(v, ix), sign)
+    for pair in sections.windows(2) {
+        for k in 0..7 {
+            let j = (k + 1) % 7;
+            triangle([pair[0][k], pair[1][k], pair[1][j]]);
+            triangle([pair[0][k], pair[1][j], pair[0][j]]);
+        }
+    }
+    for k in 0..7 {
+        let j = (k + 1) % 7;
+        triangle([Vec3::ZERO, front[k], front[j]]);
+        if outline.len() == 4 {
+            triangle([Vec3::Z * outline[2].z, rear[j], rear[k]]);
+        }
+    }
+    weathered_plate(mesh(points, indices), sign)
 }
 #[derive(Component)]
 pub struct GlowLayer(
@@ -934,7 +955,7 @@ pub(super) fn nozzle(
             c,
             m,
             flap,
-            weathered_plate(solid(&exit_outline(), Vec3::Y * 0.018), sign),
+            nozzle_panel(sign, &exit_outline(), 0.18),
             thermal.clone(),
             Transform::from_translation(Vec3::Y * (sign * FLAP_SKIN_OFFSET)),
         );
@@ -1815,6 +1836,48 @@ pub fn export_nozzle_preview() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn nozzle_wedges_are_closed_outward_solids_and_mirror_away_from_the_flow() {
+        use bevy::mesh::VertexAttributeValues::Float32x3;
+        for sign in [-1., 1.] {
+            for (panel, depth) in [
+                (flap_plate(sign, SHOULDER_LENGTH), 0.10),
+                (nozzle_panel(sign, &exit_outline(), 0.18), 0.18),
+            ] {
+                let Some(Float32x3(p)) = panel.attribute(Mesh::ATTRIBUTE_POSITION) else {
+                    panic!("positions")
+                };
+                let Some(Float32x3(normals)) = panel.attribute(Mesh::ATTRIBUTE_NORMAL) else {
+                    panic!("normals")
+                };
+                assert!(normals.iter().all(|n| Vec3::from_array(*n).is_finite()));
+                assert!(p.iter().any(|p| (p[1] * sign - depth).abs() < 1e-6));
+                assert!(p.iter().all(|p| p[1] * sign >= -0.018001));
+                let ix = panel.indices().unwrap().iter().collect::<Vec<_>>();
+                let mut edges = std::collections::HashMap::new();
+                let key = |i: usize| p[i].map(|x| (x * 1e6).round() as i32);
+                let mut volume = 0.;
+                for tri in ix.chunks_exact(3) {
+                    let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| Vec3::from_array(p[i]));
+                    assert!((b - a).cross(c - a).length() > 1e-6);
+                    volume += a.dot(b.cross(c)) / 6.;
+                    for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+                        let mut e = [key(a), key(b)];
+                        e.sort();
+                        *edges.entry(e).or_insert(0) += 1;
+                    }
+                }
+                assert!(
+                    edges.values().all(|n| *n == 2),
+                    "solid must have no open edges"
+                );
+                assert!(
+                    volume > 0.03,
+                    "outward winding and meaningful enclosed volume: {volume}"
+                );
+            }
+        }
+    }
     #[test]
     fn forward_nozzle_fairings_are_seated_inside_the_airframe_and_keep_the_exit() {
         for engine in 0..2 {
