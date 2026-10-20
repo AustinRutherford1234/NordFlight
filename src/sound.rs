@@ -81,6 +81,10 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    pub(crate) fn menu_level(&self) -> f32 { self.master }
+    pub(crate) fn menu_muted(&self) -> bool { self.muted }
+    pub(crate) fn menu_volume(&mut self, delta:f32) {self.master=(self.master+delta).clamp(0.,1.);self.save();}
+    pub(crate) fn menu_mute(&mut self) {self.muted=!self.muted;self.save();}
     fn path() -> std::path::PathBuf {
         if let Some(path) = std::env::var_os("NORD_FLIGHT_AUDIO_SETTINGS") {
             return path.into();
@@ -374,6 +378,7 @@ fn schedule(
 
 /// Called after physics and the camera. It never changes flight state or its RNG.
 pub fn update(
+    menu: Option<Res<crate::start_screen::Menu>>,
     f: Res<Flight>,
     v: Res<ViewState>,
     mut combat: ResMut<Combat>,
@@ -383,6 +388,18 @@ pub fn update(
     cameras: Query<&Transform, With<FlightCamera>>,
 ) {
     let _measure = crate::performance::span(7);
+    if menu.is_some_and(|m|m.open) {
+        if let Ok(mut packet)=bridge.0.try_lock() {
+            packet.controls=Controls {paused:false,settings:*settings,apu:0.12,..default()};
+            for e in combat.audio_events.drain(..) {
+                if matches!(e.kind,Kind::Switch) {
+                    packet.events.push_back(Trigger {kind:Kind::Switch,gain:0.12,pan:0.,pitch:1.,player:false});
+                }
+            }
+            packet.events.truncate(8);
+        }
+        return;
+    }
     let Some(camera) = cameras.iter().next() else {
         return;
     };

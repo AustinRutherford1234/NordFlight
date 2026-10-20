@@ -13,6 +13,11 @@ class BuildCacheTests(unittest.TestCase):
             root = Path(directory)
             script = Path(__file__).resolve().parents[1] / "build-mac.sh"
             shutil.copy2(script, root / script.name)
+            (root / "packaging").mkdir()
+            (root / "packaging/Info.plist").write_text("bundle metadata")
+            (root / "packaging/NordFlight.icns").write_text("icon")
+            (root / "assets").mkdir()
+            (root / "assets/runtime.txt").write_text("runtime asset")
             (root / "target").mkdir()
             (root / "cache-size").write_text(str(initial_kib))
             shims = root / "bin"
@@ -44,6 +49,8 @@ fi
             calls = (root / "calls").read_text().splitlines()
             self.assertEqual((root / "Nord Flight.app/Contents/MacOS/gripen-flight")
                              .read_text(), "executable\n")
+            self.assertEqual((root / "Nord Flight.app/Contents/Resources/assets/runtime.txt").read_text(), "runtime asset")
+            self.assertEqual((root / "Nord Flight.app/Contents/Resources/NordFlight.icns").read_text(), "icon")
             return calls
 
     def test_small_cache_retained(self):

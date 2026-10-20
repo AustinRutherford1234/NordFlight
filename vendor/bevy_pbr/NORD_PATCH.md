@@ -90,3 +90,9 @@ full updates; the one-view ownership restriction remains.
 NORD_ENV_LEGACY_ORDER restores the formerly disconnected cubemap node for
 diagnostic reproduction only. Do not use it in a packaged launch configuration.
 
+The start screen can deactivate all atmosphere views while its independent
+hangar camera renders. Probe binding preparation now checks that every required
+uniform binding exists, removing stale probe bind groups while views are
+inactive and rebuilding them when inputs return. This prevents the observed
+missing-atmosphere-uniform unwrap panic on menu launch and return.
+

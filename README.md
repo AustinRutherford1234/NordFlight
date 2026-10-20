@@ -1,4 +1,14 @@
-# NORD — Gripen Flight Lab
+# NORD FLIGHT
+
+<img src="assets/branding/nord-flight-icon.png" alt="Nord Flight — aircraft, Earth, Moon and northern lights" width="240">
+
+Launch into the new animated **Main Menu**: choose **Atmospheric Flight** or
+**Spaceflight**, select and configure your vehicle, pick a starting scenario,
+then press **Fly**. **Escape** opens a pause menu with **Resume** and **Main Menu**.
+The hangar and orbital previews animate independently while flight is paused.
+See the [start-screen guide](docs/START_SCREEN.md).
+
+![Native start screen with aircraft and scenario selection](docs/images/start-screen.png)
 
 A playable Rust / Bevy flight game with a selectable Gripen, Su-27SM, F-35B, F-22A and F/A-18E, individual aerodynamic control surfaces, and an orbital spacecraft. Open **F6 / Aircraft Hangar** to select your aircraft and reset the current atmospheric scenario. AI aircraft remain Gripens. See the [fleet guide](docs/FLEET.md) for the new cockpits, STOVL, thrust vectoring, damage behavior and modeling limits. KSP-inspired instruments include a navball, resource gauges, SAS modes, an orbital map, and instantaneous orbital elements. The optimized Mac application is tested locally; Windows support is provided through the portable Rust project, a build script, and a two-platform CI workflow. A Windows executable has not been tested in this session.
 

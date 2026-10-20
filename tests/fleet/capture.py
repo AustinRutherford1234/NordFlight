@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tests/optimization3'))
@@ -32,6 +33,7 @@ with isolated():
    env.update(NORD_AIRCRAFT=aircraft,NORD_FLEET_CAPTURE=view,
               NORD_FLIGHT_AUDIO_SETTINGS=str(ROOT/'tests/optimization3/audio-settings.json'))
    with (out/f'{aircraft}-{view}.log').open('w') as log:
+    started=time.time_ns()
     game=subprocess.Popen([str(binary),'--visual-check','full'],cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT)
     record_child(game.pid)
     try:game.wait(timeout=100)
@@ -39,6 +41,12 @@ with isolated():
      if game.poll() is None:game.terminate();game.wait(timeout=10)
      record_child(None)
     if game.returncode:raise SystemExit(f'{aircraft}/{view} failed ({game.returncode})')
+   log_text=(out/f'{aircraft}-{view}.log').read_text()
+   screenshot=ROOT/'tests/visual-full.png'
+   if 'panicked at' in log_text or 'Encountered a panic' in log_text:
+    raise SystemExit(f'{aircraft}/{view} renderer panicked; rejecting capture')
+   if not screenshot.exists() or screenshot.stat().st_mtime_ns < started:
+    raise SystemExit(f'{aircraft}/{view} produced no fresh screenshot')
    shutil.copy2(ROOT/'tests/visual-full.png',out/f'{aircraft}-{view}.png')
    record['captures'].append({'aircraft':aircraft,'view':view,'image':f'{aircraft}-{view}.png'})
    manifest.write_text(json.dumps(record,indent=2)+'\n')

@@ -108,17 +108,30 @@ pub(super) fn prepare_atmosphere_probe_bind_groups(
     pipeline_cache: Res<PipelineCache>,
     mut commands: Commands,
 ) {
+    // A separate menu camera can leave all atmosphere views inactive. Their
+    // extracted uniforms then have no GPU bindings, even while probe textures
+    // are retained. Drop stale bind groups until the complete inputs return.
+    let (Some(atmosphere), Some(settings), Some(transforms), Some(views), Some(lights)) = (
+        atmosphere_uniforms.binding(), settings_uniforms.binding(),
+        atmosphere_transforms.uniforms().binding(), view_uniforms.uniforms.binding(),
+        lights_uniforms.view_gpu_lights.binding(),
+    ) else {
+        for (entity, _) in &probes {
+            commands.entity(entity).remove::<AtmosphereProbeBindGroups>();
+        }
+        return;
+    };
     for (entity, textures) in &probes {
         let environment = render_device.create_bind_group(
             "environment_bind_group",
             &pipeline_cache.get_bind_group_layout(&layouts.environment),
             &BindGroupEntries::with_indices((
                 // uniforms
-                (0, atmosphere_uniforms.binding().unwrap()),
-                (1, settings_uniforms.binding().unwrap()),
-                (2, atmosphere_transforms.uniforms().binding().unwrap()),
-                (3, view_uniforms.uniforms.binding().unwrap()),
-                (4, lights_uniforms.view_gpu_lights.binding().unwrap()),
+                (0, atmosphere.clone()),
+                (1, settings.clone()),
+                (2, transforms.clone()),
+                (3, views.clone()),
+                (4, lights.clone()),
                 // atmosphere luts and sampler
                 (8, &textures.transmittance_lut.default_view),
                 (9, &textures.multiscattering_lut.default_view),

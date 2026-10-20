@@ -21,7 +21,12 @@ trim_build_cache() {
 trim_build_cache
 cargo build --profile "$profile" --locked
 mkdir -p 'Nord Flight.app/Contents/MacOS'
-cp "target/$output/gripen-flight" 'Nord Flight.app/Contents/MacOS/gripen-flight'
-strip -x 'Nord Flight.app/Contents/MacOS/gripen-flight'
+mkdir -p 'Nord Flight.app/Contents/Resources'
+cp packaging/Info.plist 'Nord Flight.app/Contents/Info.plist'
+cp packaging/NordFlight.icns 'Nord Flight.app/Contents/Resources/NordFlight.icns'
+rsync -a --delete --exclude '/branding/icon-options/' --exclude '/branding/*proposed*' assets/ 'Nord Flight.app/Contents/Resources/assets/'
+cp "target/$output/gripen-flight" 'Nord Flight.app/Contents/MacOS/gripen-flight.next'
+strip -x 'Nord Flight.app/Contents/MacOS/gripen-flight.next'
+mv -f 'Nord Flight.app/Contents/MacOS/gripen-flight.next' 'Nord Flight.app/Contents/MacOS/gripen-flight'
 codesign --force --sign - 'Nord Flight.app'
 trim_build_cache

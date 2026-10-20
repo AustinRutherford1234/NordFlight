@@ -1,0 +1,15 @@
+{
+  "method": "built-in image_gen",
+  "options": [
+    "Blue Horizon",
+    "Arctic Emblem",
+    "Orbital Crest",
+    "Golden Dawn",
+    "Northern Lights"
+  ],
+  "status": "approved",
+  "common_prompt": "Premium illustrated square icon showing F-22, curved Earth, spacecraft and Moon with exact NORD FLIGHT title. Navy/silver palette; variants explore ice blue, orbital gold, sunrise and aurora compositions.",
+  "option_4_correction": "Correct FLIGHT spelling and remove extra subtitle while preserving illustration.",
+  "selected": "Option 5 with Option 1 title",
+  "final_asset": "assets/branding/nord-flight-icon.png"
+}

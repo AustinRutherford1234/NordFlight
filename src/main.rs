@@ -1,6 +1,7 @@
 mod aero_fx;
 mod aircraft;
 mod hangar;
+mod start_screen;
 mod atmospheric_render;
 mod benchmark;
 mod aerodynamics;
@@ -1005,6 +1006,7 @@ fn main() {
         .insert_resource(initial_warp)
         .init_resource::<benchmark::Session>()
         .init_resource::<hangar::Hangar>()
+        .insert_resource(start_screen::Menu::configured())
         .insert_resource(planner)
         .insert_resource(combat)
         .insert_resource(bvr_menu)
@@ -1021,6 +1023,7 @@ fn main() {
         })
         .add_plugins(
             DefaultPlugins
+                .set(AssetPlugin {file_path:start_screen::asset_path(),..default()})
                 .set(bevy::app::TaskPoolPlugin {
                     task_pool_options: bevy::app::TaskPoolOptions {
                         compute: bevy::app::TaskPoolThreadAssignmentPolicy {
@@ -1092,33 +1095,35 @@ fn main() {
                 combat::hud::setup,
                 combat::effects::setup,
                 combat::bvr::setup,
+                start_screen::setup,
             )
                 .chain(),
         )
         .add_systems(
             Update,
             (
+                start_screen::controls,
                 (
-                    (apply_font,hangar::controls,input).chain(),
-                    warp::controls,
-                    (map::controls, lunar::controls, map::guidance).chain(),
-                    scenario_buttons,
-                    view_controls,
-                    instruments::buttons,
+                    (apply_font,hangar::controls.run_if(start_screen::flight_controls),input.run_if(start_screen::flight_controls)).chain(),
+                    warp::controls.run_if(start_screen::flight_controls),
+                    (map::controls, lunar::controls, map::guidance).chain().run_if(start_screen::flight_controls),
+                    scenario_buttons.run_if(start_screen::flight_controls),
+                    view_controls.run_if(start_screen::flight_controls),
+                    instruments::buttons.run_if(start_screen::flight_controls),
                     (
                         combat::bvr::controls,
                         combat::bvr::setup_screen::controls,
                         combat::bvr::cockpit_radar::controls,
                         cockpit_controls::controls,
                     )
-                        .chain(),
-                    combat::controls,
-                    hangar::systems,
-                    combat::dogfight::buttons,
-                    sound::ui,
+                        .chain().run_if(start_screen::flight_controls),
+                    combat::controls.run_if(start_screen::flight_controls),
+                    hangar::systems.run_if(start_screen::flight_controls),
+                    combat::dogfight::buttons.run_if(start_screen::flight_controls),
+                    sound::ui.run_if(start_screen::flight_controls),
                     (benchmark::exercise, atmospheric_render::exercise).chain(),
                     step,
-                    combat::camera_controls,
+                    combat::camera_controls.run_if(start_screen::flight_controls),
                     (
                         terrain::update,
                         update_world,
@@ -1156,7 +1161,7 @@ fn main() {
                     combat::effects::render,
                     combat::effects::render_hit,
                     (
-                        combat::effects::controls,
+                        combat::effects::controls.run_if(start_screen::flight_controls),
                         lunar::visuals,
                         lunar::cabin_visibility,
                         lunar::ui,
@@ -1170,6 +1175,8 @@ fn main() {
                         .chain(),
                 ),
                 declutter_ui,
+                start_screen::ui,
+                start_screen::presentation,
                 (capture_visual_check, atmospheric_render::capture, benchmark_render).chain(),
             )
                 .chain(),
@@ -1264,6 +1271,7 @@ fn setup_view(
     c.spawn((
         Camera3d::default(),
         FlightCamera,
+        bevy::ui::IsDefaultUiCamera,
         bevy::pbr::generate::EnvironmentMapScene::default(),
         Transform::default(),
         Projection::Perspective(PerspectiveProjection {

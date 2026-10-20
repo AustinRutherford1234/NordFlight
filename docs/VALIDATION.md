@@ -1,5 +1,31 @@
 # Validation record — October 14–16, 2026
 
+## October 20: animated start screen and approved icon
+
+See [START_SCREEN.md](START_SCREEN.md). **356 Rust tests pass**, including
+pause/setup/resume preservation and aircraft/BVR/space launch configuration.
+All three packaging/cache tests pass with icon and runtime asset fixtures.
+The approved Northern Lights image uses the silver/gold title treatment from
+Option 1, and is used in the app bundle, start screen and README.
+
+Native controls selected a Su-27, 4-versus-8 BVR, Hard, Intercept/Defend, then
+launched the mission and opened the Escape pause menu. Native rendered captures
+check atmospheric/space setup, Settings and Controls. The observed renderer
+panic with an inactive atmosphere camera was fixed by checking uniform-binding
+readiness and discarding stale probe bindings. Capture scripts now reject panic
+logs and stale screenshots. Final signed-app capture identities, build results
+and a baseline roll-diagnostic comparison are in `tests/start-screen/delivery.json`.
+These are functional/visual checks, not an FPS benchmark or Windows validation.
+
+## October 20: F-22 moving nozzle panels given solid wedge profiles
+
+See [F22_SOLID_NOZZLE.md](F22_SOLID_NOZZLE.md). **353 tests pass**.
+Replaced the thin moving panels with closed beveled sections and a lengthwise
+ridge, tapering into the existing aft chevron. Upper/lower volume grows away
+from the exhaust passage. Geometry export and native views check the shape;
+existing animation, gray materials, fixed sidewalls and TVC forces remain.
+Delivery evidence is in `tests/f22-solid-nozzle/delivery.json`.
+
 ## October 19: remove exposed F-22 nozzle actuators
 
 Removed the decorative nozzle cylinders, rods, clevis feet and cross-pins,
