@@ -1,0 +1,14 @@
+{
+  "source": "https://www.dvidshub.net/video/593024/10-gatling-gun-strafe",
+  "source_pcm_sha256": "4884a0000dd7e7afd3246c1857ae8e66065ad766f9563cb5a2d4e1ce8cd7dd30",
+  "source_start_seconds": 6.2,
+  "source_end_seconds": 7.6,
+  "sample_rate": 48000,
+  "channels": 1,
+  "encoding": "signed 16-bit little-endian PCM",
+  "loop_samples": 66000,
+  "loop_seconds": 1.375,
+  "loop_sha256": "b7b1345529cbb99e0a91d3d0cf7d2d5ef847cec6d89a46f63c2f27c62a95f793",
+  "rms": 0.29292172986797,
+  "peak": 0.85
+}

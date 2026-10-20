@@ -1,0 +1,8 @@
+[package]
+name = "block"
+version = "0.1.6"
+authors = ["Steven Sheldon"]
+description = "Rust interface for Apple's C language extension of blocks, with an opaque-symbol compatibility fix"
+license = "MIT"
+repository = "https://github.com/SSheldon/rust-block"
+edition = "2015"

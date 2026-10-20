@@ -1,0 +1,28 @@
+/target/
+/dist/
+/Nord Flight.app/
+/tests/*.log
+
+# Local application bundles, platform metadata and dependency build caches.
+.DS_Store
+._*
+**/target/
+**/__pycache__/
+*.pyc
+
+# Keep diagnostic harnesses; their captures, binary snapshots, traces and
+# generated reports stay local. A fresh checkout regenerates them when run.
+/tests/**
+!/tests/**/
+!/tests/**/*.py
+!/tests/optimization3/audio-settings.json
+/tests/**/baseline-source/
+/tests/**/target/
+/tests/**/__pycache__/
+
+# Credentials and local configuration are never source assets.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
