@@ -12,7 +12,7 @@ use bevy::{
     render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat},
     tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Component)]
 pub(crate) struct ForestBatch;
@@ -62,30 +62,35 @@ pub fn tree(ix: i32, iz: i32) -> Option<(f64, f64, f64, f64)> {
     let h = terrain_height(x, z);
     (h > 2. && h < 1600.).then_some((x, z, h, 10. + noise(ix + 5, iz + 9) * 12.))
 }
+#[cfg(test)]
 pub fn obstacles(a: DVec3, b: DVec3) -> Vec<(DVec3, DVec3)> {
-    let mut boxes = Vec::new();
-    if a.length().min(b.length()) - RADIUS - terrain_height(b.x, b.z) > 30. {
-        return boxes;
-    }
-    for iz in
-        ((a.z.min(b.z) - 16.) / 32.).floor() as i32..=((a.z.max(b.z) + 16.) / 32.).floor() as i32
-    {
-        for ix in ((a.x.min(b.x) - 16.) / 32.).floor() as i32
-            ..=((a.x.max(b.x) + 16.) / 32.).floor() as i32
-        {
-            if let Some((x, z, h, size)) = tree(ix, iz) {
-                boxes.push((
+    obstacle_iter(a,b).collect()
+}
+thread_local!{static OBSTACLE_SCRATCH:std::cell::RefCell<Vec<(DVec3,DVec3)>>=const{std::cell::RefCell::new(Vec::new())};}
+pub struct ObstacleScratch(Vec<(DVec3,DVec3)>);
+impl std::ops::Deref for ObstacleScratch{type Target=[(DVec3,DVec3)];fn deref(&self)->&Self::Target{&self.0}}
+impl Drop for ObstacleScratch{fn drop(&mut self){OBSTACLE_SCRATCH.with(|s|{let mut s=s.borrow_mut();if self.0.capacity()>s.capacity(){*s=std::mem::take(&mut self.0);s.clear();}});}}
+pub fn obstacles_reused(a:DVec3,b:DVec3)->ObstacleScratch{
+    let mut data=OBSTACLE_SCRATCH.with(|s|std::mem::take(&mut *s.borrow_mut()));
+    data.clear();data.extend(obstacle_iter(a,b));ObstacleScratch(data)
+}
+pub fn obstacle_iter(a:DVec3,b:DVec3)->impl Iterator<Item=(DVec3,DVec3)>+Clone {
+    let near=a.length().min(b.length()) - RADIUS - terrain_height(b.x,b.z)<=30.;
+    let x0=((a.x.min(b.x)-16.)/32.).floor()as i32;
+    let x1=((a.x.max(b.x)+16.)/32.).floor()as i32;
+    let z0=((a.z.min(b.z)-16.)/32.).floor()as i32;
+    let z1=((a.z.max(b.z)+16.)/32.).floor()as i32;
+    (z0..=z1).take(if near{usize::MAX}else{0}).flat_map(move|iz|(x0..=x1).filter_map(move|ix|tree(ix,iz)))
+        .flat_map(|(x,z,h,size)|[
+                (
                     DVec3::new(x - 0.35, h, z - 0.35),
                     DVec3::new(x + 0.35, h + size, z + 0.35),
-                ));
-                boxes.push((
+                ),
+                (
                     DVec3::new(x - size * 0.17, h + size * 0.35, z - size * 0.17),
                     DVec3::new(x + size * 0.17, h + size * 0.85, z + size * 0.17),
-                ));
-            }
-        }
-    }
-    boxes
+                ),
+        ])
 }
 pub fn color(x: f64, z: f64, h: f64) -> [f32; 4] {
     let grain = (0.92 + 0.08 * (x * 0.037 + z * 0.023).sin()) as f32;
@@ -155,6 +160,7 @@ fn layout(p: DVec3, agl: f64) -> HashSet<Tile> {
     out
 }
 struct Entry {
+    anchor: DVec3,
     entity: Entity,
     mesh: Handle<Mesh>,
     trees: Vec<(Entity, Handle<Mesh>)>,
@@ -169,6 +175,53 @@ struct Pending {
     cell: (i32, i32, i32),
     wanted: HashSet<Tile>,
     task: Task<Vec<Built>>,
+    coalesced: bool,
+}
+fn retarget_built(mut built:Vec<Built>,wanted:HashSet<Tile>,active:HashSet<Tile>)->Vec<Built> {
+    // Run on the worker: obsolete CPU meshes can be large to destroy. Retain
+    // byte-identical useful results and build only genuinely missing tiles.
+    built.retain(|b|wanted.contains(&b.tile) && !active.contains(&b.tile));
+    let retained:HashSet<_>=built.iter().map(|b|b.tile).collect();
+    let mut missing:Vec<_>=wanted.into_iter().filter(|t|!active.contains(t)&&!retained.contains(t)).collect();
+    missing.sort_by_key(|t|(t.size,t.x,t.z));
+    built.extend(missing.into_iter().map(build));
+    built.sort_by_key(|b|(b.tile.size,b.tile.x,b.tile.z));
+    built
+}
+struct Preparing {
+    cell: (i32,i32,i32),
+    wanted: HashSet<Tile>,
+    remaining: VecDeque<Built>,
+    current: Option<StagingTile>,
+    ready: Vec<(Tile,Entry)>,
+    requested: bool,
+}
+struct StagingTile {
+    tile: Tile,
+    anchor: DVec3,
+    ground: Option<Mesh>,
+    forest: VecDeque<Mesh>,
+    entry: Option<Entry>,
+}
+impl From<Built> for StagingTile {
+    fn from(b:Built)->Self {
+        Self {tile:b.tile,anchor:b.anchor,ground:Some(b.mesh),forest:b.forest.into(),entry:None}
+    }
+}
+const STREAM_BYTES:usize=2*1024*1024;
+const STREAM_MESHES:usize=4;
+#[derive(Default)]
+struct StreamBudget { bytes:usize, meshes:usize }
+impl StreamBudget {
+    fn accept(&mut self,bytes:usize)->bool {
+        if self.meshes>=STREAM_MESHES || self.meshes>0 && self.bytes.saturating_add(bytes)>STREAM_BYTES {return false;}
+        // An oversized developer/reference mesh must still make progress.
+        self.bytes+=bytes;self.meshes+=1;true
+    }
+}
+fn mesh_bytes(mesh:&Mesh)->usize {
+    mesh.attributes().map(|(_,v)|v.get_bytes().len()).sum::<usize>()+
+        mesh.indices().map_or(0,|i|match i{Indices::U16(v)=>v.len()*2,Indices::U32(v)=>v.len()*4})
 }
 #[derive(Resource)]
 pub struct Landscape {
@@ -177,6 +230,8 @@ pub struct Landscape {
     trees: Handle<StandardMaterial>,
     cell: (i32, i32, i32),
     pending: Option<Pending>,
+    preparing: Option<Preparing>,
+    retiring: VecDeque<Entry>,
 }
 fn cell(f: &Flight) -> (i32, i32, i32) {
     (
@@ -306,17 +361,17 @@ fn build(tile: Tile) -> Built {
         mesh,
         forest: forest_mesh(tile, anchor).map(|mesh| {
             if std::env::var_os("NORD_TERRAIN_LARGE_BATCHES").is_some()
-                || std::env::var_os("NORD_TERRAIN_BATCH_SIZE").is_none() { vec![mesh] }
+                { vec![mesh] }
             else {
                 let size=std::env::var("NORD_TERRAIN_BATCH_SIZE").ok()
                     .and_then(|s|s.parse::<f32>().ok()).filter(|s|s.is_finite())
-                    .unwrap_or(256.).clamp(128.,2048.);
+                    .unwrap_or(512.).clamp(128.,2048.);
                 forest_batches(mesh,size)
             }
         }).unwrap_or_default(),
     }
 }
-fn spawn(c: &mut Commands, meshes: &mut Assets<Mesh>, state: &mut Landscape, built: Built, f: &Flight) {
+fn spawn(c: &mut Commands, meshes: &mut Assets<Mesh>, state: &Landscape, built: Built, f: &Flight, visible: bool) -> (Tile,Entry) {
     let Built {
         tile,
         anchor,
@@ -325,44 +380,81 @@ fn spawn(c: &mut Commands, meshes: &mut Assets<Mesh>, state: &mut Landscape, bui
     } = built;
     // Streaming commits can be deferred until after update_world has run. A
     // visible tile must never spend its first frame at the camera-local origin.
+    let (entity,mesh)=spawn_piece(c,meshes,state,anchor,mesh,f,visible,false);
+    let trees=forest.into_iter().map(|m| {
+        let piece=spawn_piece(c,meshes,state,anchor,m,f,visible,true);
+        attach_forest(c,entity,piece.0);piece
+    }).collect();
+    (tile,Entry{anchor,entity,mesh,trees})
+}
+fn shared_transforms()->bool {
+    static ENABLED:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
+    *ENABLED.get_or_init(||std::env::var_os("NORD_TERRAIN_TRANSFORM_REFERENCE").is_none())
+}
+fn attach_forest(c:&mut Commands,root:Entity,child:Entity) {
+    if shared_transforms() {
+        c.entity(child).remove::<WorldObject>().insert(Transform::IDENTITY);
+        c.entity(root).add_child(child);
+    }
+}
+fn spawn_piece(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:DVec3,
+    mesh:Mesh,f:&Flight,visible:bool,forest:bool)->(Entity,Handle<Mesh>) {
     let transform = Transform::from_translation(world::local(anchor, f))
         .with_rotation(world::local_rot(DQuat::IDENTITY, f));
     let mesh = meshes.add(mesh);
     let entity = c
         .spawn((
             Mesh3d(mesh.clone()),
-            MeshMaterial3d(state.material.clone()),
+            MeshMaterial3d(if forest {state.trees.clone()} else {state.material.clone()}),
             transform,
+            if visible {Visibility::Inherited} else {Visibility::Hidden},
             WorldObject {
                 position: anchor,
                 rotation: DQuat::IDENTITY,
             },
         ))
         .id();
-    let trees = forest.into_iter().map(|m| {
-        let handle = meshes.add(m);
-        let e = c
-            .spawn((
-                ForestBatch,
-                Mesh3d(handle.clone()),
-                MeshMaterial3d(state.trees.clone()),
-                transform,
-                WorldObject {
-                    position: anchor,
-                    rotation: DQuat::IDENTITY,
-                },
-            ))
-            .id();
-        (e, handle)
-    }).collect();
-    state.tiles.insert(
-        tile,
-        Entry {
-            entity,
-            mesh,
-            trees,
-        },
-    );
+    if forest {c.entity(entity).insert(ForestBatch);}
+    (entity,mesh)
+}
+fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Preparing,f:&Flight)->StreamBudget {
+    let mut budget=StreamBudget::default();
+    loop {
+        if p.current.is_none() {p.current=p.remaining.pop_front().map(Into::into);}
+        let Some(tile)=p.current.as_mut() else {break;};
+        let next=tile.ground.as_ref().or_else(||tile.forest.front());
+        if let Some(next)=next {
+            if !budget.accept(mesh_bytes(next)) {break;}
+        } else {
+            let tile=p.current.take().unwrap();
+            p.ready.push((tile.tile,tile.entry.expect("ground precedes forest")));
+            continue;
+        }
+        if let Some(mesh)=tile.ground.take() {
+            let (entity,mesh)=spawn_piece(c,meshes,state,tile.anchor,mesh,f,false,false);
+            tile.entry=Some(Entry {anchor:tile.anchor,entity,mesh,trees:Vec::new()});
+        } else {
+            let mesh=tile.forest.pop_front().unwrap();
+            let piece=spawn_piece(c,meshes,state,tile.anchor,mesh,f,false,true);
+            attach_forest(c,tile.entry.as_ref().unwrap().entity,piece.0);
+            tile.entry.as_mut().unwrap().trees.push(piece);
+        }
+    }
+    budget
+}
+fn reclaim(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&mut Landscape)->StreamBudget {
+    let mut budget=StreamBudget::default();
+    while let Some(entry)=state.retiring.front_mut() {
+        let handle=entry.trees.last().map_or(&entry.mesh,|(_,m)|m);
+        if !budget.accept(meshes.get(handle).map_or(0,mesh_bytes)) {break;}
+        if let Some((entity,mesh))=entry.trees.pop() {
+            c.entity(entity).despawn();meshes.remove(mesh.id());
+        } else {
+            let entry=state.retiring.pop_front().unwrap();
+            c.entity(entry.entity).despawn();meshes.remove(entry.mesh.id());
+        }
+    }
+    budget
 }
 pub fn setup(
     c: &mut Commands,
@@ -414,9 +506,12 @@ pub fn setup(
         trees,
         cell: cell(f),
         pending: None,
+        preparing: None,
+        retiring: VecDeque::new(),
     };
     for tile in layout(f.position, f.agl()) {
-        spawn(c, meshes, &mut state, build(tile), f);
+        let (tile,entry)=spawn(c, meshes, &state, build(tile), f, true);
+        state.tiles.insert(tile,entry);
     }
     c.insert_resource(state);
 }
@@ -426,6 +521,7 @@ pub fn update(
     mut state: ResMut<Landscape>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    readiness: Res<crate::terrain_ready::TerrainReady>,
 ) {
     let opacity = crate::earth::terrain_opacity(f.altitude());
     let _measure = crate::performance::span(4);
@@ -440,25 +536,67 @@ pub fn update(
     if f.vehicle == Vehicle::Spacecraft {
         return;
     }
+    let reclaimed=reclaim(&mut c,&mut meshes,&mut state);
+    // Keep memory bounded to the active layout and one retiring/preparing
+    // replacement. Hidden old assets are reclaimed before starting another.
+    if reclaimed.meshes>0 {return;}
     if let Some(mut pending) = state.pending.take() {
         let Some(built) = block_on(poll_once(&mut pending.task)) else {
             state.pending = Some(pending);
             return;
         };
-        // Keep the complete old coverage until every replacement is ready, then
-        // retire and install together. At most one bounded job can be in flight.
-        retire(&mut c, &mut meshes, &mut state, &pending.wanted);
-        for tile in built {
-            spawn(&mut c, &mut meshes, &mut state, tile, &f);
+        let current=cell(&f);
+        if !pending.coalesced && pending.cell!=current {
+            let wanted=layout(f.position,f.agl());
+            if wanted!=pending.wanted {
+                let active=state.tiles.keys().copied().collect();let target=wanted.clone();
+                let task=AsyncComputeTaskPool::get().spawn(async move {retarget_built(built,target,active)});
+                // Coalesce once, then complete that valid coverage. Requiring
+                // perfect cell currency every poll would starve moving flight.
+                state.pending=Some(Pending {cell:current,wanted,task,coalesced:true});
+                return;
+            }
+            pending.cell=current;
         }
-        state.cell = pending.cell;
+        state.preparing=Some(Preparing {cell:pending.cell,wanted:pending.wanted,remaining:built.into(),current:None,ready:vec![],requested:false});
+    }
+    if let Some(mut preparing)=state.preparing.take() {
+        // Bound individual mesh insertion by bytes and count, not entire tiles.
+        // Existing coverage stays visible throughout CPU and GPU preparation.
+        let budget=stage(&mut c,&mut meshes,&state,&mut preparing,&f);
+        crate::performance::terrain_staged(budget.bytes,budget.meshes);
+        if !preparing.remaining.is_empty() || preparing.current.is_some() {
+            state.preparing=Some(preparing); return;
+        }
+        if !preparing.requested {
+            let ids=preparing.ready.iter().flat_map(|(_,e)|std::iter::once(e.mesh.id()).chain(e.trees.iter().map(|(_,m)|m.id()))).collect();
+            readiness.request(ids); preparing.requested=true;
+            state.preparing=Some(preparing); return;
+        }
+        if !readiness.ready() {state.preparing=Some(preparing);return;}
+        retire(&mut c,&mut meshes,&mut state,&preparing.wanted);
+        for (tile,entry) in preparing.ready {
+            let transform=Transform::from_translation(world::local(entry.anchor,&f)).with_rotation(world::local_rot(DQuat::IDENTITY,&f));
+            c.entity(entry.entity).insert((Visibility::Inherited,transform));
+            for (entity,_) in &entry.trees {
+                c.entity(*entity).insert(Visibility::Inherited);
+                if !shared_transforms() {c.entity(*entity).insert(transform);}
+            }
+            state.tiles.insert(tile,entry);
+        }
+        readiness.clear();
+        state.cell=preparing.cell;
+        let reclaimed=reclaim(&mut c,&mut meshes,&mut state);
+        // Even when this emptied the queue, a stale completed cell must not
+        // retire a second layout with a fresh budget during this same update.
+        if reclaimed.meshes>0 {return;}
     }
     let next = cell(&f);
     if next == state.cell {
         return;
     }
     let wanted = layout(f.position, f.agl());
-    let missing: Vec<_> = wanted
+    let mut missing: Vec<_> = wanted
         .iter()
         .filter(|t| !state.tiles.contains_key(t))
         .copied()
@@ -466,42 +604,123 @@ pub fn update(
     if missing.is_empty() {
         retire(&mut c, &mut meshes, &mut state, &wanted);
         state.cell = next;
+        reclaim(&mut c,&mut meshes,&mut state);
         return;
     }
+    missing.sort_by_key(|t|(t.size,t.x,t.z));
     let task =
         AsyncComputeTaskPool::get().spawn(async move { missing.into_iter().map(build).collect() });
     state.pending = Some(Pending {
         cell: next,
         wanted,
         task,
+        coalesced: false,
     });
 }
 fn retire(
     c: &mut Commands,
-    meshes: &mut Assets<Mesh>,
+    _meshes: &mut Assets<Mesh>,
     state: &mut Landscape,
     wanted: &HashSet<Tile>,
 ) {
-    let retired: Vec<_> = state
+    let mut retired: Vec<_> = state
         .tiles
         .keys()
         .filter(|t| !wanted.contains(t))
         .copied()
         .collect();
+    retired.sort_by_key(|t|(t.size,t.x,t.z));
     for tile in retired {
         if let Some(entry) = state.tiles.remove(&tile) {
-            c.entity(entry.entity).despawn();
-            meshes.remove(entry.mesh.id());
-            for (e, m) in entry.trees {
-                c.entity(e).despawn();
-                meshes.remove(m.id());
-            }
+            c.entity(entry.entity).insert(Visibility::Hidden);
+            for (entity,_) in &entry.trees {c.entity(*entity).insert(Visibility::Hidden);}
+            state.retiring.push_back(entry);
         }
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stale_worker_coalescing_reuses_useful_meshes_and_completes_coverage() {
+        let a=Tile{x:0,z:0,size:512};let b=Tile{x:512,z:0,size:512};
+        let c=Tile{x:1024,z:0,size:512};let d=Tile{x:1536,z:0,size:512};
+        let fake=|tile|Built {tile,anchor:DVec3::ZERO,mesh:Mesh::from(Cuboid::default()),forest:vec![]};
+        let result=retarget_built(vec![fake(b),fake(c)],HashSet::from([a,b,d]),HashSet::from([a]));
+        assert_eq!(result.iter().map(|b|b.tile).collect::<HashSet<_>>(),HashSet::from([b,d]));
+        assert_eq!(result.iter().find(|x|x.tile==b).unwrap().mesh.count_vertices(),24,"useful result must not be regenerated");
+        let rebuilt=result.iter().find(|x|x.tile==d).unwrap();let reference=build(d);
+        assert_eq!(rebuilt.mesh.attribute(Mesh::ATTRIBUTE_POSITION),reference.mesh.attribute(Mesh::ATTRIBUTE_POSITION));
+    }
+    #[test]
+    fn streaming_budget_bounds_meshes_bytes_and_allows_oversized_progress() {
+        let mut b=StreamBudget::default();
+        assert!(b.accept(STREAM_BYTES-1));
+        assert!(!b.accept(2));
+        assert!(b.accept(1));
+        assert!(!b.accept(1));
+        let mut b=StreamBudget::default();
+        assert!(b.accept(STREAM_BYTES+1));
+        assert!(!b.accept(1));
+        let mut b=StreamBudget::default();
+        for _ in 0..STREAM_MESHES {assert!(b.accept(1));}
+        assert!(!b.accept(1));
+        let tile=Tile{x:8192,z:0,size:2048};
+        let anchor=surface_point(9216.,1024.,0.);
+        let forest=forest_mesh(tile,anchor).unwrap();
+        let vertices=forest.count_vertices();
+        let batches=forest_batches(forest,512.);
+        assert_eq!(vertices,batches.iter().map(Mesh::count_vertices).sum::<usize>());
+        assert!(batches.len()>1);
+        assert!(batches.iter().all(|m|mesh_bytes(m)<=STREAM_BYTES));
+    }
+    #[test]
+    fn staged_forest_and_retirement_are_bounded_and_publish_atomically() {
+        use bevy::asset::{AssetApp,AssetPlugin};
+        for old_tree_count in [0_usize,10] {
+        let mut app=App::new();
+        app.add_plugins(AssetPlugin::default()).init_asset::<Mesh>().init_asset::<StandardMaterial>()
+            .insert_resource(Flight::runway()).init_resource::<crate::terrain_ready::TerrainReady>()
+            .add_systems(Update,update);
+        let f=app.world().resource::<Flight>().clone();
+        let material=app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
+        let old_mesh=app.world_mut().resource_mut::<Assets<Mesh>>().add(Cuboid::default());
+        let old=app.world_mut().spawn(Visibility::Inherited).id();
+        let mut old_trees=Vec::new();
+        for _ in 0..old_tree_count {
+            let mesh=app.world_mut().resource_mut::<Assets<Mesh>>().add(Cuboid::default());
+            old_trees.push((app.world_mut().spawn(Visibility::Inherited).id(),mesh));
+        }
+        let old_entities:Vec<_>=std::iter::once(old).chain(old_trees.iter().map(|x|x.0)).collect();
+        let tile=Tile{x:0,z:0,size:512};
+        app.insert_resource(Landscape {tiles:HashMap::from([(Tile{x:0,z:0,size:1024},Entry {
+            anchor:DVec3::ZERO,entity:old,mesh:old_mesh,trees:old_trees,
+        })]),material:material.clone(),trees:material,cell:cell(&f),pending:None,retiring:VecDeque::new(),
+            preparing:Some(Preparing {cell:(cell(&f).0-1,cell(&f).1,cell(&f).2),wanted:HashSet::from([tile]),remaining:VecDeque::from([Built {
+                tile,anchor:f.position,mesh:Mesh::from(Cuboid::default()),
+                forest:(0..20).map(|_|Mesh::from(Cuboid::default())).collect(),
+            }]),current:None,ready:vec![],requested:false})});
+        for i in 0..6 {
+            app.update();
+            assert_eq!(app.world().resource::<Assets<Mesh>>().len(),old_tree_count+1+((i+1)*4).min(21));
+            assert_eq!(*app.world().get::<Visibility>(old).unwrap(),Visibility::Inherited);
+            assert_eq!(app.world().resource::<Landscape>().tiles.len(),1);
+        }
+        app.world().resource::<crate::terrain_ready::TerrainReady>().poll(|_|true);
+        app.update();
+        assert!(app.world().resource::<Landscape>().tiles.contains_key(&tile));
+        assert_eq!(app.world().resource::<Assets<Mesh>>().len(),21+(old_tree_count+1).saturating_sub(4));
+        assert!(app.world().resource::<Landscape>().pending.is_none(),"cleanup must finish the update even if the completed cell is stale");
+        for entity in &old_entities {
+            if let Some(v)=app.world().get::<Visibility>(*entity) {assert_eq!(*v,Visibility::Hidden);}
+        }
+        for _ in 0..(old_tree_count+1).saturating_sub(4).div_ceil(4) {app.update();}
+        assert!(old_entities.iter().all(|e|app.world().get_entity(*e).is_err()));
+        assert_eq!(app.world().resource::<Assets<Mesh>>().len(),21);
+        assert!(app.world().resource::<Landscape>().retiring.is_empty());
+        assert!(app.world().resource::<Landscape>().pending.is_none());
+        }
+    }
     #[test]
     fn forest_partition_preserves_every_triangle_attribute_and_tightens_culling() {
         use bevy::mesh::VertexAttributeValues;
@@ -542,10 +761,11 @@ mod tests {
             atomic::{AtomicBool, Ordering},
         };
         let mut app = App::new();
-        app.add_plugins((bevy::app::TaskPoolPlugin::default(), AssetPlugin::default()))
+        app.add_plugins((bevy::app::TaskPoolPlugin::default(), AssetPlugin::default(),bevy::transform::TransformPlugin))
             .init_asset::<Mesh>()
             .init_asset::<StandardMaterial>()
             .insert_resource(Flight::runway())
+            .init_resource::<crate::terrain_ready::TerrainReady>()
             .add_systems(Update, update);
         let f = app.world().resource::<Flight>().clone();
         let next = cell(&f);
@@ -579,6 +799,7 @@ mod tests {
                     size: 1024,
                 },
                 Entry {
+                    anchor: DVec3::ZERO,
                     entity: old,
                     mesh,
                     trees: Vec::new(),
@@ -591,7 +812,10 @@ mod tests {
                 cell: next,
                 wanted: wanted.clone(),
                 task,
+                coalesced:false,
             }),
+            preparing: None,
+            retiring:VecDeque::new(),
         });
         app.update();
         assert!(app.world().get_entity(old).is_ok());
@@ -603,6 +827,15 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
             app.update();
         }
+        while app.world().resource::<Landscape>().preparing.as_ref().is_some_and(|p|!p.requested) {
+            app.update();
+            assert!(app.world().get_entity(old).is_ok());
+        }
+        assert!(app.world().get_entity(old).is_ok());
+        app.update(); // GPU not ready: no premature publication.
+        assert!(app.world().get_entity(old).is_ok());
+        app.world().resource::<crate::terrain_ready::TerrainReady>().poll(|_|true);
+        app.update();
         assert!(app.world().get_entity(old).is_err());
         assert_eq!(
             app.world()
@@ -620,11 +853,17 @@ mod tests {
         let mut count=0;
         for entry in app.world().resource::<Landscape>().tiles.values() {
             for entity in std::iter::once(entry.entity).chain(entry.trees.iter().map(|x|x.0)) {
-                let object=app.world().get::<WorldObject>(entity).unwrap();
                 let transform=app.world().get::<Transform>(entity).unwrap();
-                assert_eq!(transform.translation,world::local(object.position,f));
-                assert_eq!(transform.rotation,world::local_rot(object.rotation,f));
-                assert_ne!(*transform,Transform::default());
+                if entity==entry.entity {
+                    let object=app.world().get::<WorldObject>(entity).unwrap();
+                    assert_eq!(transform.translation,world::local(object.position,f));
+                    assert_eq!(transform.rotation,world::local_rot(object.rotation,f));
+                    assert_ne!(*transform,Transform::default());
+                } else {
+                    assert!(app.world().get::<WorldObject>(entity).is_none());
+                    assert_eq!(*transform,Transform::IDENTITY);
+                    assert_eq!(app.world().get::<GlobalTransform>(entity).unwrap(),app.world().get::<GlobalTransform>(entry.entity).unwrap());
+                }
                 count+=1;
             }
         }

@@ -1,5 +1,258 @@
 # Validation record — October 14–16, 2026
 
+## October 21: SAS state highlight and irregular exhaust motion
+
+The top-right SAS button now derives its background and bright green border
+from `Flight.assist`, retaining the indication after hover ends and following
+keyboard/mode changes. Click actions remain edge-triggered even though styling
+is refreshed from state each frame. Unchanged colors are not reassigned.
+
+Engine exhaust uses bounded, smooth deterministic noise driven by double-
+precision simulation time. Existing layers vary independently in length, width
+and small downstream bend; F-22 radiance and shock cells also vary irregularly,
+with separate seeds for each engine. Gripen, other selectable jets and spacecraft
+plumes share the presentation helper. Meshes, effect counts, nozzle hardware,
+thrust and authoritative randomness are unchanged. Animation freezes with
+simulation time. The plume's upstream centre stays fixed at the nozzle while
+downstream geometry moves.
+
+All **406 application tests passed**, including SAS state/mouse-exit/mode
+selection and held-click behavior, bounded/repeatable long-mission noise,
+nozzle attachment and pause invariance for Gripen and F-22 plumes. Existing
+shutdown and low-throttle visibility checks also pass. The optimized app was
+rebuilt/signed and strict signature verification passed. Native captures of
+the illuminated SAS button and full-power F-22 exhaust were inspected; both
+launches exited successfully. These paused captures check appearance, while
+the simulation-time regressions check motion and pause behavior. Evidence is
+under `tests/sas-plume/`.
+
+## October 21: R restarts the selected scenario
+
+The R-key handler previously preserved only scenario IDs 4–10; ordinary aircraft
+scenarios fell back to Approach (2). It now passes the stored scenario ID to the
+existing reset path, preserving Cold & Dark (0), Takeoff (1), Approach (2), and
+the existing combat and spacecraft selections. A keyboard-system regression
+checks all 11 scenarios with Gripen and F-22 selections, including reset position,
+velocity, engine, fuel, elapsed time and crash state. All **402 application tests
+passed**. This fix does not change the scenario initialization routines. The
+optimized app was rebuilt/signed, strict signature verification passed, and the
+native launch/render smoke check exited successfully. Evidence is under
+`tests/scenario-restart/` and `tests/optimization3/scenario-restart-native/`.
+
+## October 21: near-terrain rendering and streaming optimization
+
+Implemented consumer-bound atmosphere capture, conservative HUD coverage,
+alpha-only discard specialization, shared tile/forest transforms and bounded
+worker-result coalescence. All 401 application and 15 vendored renderer tests
+passed; seeded release flight-study outputs match excluding timing fields.
+Native F-22 external imagery is pixel-identical and cockpit differences are
+limited to tiny HUD sampling changes. The two-minute terrain run and 100
+scripted transitions completed successfully; 1,200 transition frames were
+checked, with representative consecutive frames/contact sheets inspected.
+
+Battery-only native 2880 × 1800 external forest comparisons improved from
+35.4–35.9 to 46.2–46.7 FPS in both run orders. Fullscreen cockpit/live results
+remain variable; a 1440 × 900 cockpit pair improved 43.3 to 51.5 FPS. Sixty FPS
+and 16.67 ms p95 were not achieved. Source writes fell from 239 to 40 for the
+same 40 completed filter cycles. Release packaging and strict signature
+verification passed. See [the implementation and measured report](NEAR_TERRAIN_FPS_IMPLEMENTATION.md)
+for raw-data locations, GPU/drawable-wait evidence, host limitations and unmet
+acceptance criteria.
+
+## October 20: F-22 cockpit floor, seat and radar clearance
+
+Replaced the F-22's shared tub with a fitted dark cabin and detailed padded seat.
+The confirmed gray floor obstruction was the nose-wheel-well ceiling, which
+extended through the footwell and lower radar screen. A stepped partition now
+clears the cockpit while retaining the forward wheel pocket. Fixed seat vertex
+attributes also prevent malformed headrest triangles during rigid batching.
+
+All **396 Rust regressions passed**, including full-scene cockpit clearance,
+seat mesh/batch compatibility and stowed-tire/ceiling clearance. Repeated native
+captures from left, right, downward and rear cockpit views were inspected.
+See [F22_COCKPIT_REPAIR.md](F22_COCKPIT_REPAIR.md) for causes and implementation.
+
+## October 20: normal-G indication and F-22 speed envelope
+
+Corrected aircraft normal-G telemetry to include vectored engine force and
+landing-gear/tire/contact-constraint support. The indicated signed body-normal
+specific acceleration excludes gravity, solar tidal acceleration and rotating
+frame terms. Final telemetry uses the actual velocity change over the physics
+step and its original body axis; the airborne FBW/structural-load calculation
+also includes thrust. No artificial 1 G offset is added.
+
+F-22 telemetry, fuel use, TVC allocation and applied propulsion now use one shared
+installed-engine calculation. Its augmented high-Mach thrust retention is tuned
+for the requested high-altitude Mach 2.5 level-flight target, with a continuous
+inlet-recovery loss above that envelope rather than a velocity clamp. Military
+power remains available at 88% throttle and supercruise uses no afterburner.
+The structural overspeed threshold is 2.55, allowing the requested 2.5 operating
+point. Other aircraft retain their engine parameters.
+
+All **393 Rust regressions passed**. New checks cover signed/body-axis loads,
+parked wheel support (within 0.04 of 1 G after settling), actual F-22 vectored
+thrust contribution, engine-deck/applied-force agreement and engine shutdown.
+Steady trim is solved through the production six-degree-of-freedom force,
+surface, TVC and engine path at 15,000 m, the standard internal loadout and
+scenario fuel mass. Vertical and pitch residuals remain below 1e-4 m/s² and
+rad/s². Measured longitudinal accelerations:
+
+| Power | Mach | Acceleration (m/s²) |
+|---|---:|---:|
+| 88%, no afterburner | 1.5 | +0.6602 |
+| Full afterburner | 2.4 | +0.6316 |
+| Full afterburner | 2.5 | +0.0065 |
+| Full afterburner | 2.6 | −3.3734 |
+
+These establish positive dry-thrust margin at Mach 1.5 and a near-equilibrium
+Mach 2.5 powered level-flight point for that altitude/configuration. They are
+trimmed simulation measurements, not a long-duration piloted flight or an F119
+engine-deck validation. Fuel, altitude, external stores and damage affect the
+achievable speed; diving is not limited by a hard velocity cap. Public Air Force
+references support supercruise above Mach 1.5, while Mach 2.5 here is the requested
+gameplay target: [USAF F-22 fact sheet](https://www.holloman.af.mil/About/Fact-Sheets/Display/Article/257723/f-22-raptor/).
+
+The final optimized app passed strict signature verification and the native
+F-22 cockpit/icon capture. Its packaged `--study-f22` run also completed the
+60-second level-acceleration and banked-turn cases without a crash, plus a
+successful assisted runway landing. The level case finished at 6,063 m and
+502.02 m/s (Mach 1.588), indicating 0.998 G. The high-altitude Mach 2.5 acceptance
+above is the separate steady-trim check, not that 6 km flight case.
+
+## October 20: optional cockpit enemy icons
+
+Added a cockpit-only **Enemy Icons** button and **Option/Alt + H** shortcut.
+The optional overlay projects enemy brackets and range labels across the camera
+view, independently of the physical HUD combiner. Selected targets are amber;
+other enemies have red brackets. It supports simplified and BVR views, filters
+allies and destroyed aircraft, suppresses terrain-obscured targets, and hides
+while using the map or following another vehicle. It starts disabled and retains
+its setting across camera switches. Plain H continues to toggle help.
+
+All **388 Rust regressions passed**, including selected-target visibility,
+simplified/BVR filtering, map/follow suppression, click edge detection and
+keyboard toggling while paused.
+The optimized signed app passed a native cockpit capture with all three enemy
+labels visible and the selected target highlighted. The capture is
+`tests/visual-air-hud-cockpit-icons.png`.
+
+## October 20: F-22 missile inventory and visibility
+
+Fixed the legacy four-player-missile presentation allocation: player slots now
+cover the largest ten-missile loadout, with stable separate enemy slots. Later
+launches remain visible to missile meshes, exhaust, smoke and follow cameras.
+Scenario initialization now owns aircraft-specific missile and cannon inventory;
+the hangar no longer refills it after controls run. F-22 practice, dogfight and
+BVR resets start with two IR and six radar missiles. The existing Gripen BVR
+loadout is preserved.
+
+All **386 Rust regressions passed**. Coverage includes every aircraft station
+through the real initialization path, rendering lookup for every launch, all six
+F-22 radar launches in each dogfight difficulty, rejection after exhaustion,
+stable enemy render slots and same-generation scenario resets, including BVR.
+The optimized app was rebuilt and signed; strict signature verification and an
+F-22 native cockpit launch/capture completed successfully. Native launch checks
+do not replace the repeated-launch regression coverage above.
+
+## October 20: retained presentation and bounded streaming optimization
+
+Implemented retained cockpit numeric rows and dirty uploads, shared radar
+rasterization, GPU detailed-smoke cards with a CPU reference switch, immutable
+mesh sharing, bounded terrain preparation with render-world readiness, explicit
+presentation scheduling, BVR scoring reuse, orbital prediction/line reuse,
+combat/contact scratch storage, menu filtering and cached effect-voice panning.
+
+**380 Rust regressions and three packaging/cache tests passed.** Nine seeded
+numerical JSON reports match the preserved optimized executable after excluding
+timing fields; both AI telemetry CSVs match byte for byte. A native GPU/CPU smoke
+comparison differs at 169 of 1,296,000 pixels, by at most one channel level.
+Native cockpit, forest and lunar map captures were inspected. The experimental
+GPU release build completed in 4m 17s and passed strict signature verification.
+The GPU renderer did not establish an FPS benefit, so the accepted shipping
+configuration keeps CPU smoke by default; `NORD_SMOKE_GPU=1` enables comparison.
+The final artifact identity and native checks are recorded in the linked report.
+The accepted build completed in 4m 32s, passed signature verification and native
+launch/cockpit checks, and measured 44.99 FPS / 33.95 ms p95 in the final BVR
+sample. This is effectively unchanged from the nearby baseline repeat, while
+cockpit CPU work was approximately halved. No 60 FPS acceptance claim is made.
+
+A 120-second mixed-scene GPU-candidate sample completed without runtime errors. On returning
+to BVR, entity and mesh counts returned to 8,274 and 1,558, matching the starting
+scenario; image count stabilized at 75 after initial lighting preparation.
+This is a short stability check, not a long-term memory guarantee.
+
+See [OPTIMIZATION_IMPLEMENTATION_2026-10-20.md](OPTIMIZATION_IMPLEMENTATION_2026-10-20.md)
+for before/after performance, remaining limitations and reproducible local artifacts.
+No simulation frequency, numerical method, graphics setting or effect population
+was reduced. The world-oriented atmosphere-source rewrite remains deferred.
+
+## October 20: AIM-120D radar missile presentation
+
+The radar missile now uses an AIM-120D-inspired exterior with a curved radome,
+64-sided body, section joints and identification bands, sensor windows, solid
+clipped wings, moving tail fins, a wiring cover and recessed fixed exhaust. Both
+the existing standard and BVR dynamics profiles use the D-style clipped planform;
+the F-22's radar weapon label reads AIM-120D. Mounted and launched models are updated.
+No weapon flight, guidance, seeker, propulsion or damage parameters changed.
+
+**373 Rust tests pass** and all three packaging/cache tests pass. New checks cover
+mesh dimensions, valid indices, shared clipped planform, fixed tail hinges,
+axial exhaust direction and reduced plume length during lower-thrust sustain.
+The smoke renderer uses the existing shared texture/persistent buffers, with a
+larger radar-missile footprint. See [RADAR_MISSILE_VISUALS.md](RADAR_MISSILE_VISUALS.md)
+for reference sources, assumptions and the native capture command.
+Four native development captures in `tests/aim120d-visual-dev/` verify detail,
+tail-fin actuation, fixed-axis exhaust and smoke, including the AIM-120D launch
+notification. The final optimized release build completed in 8m 01s and was
+packaged into the existing `Nord Flight.app`; strict deep signature verification
+passed.
+All four captures were repeated successfully from the packaged release executable
+in `tests/aim120d-visual-release/`, with fresh frames and no renderer panic.
+
+## October 20: AIM-9X detail, smoke and control animation
+
+**370 Rust tests pass**, and all three packaging/cache tests pass. New visual
+regressions check paired fin deflection signs, fixed hinges, internal vane
+clearance, bounded smoke geometry/indices, soft-texture alpha, deterministic
+pause behavior and camera-dependent smoke orientation. Geometry is shared and
+smoke uses persistent buffers within the existing missile/trail pool limits.
+
+Four fresh native captures in `tests/aim9x-visual-final/` inspect the curved
+seeker/body detail, rear tail-fin and jet-vane assembly, off-axis powered plume
+and smoke trail. The off-axis case records a live controller demand of
+approximately `(0.5473, 0.2329, 0.0119)` at 0.400 simulation seconds, rather than
+posing a decorative fin oscillation. Native processes exited successfully with
+fresh screenshots and no panic. Capture script: `tests/capture_aim9x.py`.
+
+The new model uses fixed forward wings and nozzle housing with coupled moving
+aft fins/internal jet vanes. The 20-degree animation mapping is an estimated
+presentation of the existing point-mass controller, not measured hardware motion
+or a six-degree-of-freedom missile model. This pass preserves weapon dynamics,
+damage and seeker behavior; details and public references are in [AIM9X.md](AIM9X.md).
+The optimized release build completed in 3m 22s, was packaged into the existing
+`Nord Flight.app`, and passed `codesign --verify --deep --strict`.
+All four native captures were repeated successfully from the packaged release
+executable in `tests/aim9x-visual-release/`, with fresh frames and no renderer panic.
+
+## October 20: F-22-only AIM-9X
+
+See [AIM9X.md](AIM9X.md) for public specifications, controls and explicit tuning
+assumptions. **363 Rust tests pass** and all three packaging/cache tests pass.
+New regressions cover exclusive F-22 assignment in practice/BVR launch paths,
+the wider acquisition cone, published launch mass and mesh envelope, high
+off-boresight tracking without radar support, powered versus coasting control
+authority, and improved but nonzero flare diversion probability.
+
+A fresh native `combat-launch` capture with `NORD_AIRCRAFT=f22` shows the new
+missile model, powered exhaust and AIM-9X launch notification. The capture setup
+now prepares missiles after selecting their actual aircraft rather than retaining
+the default Gripen's missiles. Logs, the screenshot and source hashes are retained
+locally in `tests/aim9x/`. These are implementation and render checks, not calibrated
+missile-performance measurements or an FPS benchmark.
+The optimized release build completed in 6m 27s, was packaged into `Nord Flight.app`
+and passed strict deep signature verification. A second fresh native launch capture
+from the packaged release executable also passed without a renderer panic.
+
 ## October 20: animated start screen and approved icon
 
 See [START_SCREEN.md](START_SCREEN.md). **356 Rust tests pass**, including
@@ -1252,4 +1505,55 @@ Final optimized app built through `./build-mac.sh release` in 3m 05s and passed 
 `tests/enemy-weapons-tests.log`: **247 passed, 0 failed**. Added regressions check the enemy missile profile over 101 normalized burst distances, seeded direct-hit outcomes for both missile types, reproducibility and surviving outcomes, fourfold localized/cumulative enemy cannon damage, unchanged player probability anchors, head-on/beam IR acquisition, missile and cannon hit-report publication in close combat and BVR, one-time kill counting, friendly damage strength, snapshot persistence, replacement/reset, three-second hold and 0.65-second fade, pause, and full/simplified cockpit/map visibility and placement. Existing guidance, sun, countermeasure, energy, physics and rendering regressions also pass.
 
 The release missile diagnostic is recorded in `tests/enemy-weapons-missile-study.log` and `tests/missile-gnc-study.json`. In its fixed rear-aspect test, no defense, flares alone and a break alone each produce 100/100 hits; flares plus the break produce 25/100 hits. All 89 temporary straight-flight flare diversions are reacquired. These are conditional gameplay-model results; all-aspect acquisition does not imply calibrated real-world missile performance. Enemy immediate-destruction odds are configured at 97% for skin contact, 88.5% at half fuse distance and 80% at the outer edge. Accumulated damage can also be fatal on a surviving-severity roll.
+
+# Focused atmospheric rendering — 2026-10-20
+
+See [the implementation results](ATMOSPHERIC_RENDERING_RESULTS.md) for both
+matched release pairs and explicit limitations. 384 application tests, 12
+vendored renderer tests and 3 packaging/cache tests pass. All 11 seeded numerical
+comparison files match the preserved build. Native transition comparison covers
+1,200 frames per build across 100 changes, with no missing frames, scene-state
+mismatch or large-difference flags; all contact sheets were inspected. The
+two-minute stability check and packaged native launch succeed. Strict app
+signature verification passes.
+
+The active-camera gate fix enables existing lighting reuse/slicing and improves
+cockpit/BVR average FPS repeatably. Terrain tail latency remains unresolved;
+60 FPS at 16.67 ms p95 is not universally achieved. Both Metal traces were saved,
+but detailed per-pass attribution remains incomplete. Graphics presets,
+shadow quality and simulation fidelity are preserved. Shipping frame latency
+and VSync remain unchanged. Diagnostic artifacts are bounded locally under
+`tests/atmospheric6`; no new broad campaign is pending.
+
+# Near-terrain rendering and streaming — 2026-10-21
+
+See [the near-terrain report](NEAR_TERRAIN_OPTIMIZATION.md) for implementation,
+every matched release pair, power conditions and limitations. **398 application
+regressions pass**, including exact forest-triangle preservation, mesh/byte
+budgets, hidden staging, GPU-readiness publication, first-frame transforms and
+bounded retirement of stale completed layouts. Seeded flight-study outputs match
+the preserved baseline after explicit timing exclusions.
+
+Matched native forest screenshots in external and cockpit views have zero pixel
+difference after masking the top-right telemetry. Both were inspected. A posed
+coastal comparison is also identical and retains an existing abrupt coastal
+profile. The 120-second moving streaming sample completes without errors, with
+bounded mesh/entity counts and no continuously rising resident-memory trend.
+These are automated native checks, not manual flight or a long-duration leak
+proof. No geometry detail, tree count, shadows, texture quality or simulation
+fidelity was reduced.
+
+At 2880 × 1800 fullscreen, external FPS is essentially unchanged at 40. Battery
+cockpit comparisons average 33.18 → 34.41 FPS, but a separate AC comparison is
+34.50 → 33.08 FPS. A consistent FPS improvement is not established. Exact culling
+reduces vertices in visible external forest batches by about 66%, and streaming
+source-data insertion is capped at 2 MiB/four meshes per update. These structural
+improvements do not establish the remaining critical GPU pass. A depth-prepass
+experiment did not help and remains internal and off by default.
+
+Final review corrected a rare same-update cleanup-budget restart after a stale
+cell completed. Its regression passes; it was not followed by another timing
+matrix. The accepted optimized app is packaged and ad hoc signed through the
+existing build script. Raw measurements and bounded artifacts are retained in
+`tests/optimization7`; the 12 GiB Cargo-cache policy remains unchanged.
 

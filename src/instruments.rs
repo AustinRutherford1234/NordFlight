@@ -148,32 +148,88 @@ pub fn setup(mut c: Commands) {
     ));
 }
 pub fn buttons(
-    mut buttons: Query<(&Interaction, &FlightButton, &mut BackgroundColor), Changed<Interaction>>,
+    mut buttons: Query<(Ref<Interaction>, &FlightButton, &mut BackgroundColor, &mut BorderColor)>,
     mut f: ResMut<Flight>,
     mut view: ResMut<crate::ViewState>,
 ) {
-    for (interaction, tag, mut color) in &mut buttons {
-        match interaction {
-            Interaction::Pressed => {
-                if view.left_camera_drag {
-                    continue;
-                }
-                match tag.0 {
-                    0 => f.assist = !f.assist,
-                    1 => view.toggle_map(&f),
-                    2 => f.paused = !f.paused,
-                    _ => {
-                        if f.vehicle == Vehicle::Spacecraft {
-                            f.sas_mode = (f.sas_mode + 1) % crate::space::SAS_MODES.len() as u8;
-                            f.assist = true;
-                        }
-                    }
-                };
-                color.0 = Color::srgba(0.07, 0.30, 0.25, 0.95);
+    for (interaction, tag, _, _) in &mut buttons {
+        if interaction.is_changed() && *interaction == Interaction::Pressed {
+            if view.left_camera_drag {
+                continue;
             }
-            Interaction::Hovered => color.0 = Color::srgba(0.10, 0.20, 0.24, 0.95),
-            Interaction::None => color.0 = Color::srgba(0.03, 0.07, 0.09, 0.9),
+            match tag.0 {
+                0 => f.assist = !f.assist,
+                1 => view.toggle_map(&f),
+                2 => f.paused = !f.paused,
+                _ => {
+                    if f.vehicle == Vehicle::Spacecraft {
+                        f.sas_mode = (f.sas_mode + 1) % crate::space::SAS_MODES.len() as u8;
+                        f.assist = true;
+                    }
+                }
+            };
         }
+    }
+    for (interaction, tag, mut color, mut border) in &mut buttons {
+        let active = tag.0 == 0 && f.assist;
+        color.set_if_neq(BackgroundColor(if active {
+            if *interaction == Interaction::Hovered {
+                Color::srgba(0.08, 0.45, 0.33, 0.98)
+            } else {
+                Color::srgba(0.04, 0.32, 0.23, 0.98)
+            }
+        } else {
+            match *interaction {
+                Interaction::Pressed => Color::srgba(0.07, 0.30, 0.25, 0.95),
+                Interaction::Hovered => Color::srgba(0.10, 0.20, 0.24, 0.95),
+                Interaction::None => Color::srgba(0.03, 0.07, 0.09, 0.9),
+            }
+        }));
+        border.set_if_neq(BorderColor::all(if active {
+            Color::srgb(0.36, 1.0, 0.70)
+        } else {
+            Color::srgba(0.31, 0.46, 0.53, 0.65)
+        }));
+    }
+}
+
+#[cfg(test)]
+mod button_tests {
+    use super::*;
+    #[test]
+    fn sas_highlight_tracks_state_without_hover_or_repeating_a_held_click() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(Flight::spacecraft())
+            .insert_resource(crate::ViewState::default())
+            .add_systems(Update, buttons);
+        app.world_mut().resource_mut::<Flight>().assist = false;
+        let sas = app.world_mut().spawn((FlightButton(0), Interaction::None,
+            BackgroundColor::default(), BorderColor::default())).id();
+        let mode = app.world_mut().spawn((FlightButton(3), Interaction::None,
+            BackgroundColor::default(), BorderColor::default())).id();
+        app.update();
+        let off = *app.world().get::<BackgroundColor>(sas).unwrap();
+        // State changes through a keyboard/control path without mouse movement.
+        app.world_mut().resource_mut::<Flight>().assist = true;
+        app.update();
+        let on = *app.world().get::<BackgroundColor>(sas).unwrap();
+        assert_ne!(on, off);
+        *app.world_mut().get_mut::<Interaction>(sas).unwrap() = Interaction::Hovered;
+        app.update();
+        *app.world_mut().get_mut::<Interaction>(sas).unwrap() = Interaction::None;
+        app.update();
+        assert_eq!(*app.world().get::<BackgroundColor>(sas).unwrap(), on);
+        *app.world_mut().get_mut::<Interaction>(sas).unwrap() = Interaction::Pressed;
+        app.update();
+        assert!(!app.world().resource::<Flight>().assist);
+        app.update();
+        assert!(!app.world().resource::<Flight>().assist);
+        *app.world_mut().get_mut::<Interaction>(sas).unwrap() = Interaction::None;
+        *app.world_mut().get_mut::<Interaction>(mode).unwrap() = Interaction::Pressed;
+        app.update();
+        assert!(app.world().resource::<Flight>().assist);
+        assert_eq!(*app.world().get::<BackgroundColor>(sas).unwrap(), on);
     }
 }
 pub fn update(

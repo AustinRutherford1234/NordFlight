@@ -1121,13 +1121,15 @@ pub fn visuals(
         } else {
             Visibility::Hidden
         };
+        let motion = crate::plume_motion::sample(f.elapsed, tag.1 as u32 + 400);
+        t.rotation = motion.bend;
         t.scale = if active {
             Vec3::new(
-                1.,
-                1.,
+                motion.width,
+                motion.width,
                 (0.25 + f.spool as f32 * 0.75)
                     * (1. + 0.5 * (1. - (f.density / 1.225).clamp(0., 1.)) as f32)
-                    * (1. + 0.025 * (f.elapsed as f32 * 31. + tag.1 as f32).sin()),
+                    * motion.length,
             )
         } else {
             Vec3::ZERO

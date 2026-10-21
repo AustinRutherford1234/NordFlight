@@ -46,11 +46,10 @@ pub fn advance(c: &mut Combat, f: &mut Flight, old: &[(DVec3, DQuat)], dt: f64) 
                 c.contact_pairs[current] = false;
                 continue;
             }
-            let mut fa = f.clone();
+            let mut fa = if a==0 {f.clone()}else{c.targets[a-1].dynamics.clone()};
             let mut fb = tb.dynamics.clone();
             fb.damage = tb.damage.clone();
             if a > 0 {
-                fa = c.targets[a - 1].dynamics.clone();
                 fa.damage = c.targets[a - 1].damage.clone();
             }
             let hit = airframe::aircraft_contact_state(before, relative, qa, qb, &fa, &fb);

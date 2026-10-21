@@ -361,6 +361,89 @@ fn landing_trial() -> Flight {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::math::DQuat;
+    // Steady trim through the real six-DOF force, surface and engine path.
+    // These are simulator envelope checks, not calibrated F-22 performance.
+    fn speed_loads(height: f64, mach: f64, power: f64, alpha: f64, pitch: f64) -> (f64, f64, f64) {
+        let mut f = crate::combat::flight();
+        select(&mut f, Aircraft::F22);
+        f.position = surface_point(0., 0., height);
+        f.orientation = DQuat::from_rotation_x(alpha);
+        f.velocity = -DVec3::Z * (atmosphere(height).3 * mach);
+        f.gear = false;
+        f.gear_extension = 0.;
+        f.gear_door = 0.;
+        f.flaps = 0.;
+        f.assist = false;
+        f.infinite_fuel = true;
+        f.throttle = power;
+        f.spool = power;
+        f.controls = DVec3::X * pitch;
+        f.surface = f.controls;
+        f.systems.nozzle = std::array::from_fn(|i| nozzle_target(i, f.surface));
+        f.flow.lag_alpha = alpha;
+        f.flow.attached = 1.;
+        let before = f.velocity;
+        let e = Environment { wind_enabled: false, ..default() };
+        crate::physics::simulate(&mut f, &e, 1. / 120.);
+        let acc = (f.velocity - before) * 120.;
+        (acc.y + before.length_squared() / (RADIUS + height), -acc.z, f.rates.x * 120.)
+    }
+    fn speed_trim(height: f64, mach: f64, power: f64) -> (f64, f64, f64) {
+        let trim_pitch = |alpha| {
+            let (mut low, mut high) = (-0.8, 0.8);
+            for _ in 0..22 {
+                let mid = (low + high) * 0.5;
+                if speed_loads(height, mach, power, alpha, mid).2 > 0. { high = mid; }
+                else { low = mid; }
+            }
+            (low + high) * 0.5
+        };
+        let (mut low, mut high) = (-0.20, 0.25);
+        for _ in 0..22 {
+            let alpha = (low + high) * 0.5;
+            if speed_loads(height, mach, power, alpha, trim_pitch(alpha)).0 > 0. { high = alpha; }
+            else { low = alpha; }
+        }
+        let alpha = (low + high) * 0.5;
+        let pitch = trim_pitch(alpha);
+        (alpha, pitch, speed_loads(height, mach, power, alpha, pitch).1)
+    }
+    #[test]
+    fn high_altitude_engine_envelope() {
+        for power in [0.88, 1.] {
+            for mach in [1.2, 1.5, 1.8, 2., 2.4, 2.5, 2.6] {
+                let (alpha, pitch, acceleration) = speed_trim(15000., mach, power);
+                println!("F22 envelope h=15000 power={power} M={mach} alpha={} pitch={pitch} accel={acceleration}", alpha.to_degrees());
+                let residual = speed_loads(15000., mach, power, alpha, pitch);
+                assert!(residual.0.abs() < 1e-4 && residual.2.abs() < 1e-4,
+                    "untrimmed M={mach}: {residual:?}");
+                assert!(acceleration.is_finite());
+                if power == 0.88 && mach == 1.5 { assert!(acceleration > 0.2); }
+                if power == 1. && mach == 2.4 { assert!(acceleration > 0.2); }
+                if power == 1. && mach == 2.5 { assert!(acceleration.abs() < 0.08); }
+                if power == 1. && mach == 2.6 { assert!(acceleration < -0.2); }
+            }
+        }
+    }
+    #[test]
+    fn propulsion_uses_the_same_engine_deck_as_telemetry_and_allocation() {
+        for mach in [0., 0.8, 1.5, 2.5, 2.8] {
+            for power in [0., 0.6, 0.88, 1.] {
+                let mut f = crate::combat::flight();
+                select(&mut f, Aircraft::F22);
+                f.spool = power;
+                f.surface = DVec3::ZERO;
+                f.systems.nozzle = [0.; 2];
+                f.infinite_fuel = true;
+                let expected = jet_output(Aircraft::F22, power, 0.194, mach).0;
+                let (force, _, _) = propulsion(&mut f, 1. / 120., 0.194, mach);
+                assert!((force.length() - expected).abs() < 1e-8);
+                f.engine = false;
+                assert_eq!(propulsion(&mut f, 1. / 120., 0.194, mach).0, DVec3::ZERO);
+            }
+        }
+    }
     #[test]
     fn q_and_e_roll_correctly_with_fbw_on_and_off_across_the_speed_range() {
         // Keyboard Q maps to -1, E to +1. Positive body Z is a left roll.

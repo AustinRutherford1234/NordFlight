@@ -31,7 +31,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let r = length(world_pos);
     let up = normalize(world_pos);
 
+#ifdef NORD_CANONICAL_PROBE
+    let forward_ws = vec3<f32>(0.0, 0.0, -1.0);
+    let tangent_z = normalize(up * dot(forward_ws, up) - forward_ws);
+    let tangent_x = cross(up, tangent_z);
+    let ray_dir_as = vec3<f32>(dot(ray_dir_ws,tangent_x),dot(ray_dir_ws,up),dot(ray_dir_ws,tangent_z));
+#else
     let ray_dir_as = direction_world_to_atmosphere(ray_dir_ws.xyz, up);
+#endif
     let inscattering = sample_sky_view_lut(r, ray_dir_as);
     let color = vec4<f32>(inscattering, 1.0);
 

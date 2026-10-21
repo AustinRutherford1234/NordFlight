@@ -131,7 +131,8 @@ impl Default for TrackedEnvironmentWrites {
             revisions: Mutex::new(HashMap::default()),
             epochs: Mutex::new(HashMap::default()),
             single_view: AtomicBool::new(false),
-            enabled: std::env::var_os("BEVY_DISABLE_ENV_CONTENT_CACHE").is_none(),
+            enabled: std::env::var_os("BEVY_DISABLE_ENV_CONTENT_CACHE").is_none()
+                && std::env::var_os("NORD_RENDER_REFERENCE").is_none(),
             measure: std::env::args().any(|a| a == "--benchmark-render")
                 || std::env::var_os("NORD_PROFILE").is_some(),
         }
@@ -639,17 +640,19 @@ fn compute_mip_count(size: u32) -> u32 {
 }
 
 /// Prepares textures needed for single pass downsampling
+type EncodingViewFilter = (With<Camera3d>, With<bevy_render::camera::ExtractedCamera>);
 pub fn prepare_generated_environment_map_intermediate_textures(
     light_probes: Query<(Entity, &RenderEnvironmentMap, Option<&IntermediateTextures>)>,
     render_device: Res<RenderDevice>,
     mut texture_cache: ResMut<TextureCache>,
     mut commands: Commands,
     writes: Res<TrackedEnvironmentWrites>,
-    views: Query<(), With<Camera3d>>,
+    views: Query<(), EncodingViewFilter>,
 ) {
     // Multiple view encoders may be submitted in a different order from their
     // CPU recording. Reuse is restricted to a single 3D view; other scenes keep
-    // the original dispatch behavior. IDs own no textures and are pruned here.
+    // the original dispatch behavior. Inactive menu cameras keep Camera3d but
+    // have no ExtractedCamera and submit no view encoder. IDs own no textures.
     writes.single_view.store(views.iter().count() == 1, Relaxed);
     writes
         .revisions
@@ -775,8 +778,16 @@ struct SliceProgress {
     pipelines: Option<[ComputePipelineId; 5]>,
     age: u32,
     resource_epoch: u64,
+    bindings: Option<GeneratorBindingKey>,
 }
 impl SliceProgress {
+    fn retains_source(&self, generation:u64, epoch:u64,
+        bindings:GeneratorBindingKey, pipelines:[ComputePipelineId;5], copied:Option<u64>) -> bool {
+        self.initialized && self.next_face>0 && self.next_face<6
+            && self.generation==Some(generation) && self.resource_epoch==epoch
+            && self.bindings==Some(bindings) && self.pipelines==Some(pipelines)
+            && copied.is_some()
+    }
     fn reset_for(&mut self, generation: u64) {
         if self.generation != Some(generation) {
             *self = Self { generation: Some(generation), ..Default::default() };
@@ -798,6 +809,36 @@ impl SliceProgress {
 }
 #[derive(Component, Default)]
 struct SlicedFilter(Mutex<SliceProgress>);
+
+/// Only the owned canonical source may wait: visible lighting reads the complete
+/// front maps, and filtering reads its immutable intermediate, not this source.
+/// Never advance the producer revision/signature when this returns true.
+pub(crate) fn retain_pending_environment_source(world:&World, entity:Entity,
+    source:TextureId, scene:EnvironmentMapScene) -> bool {
+    static REFERENCE:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
+    if *REFERENCE.get_or_init(||std::env::var_os("NORD_ENV_SOURCE_REFERENCE").is_some())
+        || !scene.enabled || slice_stages()==1
+        || world.get::<bevy_core_pipeline::Skybox>(entity).is_some() {return false;}
+    let (Some(writes),Some(pipelines),Some(cache),Some(images))=(
+        world.get_resource::<TrackedEnvironmentWrites>(),world.get_resource::<GeneratorPipelines>(),
+        world.get_resource::<PipelineCache>(),world.get_resource::<RenderAssets<GpuImage>>()) else {return false;};
+    if !writes.enabled || !writes.single_view.load(Relaxed) {return false;}
+    let (Some(owner),Some(map),Some(bindings),Some(intermediate),Some(sliced),Some(copied))=(
+        world.get::<crate::atmosphere::AtmosphereEnvironmentMap>(entity),
+        world.get::<RenderEnvironmentMap>(entity),world.get::<GeneratorBindingKey>(entity),
+        world.get::<IntermediateTextures>(entity),world.get::<SlicedFilter>(entity),
+        world.get::<DownsampledSource>(entity)) else {return false;};
+    let front=[source,map.specular_map.texture.id(),map.diffuse_map.texture.id()];
+    if bindings.textures[0]!=source || map.environment_map.texture.id()!=source
+        || images.get(&owner.environment_map).is_none_or(|i|i.texture.id()!=source)
+        || intermediate.front!=front || bindings.targets!=[intermediate.specular.id(),intermediate.diffuse.id()]
+        || bindings.textures[1]!=intermediate.environment_map.texture.id() {return false;}
+    let ready=[pipelines.copy,pipelines.downsample_first,pipelines.downsample_second,pipelines.radiance,pipelines.irradiance]
+        .map(|id|cache.get_compute_pipeline(id).map(|p|p.id()));
+    let [Some(a),Some(b),Some(c),Some(d),Some(e)]=ready else {return false;};
+    sliced.0.lock().expect("environment slice progress").retains_source(scene.generation,
+        writes.epoch(source),*bindings,[a,b,c,d,e],*copied.0.lock().expect("downsampled environment source"))
+}
 
 fn slice_stages() -> u32 {
     static STAGES: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
@@ -830,6 +871,70 @@ fn filter_result_key(
 #[cfg(test)]
 mod binding_cache_tests {
     use super::*;
+    #[test]
+    fn pending_source_requires_complete_current_snapshot_resources() {
+        let bindings=key();let pipelines=core::array::from_fn(|_|ComputePipelineId::new());
+        let mut p=SliceProgress {generation:Some(7),next_face:1,initialized:true,
+            pipelines:Some(pipelines),resource_epoch:3,bindings:Some(bindings),age:1};
+        assert!(p.retains_source(7,3,bindings,pipelines,Some(2)));
+        assert!(!p.retains_source(8,3,bindings,pipelines,Some(2)));
+        assert!(!p.retains_source(7,4,bindings,pipelines,Some(2)));
+        assert!(!p.retains_source(7,3,bindings,pipelines,None));
+        for i in 0..5 {let mut b=bindings;b.textures[i]=TextureId::new();assert!(!p.retains_source(7,3,b,pipelines,Some(2)));}
+        for i in 0..5 {let mut ids=pipelines;ids[i]=ComputePipelineId::new();assert!(!p.retains_source(7,3,bindings,ids,Some(2)));}
+        for face in 0..=6 {p.next_face=face;assert_eq!(p.retains_source(7,3,bindings,pipelines,Some(2)),(1..6).contains(&face));}
+        p.next_face=1;p.initialized=false;assert!(!p.retains_source(7,3,bindings,pipelines,Some(2)));
+    }
+    #[test]
+    fn gating_preserves_consumed_inputs_and_publications_across_cuts() {
+        fn run(stages:u32,gate:bool)->(Vec<(u32,u32)>,u32) {
+            let bindings=key();let pipelines=core::array::from_fn(|_|ComputePipelineId::new());
+            let mut p=SliceProgress::default();let mut copied=None;let mut source=0;
+            let mut writes=0;let mut published=vec![];
+            for frame in 0..80 {
+                let generation=if frame<4 {1}else if frame<29 {2}else {3};
+                let epoch=if frame<16 {0}else {1};
+                if !(gate && stages>1 && p.retains_source(generation,epoch,bindings,pipelines,copied)) {
+                    source=frame;writes+=1;
+                }
+                p.reset_for(generation);
+                if p.resource_epoch!=epoch || p.pipelines!=Some(pipelines) || p.bindings!=Some(bindings) {
+                    p.initialized=false;p.next_face=0;p.resource_epoch=epoch;
+                    p.pipelines=Some(pipelines);p.bindings=Some(bindings);
+                }
+                if p.next_face==0 {copied=Some(source as u64);}
+                let (start,count)=p.faces(stages);
+                if p.finish(start,count) {published.push((frame,copied.unwrap() as u32));}
+            }
+            (published,writes)
+        }
+        for stages in [1,3,6] {
+            let reference=run(stages,false);let candidate=run(stages,true);
+            assert_eq!(candidate.0,reference.0,"captured content and publication frame must match");
+            if stages==1 {assert_eq!(candidate.1,reference.1);} else {assert!(candidate.1<reference.1/2);}
+        }
+    }
+    #[test]
+    fn inactive_menu_cameras_do_not_disable_single_encoder_reuse() {
+        use bevy_render::{camera::ExtractedCamera,render_graph::RenderSubGraph};
+        fn camera()->ExtractedCamera {
+            ExtractedCamera {target:None,physical_viewport_size:None,physical_target_size:None,
+                viewport:None,render_graph:Core3d.intern(),order:0,output_mode:Default::default(),
+                msaa_writeback:Default::default(),clear_color:Default::default(),
+                sorted_camera_index_for_target:0,exposure:1.,hdr:true}
+        }
+        fn count(w:&mut World)->usize {w.query_filtered::<(),EncodingViewFilter>().iter(w).count()}
+        let mut w=World::new();
+        w.spawn(Camera3d::default()); // Menu camera retains Camera3d while inactive.
+        w.spawn(camera()); // Non-3D extraction cannot submit this graph.
+        assert_eq!(count(&mut w),0);
+        let flight=w.spawn((Camera3d::default(),camera())).id();
+        assert_eq!(count(&mut w),1);
+        let second=w.spawn((Camera3d::default(),camera())).id();
+        assert_eq!(count(&mut w),2); // Genuine multiple encoders keep the fallback.
+        w.entity_mut(flight).remove::<ExtractedCamera>();assert_eq!(count(&mut w),1);
+        w.despawn(second);assert_eq!(count(&mut w),0);
+    }
     #[test]
     fn slices_publish_only_complete_maps_and_cuts_cancel_pending_faces() {
         let mut p = SliceProgress::default();
@@ -1414,6 +1519,12 @@ impl Node for DownsamplingNode {
                 progress.initialized = false;
                 progress.next_face = 0;
                 progress.pipelines = Some(ready);
+            }
+            if progress.bindings != Some(*bindings) {
+                if progress.next_face!=0 && writes.measure {SLICE_CANCELS.fetch_add(1,Relaxed);}
+                progress.initialized=false;
+                progress.next_face=0;
+                progress.bindings=Some(*bindings);
             }
             // Retain one immutable downsampled source for the complete cycle.
             if progress.next_face != 0 { continue; }

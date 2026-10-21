@@ -203,7 +203,11 @@ pub fn start(c: &mut Combat, f: &Flight, generation: u64, m: &Menu) {
         ai::initialize(&mut t);
         c.targets.push(t);
     }
-    c.ammo = [2, 4];
+    // Preserve the Gripen's existing BVR loadout; other aircraft retain their
+    // aircraft-specific inventory initialized by start_air.
+    if f.aircraft == crate::aircraft::Aircraft::Gripen {
+        c.ammo = [2, 4];
+    }
     c.weapon = Weapon::Radar;
     c.fight.as_mut().unwrap().difficulty = m.difficulty;
     c.bvr = Some(Battle {
@@ -286,10 +290,10 @@ impl Battle {
         }
         let range = f.position.distance(t.position);
         if c.weapon == Weapon::Heat {
-            if range > 6000. {
+            if range > c.weapon.player_range(f) {
                 return Err("IR OUT OF RANGE");
             }
-            if f.forward().dot((t.position - f.position).normalize()) < 16_f64.to_radians().cos() {
+            if f.forward().dot((t.position - f.position).normalize()) < c.weapon.player_cone(f).to_radians().cos() {
                 return Err("POINT NOSE AT TARGET");
             }
             if guidance::quality(Weapon::Heat, f.position, guidance::target(t), c.sun).0 < 0.18 {
@@ -353,6 +357,7 @@ fn launch(
         c.generation.wrapping_mul(997) + c.missiles.len() as u64 + 1,
     );
     gnc.long_range = kind == Weapon::Radar;
+    if launcher.is_none() { gnc = gnc.for_aircraft(f.aircraft, kind); }
     c.missiles.push(Missile {
         gnc,
         position,
@@ -530,6 +535,16 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             continue;
         }
         {
+            // Rebuild from the current sequential memories, not a stale tick
+            // snapshot: earlier pilots may already have reassigned this step.
+            let mut assignments=[0usize;12];
+            for (j,p) in b.ai.iter().enumerate(){
+                if j!=i && b.friendly(j)==friend {
+                    if let Some(m)=p.memory.filter(|m|c.clock-m.3<3. && m.0.is_none_or(|id|id<c.targets.len())) {
+                        assignments[m.0.unwrap_or(c.targets.len())]+=1;
+                    }
+                }
+            }
             let candidates = c
                 .targets
                 .iter()
@@ -540,30 +555,19 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             let seen = candidates
                 .into_iter()
                 .filter(|(_, a)| ai::visible(t, *a, c.sun))
-                .min_by(|a, z| {
-                    let score = |candidate: &(Option<usize>, Contact)| {
-                        let assigned = b
-                            .ai
-                            .iter()
-                            .enumerate()
-                            .filter(|(j, p)| {
-                                *j != i
-                                    && b.friendly(*j) == friend
-                                    && p.memory
-                                        .is_some_and(|m| m.0 == candidate.0 && c.clock - m.3 < 3.)
-                            })
-                            .count();
-                        t.position.distance_squared(candidate.1.position)
+                .map(|candidate| {
+                        let assigned=assignments[candidate.0.unwrap_or(c.targets.len())];
+                        let score=t.position.distance_squared(candidate.1.position)
                             * (1.
                                 + assigned as f64
                                     * if b.difficulty == Difficulty::Hard {
                                         0.65
                                     } else {
                                         0.08
-                                    })
-                    };
-                    score(a).total_cmp(&score(z))
-                });
+                                    });
+                        (score,candidate)
+                })
+                .min_by(|a,z|a.0.total_cmp(&z.0)).map(|(_,candidate)|candidate);
             if let Some((id, a)) = seen {
                 let lag = 0.12 + (1. - ai::skill(b.difficulty)) * 0.8;
                 let noise = t.position.normalize()
@@ -1146,6 +1150,32 @@ fn weapon_trials() -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn f22_bvr_starts_with_all_six_radar_missiles_on_every_reset() {
+        let mut f = flight();
+        crate::aircraft::select(&mut f, crate::aircraft::Aircraft::F22);
+        let mut c = Combat::default();
+        for _ in 0..2 {
+            start(&mut c, &f, 1, &Menu::default());
+            assert_eq!(c.ammo, [2, 6]);
+            assert_eq!(c.fight.as_ref().unwrap().gun, f.aircraft.spec().gun);
+            c.ammo = [0, 0];
+        }
+    }
+    #[test]
+    fn bvr_aim9x_profile_is_player_f22_only() {
+        let mut f = flight();
+        crate::aircraft::select(&mut f, crate::aircraft::Aircraft::F22);
+        let mut c = Combat::default();
+        start(&mut c, &f, 1, &Menu::default());
+        let mut b = c.bvr.take().unwrap();
+        launch(&mut c, &mut b, &f, None, Some(0), Weapon::Heat);
+        launch(&mut c, &mut b, &f, Some(0), None, Weapon::Heat);
+        launch(&mut c, &mut b, &f, None, Some(0), Weapon::Radar);
+        assert!(c.missiles[0].gnc.aim9x);
+        assert!(!c.missiles[1].gnc.aim9x);
+        assert!(!c.missiles[2].gnc.aim9x);
+    }
     #[test]
     fn batched_aircraft_match_serial_physics_with_damage_and_uneven_chunks() {
         let (c, _) = scene(3);

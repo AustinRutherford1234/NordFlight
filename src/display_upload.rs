@@ -21,10 +21,26 @@ use std::{
 struct Upload {
     size: Extent3d,
     bytes: Vec<u8>,
+    #[cfg(test)]
     staging: Vec<u8>,
     dirty: Option<Rect>,
+    revision: u64,
 }
 impl Upload {
+    fn publish_rows(&mut self, size: Extent3d, bytes: &[u8], top: u32, bottom: u32) {
+        assert!(top < bottom && bottom <= size.height);
+        assert_eq!(size.depth_or_array_layers, 1);
+        assert_eq!(bytes.len(), size.width as usize * size.height as usize * 4);
+        if self.size != size || self.bytes.len() != bytes.len() {
+            self.publish(size, bytes);
+            return;
+        }
+        let stride=size.width as usize*4;
+        let range=top as usize*stride..bottom as usize*stride;
+        self.bytes[range.clone()].copy_from_slice(&bytes[range]);
+        let rect=Rect {x:0,y:top,right:size.width,bottom};
+        self.dirty=Some(self.dirty.map_or(rect,|old|old.union(rect)));
+    }
     fn publish(&mut self, size: Extent3d, bytes: &[u8]) {
         assert_eq!(size.depth_or_array_layers, 1, "cockpit displays are 2D");
         assert_eq!(bytes.len(), size.width as usize * size.height as usize * 4);
@@ -40,6 +56,7 @@ impl Upload {
         self.bytes.clear();
         self.bytes.extend_from_slice(bytes);
     }
+    #[cfg(test)]
     fn prepare(&mut self, gpu_size: Extent3d) -> Option<(Rect, Vec<u8>)> {
         // Extraction may still expose the old image during a resize. Keep the
         // complete pending update until the replacement GPU image is prepared.
@@ -123,29 +140,61 @@ fn changed_rect(old: &[u8], new: &[u8], size: Extent3d) -> Option<Rect> {
     }
     changed
 }
-struct Work {
-    id: AssetId<Image>,
+struct Packet {
+    size: Extent3d,
     rect: Rect,
     bytes: Vec<u8>,
+    revision: u64,
+}
+#[derive(Default)]
+struct Handoff {
+    pending: HashMap<AssetId<Image>, Packet>,
+    recycled: HashMap<AssetId<Image>, Vec<u8>>,
+    live: std::collections::HashSet<AssetId<Image>>,
+}
+impl Handoff {
+    fn recycle(&mut self, id:AssetId<Image>,bytes:Vec<u8>) {
+        if self.live.contains(&id) && self.recycled.get(&id).is_none_or(|v|v.capacity()<bytes.capacity()) {self.recycled.insert(id,bytes);}
+    }
+    fn put(&mut self,id:AssetId<Image>,mut packet:Packet) {
+        if !self.live.contains(&id) {return;}
+        if let Some(mut previous)=self.pending.remove(&id) {
+            if previous.revision>packet.revision {std::mem::swap(&mut previous,&mut packet);}
+            if previous.size==packet.size {packet.rect=packet.rect.union(previous.rect);}
+            self.recycle(id,previous.bytes);
+        }
+        self.pending.insert(id,packet);
+    }
 }
 #[derive(Resource, Clone, Default)]
-pub struct DisplayUploads(Arc<Mutex<HashMap<AssetId<Image>, Upload>>>);
+pub struct DisplayUploads {
+    // Only producers use this mutex; render never blocks their pixel work.
+    producer: Arc<Mutex<HashMap<AssetId<Image>,Upload>>>,
+    handoff: Arc<Mutex<Handoff>>,
+}
 impl DisplayUploads {
+    fn publish_inner(&self,handle:&Handle<Image>,image:&Image,rows:Option<(u32,u32)>) {
+        assert_eq!(image.texture_descriptor.format,TextureFormat::Rgba8UnormSrgb);
+        let Some(bytes)=&image.data else {return};
+        let id=handle.id();
+        let mut producers=self.producer.lock().unwrap();
+        let upload=producers.entry(id).or_insert_with(||Upload {size:image.texture_descriptor.size,bytes:vec![],#[cfg(test)] staging:vec![],dirty:None,revision:0});
+        if let Some((top,bottom))=rows {upload.publish_rows(image.texture_descriptor.size,bytes,top,bottom);} else {upload.publish(image.texture_descriptor.size,bytes);}
+        let Some(rect)=upload.dirty.take() else {return};
+        upload.revision=upload.revision.wrapping_add(1);
+        let mut snapshot={let mut q=self.handoff.lock().unwrap();q.live.insert(id);q.recycled.remove(&id).unwrap_or_default()};
+        // Copy outside the shared queue lock; only complete owned snapshots cross.
+        snapshot.clear();snapshot.extend_from_slice(&upload.bytes);
+        self.handoff.lock().unwrap().put(id,Packet {size:upload.size,rect,bytes:snapshot,revision:upload.revision});
+    }
+    /// Caller has retained unchanged rows and supplies the complete changed span.
+    /// Pending regions are unioned, including updates not yet flushed to the GPU.
+    pub fn publish_rows(&self, handle:&Handle<Image>, image:&Image, top:u32, bottom:u32) {
+        self.publish_inner(handle,image,Some((top,bottom)));
+    }
     pub fn publish(&self, handle: &Handle<Image>, image: &Image) {
         let _measure = crate::performance::span(10);
-        assert_eq!(
-            image.texture_descriptor.format,
-            TextureFormat::Rgba8UnormSrgb
-        );
-        let Some(bytes) = &image.data else { return };
-        let mut pending = self.0.lock().unwrap();
-        let upload = pending.entry(handle.id()).or_insert_with(|| Upload {
-            size: image.texture_descriptor.size,
-            bytes: Vec::new(),
-            staging: Vec::new(),
-            dirty: None,
-        });
-        upload.publish(image.texture_descriptor.size, bytes);
+        self.publish_inner(handle,image,None);
     }
 }
 pub struct DisplayUploadPlugin;
@@ -167,7 +216,8 @@ impl Plugin for DisplayUploadPlugin {
 fn retire(mut events: MessageReader<AssetEvent<Image>>, uploads: Res<DisplayUploads>) {
     for event in events.read() {
         if let AssetEvent::Removed { id } = event {
-            uploads.0.lock().unwrap().remove(id);
+            uploads.producer.lock().unwrap().remove(id);
+            let mut q=uploads.handoff.lock().unwrap();q.live.remove(id);q.pending.remove(id);q.recycled.remove(id);
         }
     }
 }
@@ -175,28 +225,24 @@ fn flush(
     uploads: Res<DisplayUploads>,
     images: Res<RenderAssets<GpuImage>>,
     queue: Res<RenderQueue>,
-    mut work: Local<Vec<Work>>,
+    mut work: Local<Vec<(AssetId<Image>,Packet)>>,
+    mut staging: Local<Vec<u8>>,
 ) {
     let _measure = crate::performance::span(11);
     {
-        let mut pending = uploads.0.lock().unwrap();
-        for (&id, upload) in pending.iter_mut() {
-            let Some(gpu) = images.get(id) else {
-                continue;
-            };
-            let Some((rect, bytes)) = upload.prepare(gpu.size) else {
-                continue;
-            };
-            work.push(Work { id, rect, bytes });
-        }
+        let mut q = uploads.handoff.lock().unwrap();
+        work.extend(q.pending.drain());
     }
     // GPU queue calls happen outside the producer lock. A concurrent publish
     // remains dirty for the next flush and cannot be overwritten by this batch.
-    for job in work.drain(..) {
-        let gpu = images.get(job.id).unwrap();
+    for (id,job) in work.drain(..) {
+        let Some(gpu)=images.get(id).filter(|gpu|gpu.size==job.size) else {uploads.handoff.lock().unwrap().put(id,job);continue;};
+        staging.clear();
+        let stride=job.size.width as usize*4;
+        for y in job.rect.y..job.rect.bottom {let start=y as usize*stride+job.rect.x as usize*4;staging.extend_from_slice(&job.bytes[start..start+job.rect.width() as usize*4]);}
         if crate::performance::enabled() {
             crate::performance::UPLOAD_BYTES
-                .fetch_add(job.bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                .fetch_add(staging.len() as u64, std::sync::atomic::Ordering::Relaxed);
             crate::performance::UPLOAD_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         queue.write_texture(
@@ -210,7 +256,7 @@ fn flush(
                 },
                 aspect: default(),
             },
-            &job.bytes,
+            &staging,
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(job.rect.width() * 4),
@@ -222,20 +268,70 @@ fn flush(
                 depth_or_array_layers: 1,
             },
         );
-        if let Some(upload) = uploads.0.lock().unwrap().get_mut(&job.id) {
-            upload.staging = job.bytes;
-        }
+        uploads.handoff.lock().unwrap().recycle(id,job.bytes);
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn consumer_retry_merges_newer_revision_and_retirement_rejects_old_work() {
+        let id=Handle::<Image>::default().id();
+        let size=Extent3d {width:4,height:4,depth_or_array_layers:1};
+        let mut q=Handoff::default();q.live.insert(id);
+        q.put(id,Packet{size,rect:Rect{x:0,y:0,right:1,bottom:1},bytes:vec![1;64],revision:1});
+        let in_flight=q.pending.remove(&id).unwrap();
+        q.put(id,Packet{size,rect:Rect{x:3,y:3,right:4,bottom:4},bytes:vec![2;64],revision:2});
+        q.put(id,in_flight);
+        let latest=q.pending.remove(&id).unwrap();
+        assert_eq!(latest.revision,2);assert_eq!(latest.rect,Rect::full(size));
+        assert!(latest.bytes.iter().all(|v|*v==2));
+        q.live.remove(&id);q.recycled.remove(&id);
+        q.put(id,latest);assert!(q.pending.is_empty());assert!(q.recycled.is_empty());
+    }
+    #[test]
+    fn retry_before_resize_cannot_restore_obsolete_bounds_or_pixels() {
+        let id=Handle::<Image>::default().id();let mut q=Handoff::default();q.live.insert(id);
+        let large=Extent3d {width:8,height:8,depth_or_array_layers:1};
+        let small=Extent3d {width:2,height:2,depth_or_array_layers:1};
+        q.put(id,Packet{size:small,rect:Rect::full(small),bytes:vec![9;16],revision:2});
+        q.put(id,Packet{size:large,rect:Rect::full(large),bytes:vec![1;256],revision:1});
+        let latest=&q.pending[&id];assert_eq!(latest.size,small);assert_eq!(latest.rect,Rect::full(small));
+        assert_eq!(latest.bytes,vec![9;16]);
+    }
+    #[test]
+    fn publishing_remains_possible_while_consumer_owns_previous_snapshot() {
+        let uploads=DisplayUploads::default();let h=Handle::<Image>::default();
+        let image=Image::new_fill(Extent3d{width:4,height:4,depth_or_array_layers:1},
+            bevy::render::render_resource::TextureDimension::D2,&[0,0,0,255],TextureFormat::Rgba8UnormSrgb,default());
+        uploads.publish(&h,&image);
+        let snapshot=uploads.handoff.lock().unwrap().pending.remove(&h.id()).unwrap();
+        let writer=uploads.clone();let handle=h.clone();
+        std::thread::spawn(move||{let mut image=image;image.data.as_mut().unwrap()[0]=11;writer.publish(&handle,&image);}).join().unwrap();
+        assert_eq!(snapshot.bytes[0],0);
+        assert_eq!(uploads.handoff.lock().unwrap().pending[&h.id()].bytes[0],11);
+    }
+    #[test]
+    fn reported_rows_union_with_pending_updates_and_survive_missing_gpu() {
+        let size=Extent3d {width:8,height:6,depth_or_array_layers:1};
+        let mut upload=state(size);
+        let mut bytes=vec![0;8*6*4];
+        upload.publish(size,&bytes);upload.prepare(size);
+        bytes[32..64].fill(7);upload.publish_rows(size,&bytes,1,2);
+        bytes[128..160].fill(9);upload.publish_rows(size,&bytes,4,5);
+        assert!(upload.prepare(Extent3d {width:1,..size}).is_none());
+        let (rect,data)=upload.prepare(size).unwrap();
+        assert_eq!(rect,Rect {x:0,y:1,right:8,bottom:5});
+        assert_eq!(data,bytes[32..160]);
+        assert_eq!(upload.bytes,bytes);
+    }
     fn state(size: Extent3d) -> Upload {
         Upload {
             size,
             bytes: Vec::new(),
             staging: Vec::new(),
             dirty: None,
+            revision: 0,
         }
     }
     fn apply(gpu: &mut [u8], size: Extent3d, rect: Rect, bytes: &[u8]) {
@@ -364,11 +460,12 @@ mod tests {
             image.data.as_mut().unwrap()[0] = n;
             uploads.publish(&h, image);
         }
-        let pending = uploads.0.lock().unwrap();
+        let q = uploads.handoff.lock().unwrap();
+        let pending = &q.pending;
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[&h.id()].bytes[0], 99);
         assert_eq!(pending[&h.id()].bytes.len(), 32);
-        drop(pending);
+        drop(q);
         app.update();
         assert!(
             !app.world_mut()

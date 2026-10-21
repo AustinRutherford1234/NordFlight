@@ -2369,6 +2369,9 @@ pub fn setup_morph_and_skinning_defs(
     }
 }
 
+fn zero_alpha_discard_allowed(key:MeshPipelineKey,reference:bool)->bool {
+    reference || key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS)==MeshPipelineKey::BLEND_ALPHA
+}
 impl SpecializedMeshPipeline for MeshPipeline {
     type Key = MeshPipelineKey;
 
@@ -2378,6 +2381,11 @@ impl SpecializedMeshPipeline for MeshPipeline {
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
+        // Keep discard out of opaque shaders. A uniform material-mode branch
+        // is not a compile-time guarantee for early visibility on tile GPUs.
+        if zero_alpha_discard_allowed(key,std::env::var_os("NORD_OPAQUE_DISCARD_REFERENCE").is_some()) {
+            shader_defs.push("NORD_ZERO_ALPHA_DISCARD".into());
+        }
         if std::env::var_os("NORD_REFERENCE_LIGHTS").is_some() {
             shader_defs.push("NORD_REFERENCE_LIGHTS".into());
         }
@@ -3425,6 +3433,17 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMesh {
 #[cfg(test)]
 mod tests {
     use super::MeshPipelineKey;
+    #[test]
+    fn zero_alpha_skip_does_not_add_discard_to_opaque_materials() {
+        use super::zero_alpha_discard_allowed;
+        assert!(!zero_alpha_discard_allowed(MeshPipelineKey::empty(),false));
+        for key in [MeshPipelineKey::BLEND_PREMULTIPLIED_ALPHA,MeshPipelineKey::BLEND_MULTIPLY,MeshPipelineKey::BLEND_ALPHA_TO_COVERAGE] {
+            assert!(!zero_alpha_discard_allowed(key,false));
+        }
+        assert!(zero_alpha_discard_allowed(MeshPipelineKey::BLEND_ALPHA,false));
+        assert!(zero_alpha_discard_allowed(MeshPipelineKey::BLEND_ALPHA|MeshPipelineKey::OIT_ENABLED,false));
+        assert!(zero_alpha_discard_allowed(MeshPipelineKey::empty(),true));
+    }
     #[test]
     fn mesh_key_msaa_samples() {
         for i in [1, 2, 4, 8, 16, 32, 64, 128] {

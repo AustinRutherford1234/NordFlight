@@ -49,7 +49,27 @@ pub struct AtmosphereProbeTextures {
 #[derive(Component)]
 pub(crate) struct AtmosphereProbeBindGroups {
     pub environment: BindGroup,
+    pub sky: BindGroup,
+    key: ProbeBindingKey,
     pub output_texture: TextureId,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProbeBindingKey {
+    buffers: [(BufferId,u64);5],
+    views: [TextureViewId;7],
+    layouts: [BindGroupLayoutId;2],
+    samplers: [SamplerId;2],
+}
+pub(crate) fn canonical_probe() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(||std::env::var_os("NORD_RENDER_REFERENCE").is_none() && std::env::var_os("NORD_PROBE_REFERENCE").is_none())
+}
+fn probe_diagnostic(bit:u32, message:impl core::fmt::Debug) {
+    static SEEN:std::sync::atomic::AtomicU32=std::sync::atomic::AtomicU32::new(0);
+    static ENABLED:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
+    if *ENABLED.get_or_init(||std::env::var_os("NORD_PROBE_DIAGNOSTIC").is_some()) && SEEN.fetch_or(bit,std::sync::atomic::Ordering::Relaxed)&bit==0 {
+        eprintln!("NORD PROBE {bit}: {message:?}");
+    }
 }
 
 #[derive(Resource)]
@@ -96,7 +116,7 @@ pub fn init_atmosphere_probe_layout(mut commands: Commands) {
 }
 
 pub(super) fn prepare_atmosphere_probe_bind_groups(
-    probes: Query<(Entity, &AtmosphereProbeTextures), With<AtmosphereEnvironmentMap>>,
+    probes: Query<(Entity, &AtmosphereProbeTextures, Option<&AtmosphereProbeBindGroups>), With<AtmosphereEnvironmentMap>>,
     render_device: Res<RenderDevice>,
     layouts: Res<AtmosphereProbeLayouts>,
     atmosphere_sampler: Res<AtmosphereSampler>,
@@ -107,6 +127,10 @@ pub(super) fn prepare_atmosphere_probe_bind_groups(
     settings_uniforms: Res<ComponentUniforms<GpuAtmosphereSettings>>,
     pipeline_cache: Res<PipelineCache>,
     mut commands: Commands,
+    media: Res<RenderAssets<crate::GpuScatteringMedium>>,
+    atmospheres: Query<&ExtractedAtmosphere>,
+    sky_layouts: Res<super::resources::AtmosphereBindGroupLayouts>,
+    medium_sampler: Res<crate::ScatteringMediumSampler>,
 ) {
     // A separate menu camera can leave all atmosphere views inactive. Their
     // extracted uniforms then have no GPU bindings, even while probe textures
@@ -116,12 +140,25 @@ pub(super) fn prepare_atmosphere_probe_bind_groups(
         atmosphere_transforms.uniforms().binding(), view_uniforms.uniforms.binding(),
         lights_uniforms.view_gpu_lights.binding(),
     ) else {
-        for (entity, _) in &probes {
+        for (entity, _, _) in &probes {
             commands.entity(entity).remove::<AtmosphereProbeBindGroups>();
         }
         return;
     };
-    for (entity, textures) in &probes {
+    let Some(model)=atmospheres.iter().next() else {return};
+    let Some(medium)=media.get(model.medium) else {return};
+    for (entity, textures, previous) in &probes {
+        let key=ProbeBindingKey {
+            buffers:[atmosphere_uniforms.uniforms().buffer().unwrap(),settings_uniforms.uniforms().buffer().unwrap(),atmosphere_transforms.uniforms().buffer().unwrap(),view_uniforms.uniforms.buffer().unwrap(),lights_uniforms.view_gpu_lights.buffer().unwrap()].map(|b|(b.id(),b.size())),
+            views:[textures.transmittance_lut.default_view.id(),textures.multiscattering_lut.default_view.id(),textures.sky_view_lut.default_view.id(),textures.aerial_view_lut.default_view.id(),textures.environment.id(),medium.density_lut_view.id(),medium.scattering_lut_view.id()],
+            layouts:[pipeline_cache.get_bind_group_layout(&layouts.environment).id(),pipeline_cache.get_bind_group_layout(&sky_layouts.sky_view_lut).id()],
+            samplers:[atmosphere_sampler.id(),medium_sampler.sampler().id()],
+        };
+        if std::env::var_os("NORD_RENDER_REFERENCE").is_none() && previous.is_some_and(|p|p.key==key) {continue;}
+        let sky=render_device.create_bind_group("probe_sky_view_bind_group",&pipeline_cache.get_bind_group_layout(&sky_layouts.sky_view_lut),
+            &BindGroupEntries::with_indices(((0,atmosphere.clone()),(1,settings.clone()),(2,transforms.clone()),(3,views.clone()),(4,lights.clone()),
+                (5,&medium.density_lut_view),(6,&medium.scattering_lut_view),(7,medium_sampler.sampler()),(8,&textures.transmittance_lut.default_view),
+                (9,&textures.multiscattering_lut.default_view),(12,&**atmosphere_sampler),(13,&textures.sky_view_lut.default_view))));
         let environment = render_device.create_bind_group(
             "environment_bind_group",
             &pipeline_cache.get_bind_group_layout(&layouts.environment),
@@ -145,6 +182,8 @@ pub(super) fn prepare_atmosphere_probe_bind_groups(
 
         commands.entity(entity).insert(AtmosphereProbeBindGroups {
             environment,
+            sky,
+            key,
             output_texture: textures.environment_texture,
         });
     }
@@ -162,10 +201,11 @@ pub(super) fn prepare_probe_textures(
             commands.entity(probe).remove::<(AtmosphereProbeTextures, AtmosphereProbeBindGroups)>();
             continue;
         };
+        let sky=if canonical_probe(){&view_textures.probe_sky_view_lut}else{&view_textures.sky_view_lut};
         if previous.is_some_and(|p| p.environment_texture == environment.texture.id()
             && p.transmittance_lut.texture.id() == view_textures.transmittance_lut.texture.id()
             && p.multiscattering_lut.texture.id() == view_textures.multiscattering_lut.texture.id()
-            && p.sky_view_lut.texture.id() == view_textures.sky_view_lut.texture.id()
+            && p.sky_view_lut.texture.id() == sky.texture.id()
             && p.aerial_view_lut.texture.id() == view_textures.aerial_view_lut.texture.id()) {
             continue;
         }
@@ -181,7 +221,7 @@ pub(super) fn prepare_probe_textures(
                 environment_texture: environment.texture.id(),
                 transmittance_lut: view_textures.transmittance_lut.clone(),
                 multiscattering_lut: view_textures.multiscattering_lut.clone(),
-                sky_view_lut: view_textures.sky_view_lut.clone(),
+                sky_view_lut: sky.clone(),
                 aerial_view_lut: view_textures.aerial_view_lut.clone(),
             });
         }
@@ -198,6 +238,7 @@ pub fn init_atmosphere_probe_pipeline(
         label: Some("environment_pipeline".into()),
         layout: vec![layouts.environment.clone()],
         shader: load_embedded_asset!(asset_server.as_ref(), "environment.wgsl"),
+        shader_defs: if canonical_probe(){vec!["NORD_CANONICAL_PROBE".into()]}else{vec![]},
         ..default()
     });
     commands.insert_resource(AtmosphereProbePipeline { environment });
@@ -268,7 +309,7 @@ pub fn prepare_atmosphere_probe_components(
 
 pub(super) struct EnvironmentNode {
     sources: bevy_platform::sync::Mutex<bevy_platform::collections::HashMap<TextureId,
-        (u64, u64, [ComputePipelineId; 5], [TextureId; 4], [TextureViewId; 2])>>,
+        (u64, u64, [ComputePipelineId; 5], [TextureId; 4], [TextureViewId; 2],crate::AtmosphereLightKey, [u32;23])>>,
     main_view_query: QueryState<(
         Read<DynamicUniformIndex<GpuAtmosphere>>,
         Read<DynamicUniformIndex<GpuAtmosphereSettings>>,
@@ -277,8 +318,11 @@ pub(super) struct EnvironmentNode {
         Read<ViewLightsUniformOffset>,
         Option<Read<crate::generate::EnvironmentMapScene>>,
         Read<ExtractedAtmosphere>,
+        Read<crate::AtmosphereLightKey>,
+        Read<GpuAtmosphereSettings>,
     )>,
     probe_query: QueryState<(
+        Entity,
         Read<AtmosphereProbeBindGroups>,
         Read<AtmosphereEnvironmentMap>,
         Read<AtmosphereProbeTextures>,
@@ -313,12 +357,13 @@ impl Node for EnvironmentNode {
 
         let Some(environment_pipeline) = pipeline_cache.get_compute_pipeline(pipelines.environment)
         else {
+            probe_diagnostic(1,pipeline_cache.get_compute_pipeline_state(pipelines.environment));
             return Ok(());
         };
         let luts = world.resource::<super::resources::AtmosphereLutPipelines>();
         let ready=[luts.transmittance_lut, luts.multiscattering_lut, luts.sky_view_lut, luts.aerial_view_lut]
             .map(|id| pipeline_cache.get_compute_pipeline(id).map(|p| p.id()));
-        let [Some(a),Some(b),Some(c),Some(d)] = ready else {return Ok(());};
+        let [Some(a),Some(b),Some(c),Some(d)] = ready else {probe_diagnostic(2,"LUT pipelines pending");return Ok(());};
 
         let (Ok((
             atmosphere_uniforms_offset,
@@ -328,23 +373,38 @@ impl Node for EnvironmentNode {
             lights_uniforms_offset,
             scene,
             atmosphere,
+            light_key,
+            settings,
         )),) = (self.main_view_query.get_manual(world, view_entity),)
         else {
+            probe_diagnostic(4,(view_entity,"view query missing components"));
             return Ok(());
         };
+        probe_diagnostic(8,(view_entity,self.probe_query.iter_manual(world).count(),scene));
         let Some(medium)=world.resource::<RenderAssets<crate::GpuScatteringMedium>>().get(atmosphere.medium)
             else {return Ok(());};
 
-        for (bind_groups, env_map_light, textures) in self.probe_query.iter_manual(world) {
+        let single_probe=self.probe_query.iter_manual(world).count()==1;
+        for (probe_entity, bind_groups, env_map_light, textures) in self.probe_query.iter_manual(world) {
             if scene.is_some_and(|s| !s.enabled) { continue; }
             let mut sources = self.sources.lock().expect("atmosphere source inputs");
             let key = scene.map(|s| (s.generation, s.source, [environment_pipeline.id(),a,b,c,d],
                 [textures.transmittance_lut.texture.id(), textures.multiscattering_lut.texture.id(),
                  textures.sky_view_lut.texture.id(), textures.aerial_view_lut.texture.id()],
-                [medium.density_lut_view.id(),medium.scattering_lut_view.id()]));
+                [medium.density_lut_view.id(),medium.scattering_lut_view.id()],*light_key, super::node::atmosphere_parameters(atmosphere,settings)));
             if key.is_some() && sources.get(&bind_groups.output_texture).copied() == key {
                 continue;
             }
+            // A pending filter consumes its retained snapshot. Avoid producing
+            // intermediate six-face sources which would be overwritten unread.
+            // Resource/model changes must still invalidate and initialize fully.
+            let stable_resources=match (sources.get(&bind_groups.output_texture),key.as_ref()) {
+                (Some(old),Some(new))=>old.2==new.2 && old.3==new.3 && old.4==new.4 && old.6==new.6,
+                _=>false,
+            };
+            if canonical_probe() && single_probe && stable_resources
+                && scene.is_some_and(|s|crate::generate::retain_pending_environment_source(world,
+                    probe_entity,bind_groups.output_texture,*s)) {continue;}
             let mut pass =
                 render_context
                     .command_encoder()
@@ -353,6 +413,16 @@ impl Node for EnvironmentNode {
                         timestamp_writes: None,
                     });
 
+            let probe_offset=if canonical_probe(){atmosphere_transforms_offset.probe_index}else{atmosphere_transforms_offset.index()};
+            if canonical_probe() {
+                let Some(sky_pipeline)=pipeline_cache.get_compute_pipeline(luts.sky_view_lut) else {continue};
+                // Sizes come from the actual retained destination, not a later view.
+                let size=textures.sky_view_lut.texture.size();
+                pass.set_pipeline(sky_pipeline);
+                pass.set_bind_group(0,&bind_groups.sky,&[atmosphere_uniforms_offset.index(),settings_uniforms_offset.index(),probe_offset,view_uniforms_offset.offset,lights_uniforms_offset.offset]);
+                pass.dispatch_workgroups(size.width.div_ceil(16),size.height.div_ceil(16),1);
+            }
+
             pass.set_pipeline(environment_pipeline);
             pass.set_bind_group(
                 0,
@@ -360,7 +430,7 @@ impl Node for EnvironmentNode {
                 &[
                     atmosphere_uniforms_offset.index(),
                     settings_uniforms_offset.index(),
-                    atmosphere_transforms_offset.index(),
+                    probe_offset,
                     view_uniforms_offset.offset,
                     lights_uniforms_offset.offset,
                 ],

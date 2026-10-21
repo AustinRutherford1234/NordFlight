@@ -1,4 +1,6 @@
 //! Code-native cockpit interiors and low-cost live instrument textures.
+mod raptor_interior;
+pub(crate) mod coverage;
 use crate::{orbit::Orbit, physics::*};
 use bevy::{
     asset::RenderAssetUsages,
@@ -144,6 +146,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
     });
     let boxmesh = meshes.add(Cuboid::default());
     let space = vehicle == Vehicle::Spacecraft;
+    let raptor = !space && aircraft == crate::aircraft::Aircraft::F22;
     let dz = if space { 0.5 } else { 0.0 };
     let part =
         |c: &mut Commands, pos: Vec3, scale: Vec3, q: Quat, material: Handle<StandardMaterial>| {
@@ -159,6 +162,12 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
             c.entity(root).add_child(e);
             e
         };
+    if raptor {
+        raptor_interior::setup(c, meshes, materials, root);
+    }
+    // The Raptor has a fitted tub and seat; retain the original shared cabin
+    // only for other vehicles rather than overlapping two interiors.
+    if !raptor {
     // Open cockpit tub: floor, sidewalls, forward/rear bulkheads and side consoles.
     for (p, s) in [
         (Vec3::new(0.0, -0.15, -2.65), Vec3::new(0.95, 0.09, 2.55)),
@@ -237,6 +246,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
             Quat::from_rotation_z(side * 0.12),
             strap.clone(),
         );
+    }
     }
     // Instrument panel and glare shield are physically in front of the pilot.
     part(
@@ -416,7 +426,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         }
     }
     for side in [-1.0, 1.0] {
-        let p = Vec3::new(side * 0.17, 0.02, -3.3);
+        let p = Vec3::new(side * 0.17, if raptor { 0.41 } else { 0.02 }, -3.3);
         let s = Vec3::new(0.16, 0.07, 0.19);
         let e = part(c, p, s, Quat::from_rotation_x(0.35), metal.clone());
         c.entity(e).insert(PilotControl {
@@ -456,6 +466,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
                         .with_scale(Vec3::new(1.0, d.length(), 1.0)),
                 ))
                 .id();
+            if !space { c.entity(e).insert(crate::render_batch::RigidGeometry); }
             c.entity(root).add_child(e);
         }
     }
@@ -470,6 +481,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
                 let e = c
                     .spawn((
                         Mesh3d(tube.clone()),
+                        crate::render_batch::RigidGeometry,
                         MeshMaterial3d(metal.clone()),
                         Transform::from_translation((a + b) * 0.5)
                             .with_rotation(Quat::from_rotation_arc(Vec3::Y, d.normalize()))
@@ -559,6 +571,10 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         cull_mode: None,
         ..default()
     });
+    let hud_size=Vec2::new(if space {0.38}else{0.30},if space {0.22}else{0.18});
+    let hud_rest=Transform::from_xyz(0.,if space {1.00}else if aircraft==crate::aircraft::Aircraft::F22{1.03}else{1.05},
+        if space {-3.46+dz}else if aircraft==crate::aircraft::Aircraft::F22{-3.10}else{-3.05})
+        .with_rotation(Quat::from_rotation_x(-0.14));
     let e = c
         .spawn((
             Mesh3d(meshes.add(Rectangle::new(
@@ -585,6 +601,9 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         .id();
     c.entity(root).add_child(e);
     // Spacecraft pressure cabin uses an actual forward window, not the opaque hull skin.
+    if !space && std::env::var_os("NORD_HUD_COVERAGE_REFERENCE").is_none() {
+        c.entity(e).insert(coverage::Panel {rest:hud_rest,size:hud_size,empty:true});
+    }
     if space {
         for side in [-1.0, 1.0] {
             part(
@@ -1047,6 +1066,33 @@ fn combat_combiner(data: &mut [u8], f: &Flight, combat: &crate::combat::Combat, 
         }
     }
 }
+#[derive(Default)]
+pub(crate) struct DisplayCache {
+    previous: Option<(Vehicle, u64, u64)>,
+    pages: std::collections::HashMap<bevy::asset::AssetId<Image>, Vec<String>>,
+    radar: [Vec<u8>; 2],
+}
+fn clear_display(data: &mut [u8], hud: bool, powered: bool) {
+    let color = if hud { [0, 0, 0, 0] } else if powered { [5, 14, 18, 255] } else { [1, 2, 3, 255] };
+    for pixel in data.chunks_exact_mut(4) { pixel.copy_from_slice(&color); }
+}
+fn paint_numeric(data:&mut [u8],lines:&[String],old:Option<&Vec<String>>,kind:u8,green:[u8;4])->Option<(u32,u32)> {
+    let full=old.is_none_or(|old|old.len()!=lines.len());
+    let (mut top,mut bottom)=if full {clear_display(data,false,true);(0,192)}else{(192,0)};
+    for (i,line) in lines.iter().enumerate() {
+        if !full && old.is_some_and(|old|old[i]==*line) {continue;}
+        let y=10+i as i32*if kind==1 {22}else{25};
+        let first=y.clamp(0,192) as usize;
+        let last=(y+14).clamp(0,192) as usize;
+        if first>=last {continue;}
+        if !full {
+            for p in data[first*256*4..last*256*4].chunks_exact_mut(4) {p.copy_from_slice(&[5,14,18,255]);}
+            top=top.min(first as u32);bottom=bottom.max(last as u32);
+        }
+        text(data,line,y,green);
+    }
+    (top<bottom).then_some((top,bottom))
+}
 pub fn update(
     mut rwr: Local<crate::combat::rwr::Receiver>,
     radar: Option<Res<crate::combat::bvr::cockpit_radar::Display>>,
@@ -1059,13 +1105,17 @@ pub fn update(
     mut images: ResMut<Assets<Image>>,
     uploads: Res<crate::display_upload::DisplayUploads>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut previous: Local<Option<(Vehicle, u64, u64)>>,
-    mut controls: Query<(&PilotControl, &mut Transform)>,
+    mut cache: Local<DisplayCache>,
+    (mut controls,mut coverage): (
+        Query<(&PilotControl, &mut Transform)>,
+        Query<(&Instrument,&mut coverage::Panel,&mut Transform,&mut Visibility),(Without<PilotControl>,With<InternalDisplay>)>,
+    ),
     view: Res<crate::ViewState>,
     mut internal: Query<
         &mut Visibility,
         (
             With<InternalDisplay>,
+            Without<coverage::Panel>,
             Without<crate::navball::Overlay>,
             Without<crate::instruments::Overlay>,
         ),
@@ -1087,6 +1137,9 @@ pub fn update(
         } else {
             Visibility::Hidden
         });
+    }
+    for (_,panel,_,mut visibility) in &mut coverage {
+        visibility.set_if_neq(if !view.map && view.index==3 && !panel.empty {Visibility::Inherited}else{Visibility::Hidden});
     }
     for mut v in &mut overlays {
         v.set_if_neq(
@@ -1145,13 +1198,14 @@ pub fn update(
                 ^ r.elevation.to_bits()
                 ^ (r.range as u64).rotate_left(21)
         };
-    if previous
+    if cache.previous
         .as_ref()
         .is_some_and(|p| p.0 == f.vehicle && p.1 == signature && p.2 == view.generation)
     {
         return;
     }
-    *previous = Some((f.vehicle, signature, view.generation));
+    cache.previous = Some((f.vehicle, signature, view.generation));
+    let mut radar_ready = [false; 2];
     let orbit = Orbit::from_flight(&f);
     let green = [100, 245, 165, 255];
     for screen in &screens {
@@ -1174,20 +1228,19 @@ pub fn update(
         let Some(data) = image.data.as_mut() else {
             continue;
         };
-        for p in data.chunks_exact_mut(4) {
-            p.copy_from_slice(if screen.kind == 3 {
-                &[0, 0, 0, 0]
-            } else if f.battery {
-                &[5, 14, 18, 255]
-            } else {
-                &[1, 2, 3, 255]
-            });
-        }
         if !f.battery {
+            clear_display(data, screen.kind == 3, false);
+            if screen.kind==3 {
+                for (instrument,mut panel,mut transform,mut visibility) in &mut coverage {
+                    if instrument.image==screen.image {coverage::apply(&mut panel,&mut transform,&mut visibility,&mut materials,&screen.material,data);}
+                }
+            }
+            cache.pages.remove(&screen.image.id());
             uploads.publish(&screen.image, image);
             continue;
         }
         if screen.kind == 3 {
+            clear_display(data, true, true);
             hud_layout(
                 data,
                 &f,
@@ -1195,26 +1248,29 @@ pub fn update(
             );
             combat_combiner(data, &f, &combat, view.simple);
             crate::combat::bvr::cockpit_radar::draw_hud(data, &combat, &f, view.simple);
+            for (instrument,mut panel,mut transform,mut visibility) in &mut coverage {
+                if instrument.image==screen.image {coverage::apply(&mut panel,&mut transform,&mut visibility,&mut materials,&screen.material,data);}
+            }
             uploads.publish(&screen.image, image);
             continue;
         }
         if screen.kind == 0 && f.vehicle == Vehicle::Gripen {
+            clear_display(data, false, true);
             crate::combat::rwr::draw(data, &rwr, &f);
             uploads.publish(&screen.image, image);
             continue;
         }
-        if screen.kind == 2 && f.vehicle == Vehicle::Gripen {
-            crate::combat::bvr::cockpit_radar::draw(
-                data,
-                &combat,
-                &f,
-                radar.as_ref().is_some_and(|r| r.tactical),
-            );
-            uploads.publish(&screen.image, image);
-            continue;
-        }
-        if screen.aircraft==crate::aircraft::Aircraft::F22 && screen.kind==1 {
-            crate::combat::bvr::cockpit_radar::draw(data,&combat,&f,true);
+        if (screen.kind == 2 && f.vehicle == Vehicle::Gripen)
+            || (screen.aircraft == crate::aircraft::Aircraft::F22 && screen.kind == 1) {
+            let tactical = screen.kind == 1 || radar.as_ref().is_some_and(|r| r.tactical);
+            let page = tactical as usize;
+            if !radar_ready[page] {
+                cache.radar[page].resize(data.len(), 0);
+                clear_display(&mut cache.radar[page], false, true);
+                crate::combat::bvr::cockpit_radar::draw(&mut cache.radar[page], &combat, &f, tactical);
+                radar_ready[page] = true;
+            }
+            data.copy_from_slice(&cache.radar[page]);
             uploads.publish(&screen.image,image);
             continue;
         }
@@ -1283,20 +1339,37 @@ pub fn update(
                 lines = weapons;
             }
         }
-        for (i, line) in lines.iter().enumerate() {
-            text(
-                data,
-                line,
-                10 + i as i32 * if screen.kind == 1 { 22 } else { 25 },
-                green,
-            );
-        }
-        uploads.publish(&screen.image, image);
+        if cache.pages.get(&screen.image.id()) == Some(&lines) { continue; }
+        let old=cache.pages.get(&screen.image.id());
+        if let Some((top,bottom))=paint_numeric(data,&lines,old,screen.kind,green) {uploads.publish_rows(&screen.image,image,top,bottom);}
+        cache.pages.insert(screen.image.id(), lines);
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retained_numeric_rows_match_full_redraw_including_shorter_text_and_power_cycle() {
+        for kind in [1,4] {
+            let mut retained=vec![0;256*192*4];
+            let mut old=None;
+            for lines in [vec!["FLIGHT", "FUEL 2400 KG", "GEAR 100%"],vec!["FLIGHT", "FUEL 2 KG", "GEAR 100%"],vec!["FLIGHT", "FUEL 2 KG"],vec!["FLIGHT", "FUEL 2 KG"]] {
+                let lines=lines.into_iter().map(String::from).collect::<Vec<_>>();
+                let mut reference=vec![0;256*192*4];
+                paint_numeric(&mut reference,&lines,None,kind,[100,245,165,255]);
+                paint_numeric(&mut retained,&lines,old.as_ref(),kind,[100,245,165,255]);
+                assert_eq!(reference,retained);
+                assert_eq!(paint_numeric(&mut retained,&lines,Some(&lines),kind,[100,245,165,255]),None);
+                old=Some(lines);
+            }
+            clear_display(&mut retained,false,false);
+            let lines=old.unwrap();
+            paint_numeric(&mut retained,&lines,None,kind,[100,245,165,255]);
+            let mut reference=vec![0;256*192*4];
+            paint_numeric(&mut reference,&lines,None,kind,[100,245,165,255]);
+            assert_eq!(reference,retained);
+        }
+    }
     #[test]
     fn hud_projection_places_velocity_on_the_correct_side() {
         let centre = hud_projection(Vehicle::Gripen, -Vec3::Z).unwrap();

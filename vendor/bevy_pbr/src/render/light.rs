@@ -172,6 +172,21 @@ pub struct GpuLights {
     spot_light_shadowmap_offset: i32,
     ambient_light_affects_lightmapped_meshes: u32,
 }
+/// Exact light values consumed by atmosphere scattering (not shadow matrices).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AtmosphereLightKey(pub [u32; 1 + MAX_DIRECTIONAL_LIGHTS * 9]);
+impl GpuLights {
+    fn atmosphere_key(&self)->AtmosphereLightKey {
+        let mut key=[0;1+MAX_DIRECTIONAL_LIGHTS*9];key[0]=self.n_directional_lights;
+        for (i,light) in self.directional_lights.iter().take(self.n_directional_lights as usize).enumerate() {
+            let start=1+i*9;
+            key[start..start+4].copy_from_slice(&light.color.to_array().map(f32::to_bits));
+            key[start+4..start+7].copy_from_slice(&light.dir_to_light.to_array().map(f32::to_bits));
+            key[start+7]=light.sun_disk_angular_size.to_bits();key[start+8]=light.sun_disk_intensity.to_bits();
+        }
+        AtmosphereLightKey(key)
+    }
+}
 
 // NOTE: When running bevy on Adreno GPU chipsets in WebGL, any value above 1 will result in a crash
 // when loading the wgsl "pbr_functions.wgsl" in the function apply_fog.
@@ -1645,6 +1660,7 @@ pub fn prepare_lights(
             ViewLightsUniformOffset {
                 offset: view_gpu_lights_writer.write(&gpu_lights),
             },
+            gpu_lights.atmosphere_key(),
         ));
 
         // Make a link from the camera to all shadow cascades with occlusion

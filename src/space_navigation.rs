@@ -1,6 +1,7 @@
 //! Shared patched-conic prediction and a manual-transfer planning aid.
 use super::*;
 use crate::{map::Maneuver, orbit::Orbit};
+#[derive(Default)]
 pub struct Prediction {
     pub points: Vec<(DVec3, f64, Body)>,
     pub encounters: Vec<(Body, f64, DVec3)>,
@@ -99,12 +100,13 @@ pub fn moon_transfer(f: &Flight) -> Option<Maneuver> {
     Some(node)
 }
 pub fn predict(f: &Flight, node: Option<Maneuver>) -> Prediction {
-    let mut out = Prediction {
-        points: Vec::with_capacity(768),
-        encounters: Vec::new(),
-        impact: None,
-        closest_moon: f64::INFINITY,
-    };
+    let mut out=Prediction::default();
+    predict_into(f,node,&mut out);
+    out
+}
+pub fn predict_into(f:&Flight,node:Option<Maneuver>,out:&mut Prediction){
+    out.points.clear();out.encounters.clear();out.impact=None;out.closest_moon=f64::INFINITY;
+    out.points.reserve(768);
     let q = earth_rotation(f.elapsed);
     let mut time = f.elapsed;
     let mut body = f.space.body;
@@ -176,7 +178,6 @@ pub fn predict(f: &Flight, node: Option<Maneuver>) -> Prediction {
             break;
         }
     }
-    out
 }
 pub fn plot_point(
     point: (DVec3, f64, Body),
@@ -199,6 +200,18 @@ pub fn plot_point(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prediction_reuses_storage_without_retaining_previous_encounters_or_impact() {
+        let f=Flight::spacecraft();let expected=predict(&f,None);
+        let mut reused=Prediction::default();
+        predict_into(&f,None,&mut reused);
+        let capacity=reused.points.capacity();
+        reused.impact=Some((Body::Earth,-1.));reused.encounters.push((Body::Moon,-1.,DVec3::ZERO));
+        predict_into(&f,None,&mut reused);
+        assert_eq!(reused.points,expected.points);assert_eq!(reused.encounters,expected.encounters);
+        assert_eq!(reused.impact,expected.impact);assert_eq!(reused.closest_moon,expected.closest_moon);
+        assert_eq!(capacity,reused.points.capacity());
+    }
     #[test]
     fn moon_focused_prediction_stays_centered_on_the_moving_moon() {
         let f = scenario(9);

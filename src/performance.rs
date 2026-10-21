@@ -41,6 +41,20 @@ static SIMULATED_NS: AtomicU64 = AtomicU64::new(0);
 static FOREST_VIEW_VERTICES: AtomicU64 = AtomicU64::new(0);
 static FOREST_SHADOW_VERTICES: AtomicU64 = AtomicU64::new(0);
 static FOREST_SAMPLES: AtomicU64 = AtomicU64::new(0);
+static TERRAIN_STAGE_FRAMES: AtomicU64 = AtomicU64::new(0);
+static TERRAIN_STAGE_BYTES: AtomicU64 = AtomicU64::new(0);
+static TERRAIN_STAGE_MESHES: AtomicU64 = AtomicU64::new(0);
+static TERRAIN_STAGE_MAX_BYTES: AtomicU64 = AtomicU64::new(0);
+static TERRAIN_STAGE_MAX_MESHES: AtomicU64 = AtomicU64::new(0);
+pub fn terrain_staged(bytes:usize,meshes:usize) {
+    if enabled() && meshes>0 {
+        TERRAIN_STAGE_FRAMES.fetch_add(1,Relaxed);
+        TERRAIN_STAGE_BYTES.fetch_add(bytes as u64,Relaxed);
+        TERRAIN_STAGE_MESHES.fetch_add(meshes as u64,Relaxed);
+        TERRAIN_STAGE_MAX_BYTES.fetch_max(bytes as u64,Relaxed);
+        TERRAIN_STAGE_MAX_MESHES.fetch_max(meshes as u64,Relaxed);
+    }
+}
 pub fn advanced(seconds: f64) {
     if enabled() && seconds > 0. {
         SIMULATED_NS.fetch_add((seconds * 1e9) as u64, Relaxed);
@@ -82,6 +96,8 @@ pub fn reset() {
         &SIMULATED_NS,
         &EARTH_MATERIAL_CHANGES,
         &FOREST_VIEW_VERTICES, &FOREST_SHADOW_VERTICES, &FOREST_SAMPLES,
+        &TERRAIN_STAGE_FRAMES, &TERRAIN_STAGE_BYTES, &TERRAIN_STAGE_MESHES,
+        &TERRAIN_STAGE_MAX_BYTES, &TERRAIN_STAGE_MAX_MESHES,
     ]) {
         a.store(0, Relaxed);
     }
@@ -116,6 +132,11 @@ pub fn report(diagnostics: &DiagnosticsStore) -> serde_json::Value {
         "mesh_modifications":MESH_CHANGES.load(Relaxed),"material_modifications":MATERIAL_CHANGES.load(Relaxed)+EARTH_MATERIAL_CHANGES.load(Relaxed),
         "earth_material_modifications":EARTH_MATERIAL_CHANGES.load(Relaxed),
         "image_modifications":IMAGE_CHANGES.load(Relaxed),
+        "terrain_staging":{"frames":TERRAIN_STAGE_FRAMES.load(Relaxed),
+            "mesh_source_bytes":TERRAIN_STAGE_BYTES.load(Relaxed),
+            "meshes":TERRAIN_STAGE_MESHES.load(Relaxed),
+            "max_mesh_source_bytes_per_frame":TERRAIN_STAGE_MAX_BYTES.load(Relaxed),
+            "max_meshes_per_frame":TERRAIN_STAGE_MAX_MESHES.load(Relaxed)},
         "adapter":ADAPTER.get(),
         "gpu_timing_note":"Only positive GPU durations are retained. nord_scene measures the encoder envelope where timestamps are supported; unsupported per-pass timestamps are omitted. Validate with Metal System Trace.",
         "forest_vertices_in_visible_batches_mean":{

@@ -127,7 +127,9 @@ pub fn cockpit_lines(combat: &Combat, f: &Flight) -> Option<[String; 2]> {
     } else {
         "ACQUIRE"
     };
-    let missile = if combat.weapon == Weapon::Heat {
+    let missile = if combat.weapon == Weapon::Heat && f.aircraft == crate::aircraft::Aircraft::F22 {
+        "AIM-9X"
+    } else if combat.weapon == Weapon::Heat {
         "IR"
     } else if combat.bvr.is_some() {
         "LR"

@@ -264,7 +264,6 @@ pub fn systems(
     keys: Res<ButtonInput<KeyCode>>,
     h: Res<Hangar>,
     mut f: ResMut<Flight>,
-    v: Res<ViewState>,
     mut c: ResMut<crate::combat::Combat>,
 ) {
     if h.open || f.vehicle == Vehicle::Spacecraft {
@@ -306,15 +305,6 @@ pub fn systems(
             f.systems.manual_bays = !f.systems.manual_bays;
             f.systems.bays_target = f.systems.manual_bays;
         }
-    }
-    if c.active && f.systems.weapon_generation != v.generation {
-        let s = f.aircraft.spec();
-        c.ammo = s.ammo;
-        if let Some(fight) = &mut c.fight {
-            fight.gun = s.gun;
-        }
-        f.systems.stores = std::array::from_fn(|i| i < (s.ammo[0] + s.ammo[1]) as usize);
-        f.systems.weapon_generation = v.generation;
     }
     if c.active {
         let s = f.aircraft.spec();

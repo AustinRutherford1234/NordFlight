@@ -590,42 +590,42 @@ pub fn presentation(world: &mut World) {
     )>();
     for (mut camera, menu, flight, mut t) in cameras.iter_mut(world) {
         if menu.is_some() {
-            camera.is_active = open;
-            *t = Transform::from_xyz(
+            if camera.is_active!=open {camera.is_active = open;}
+            if open {*t = Transform::from_xyz(
                 26. + (time * 0.07).sin() * 3.,
                 12.,
                 27. + (time * 0.07).cos() * 2.,
             )
-            .looking_at(Vec3::new(0., 3., 0.), Vec3::Y);
+            .looking_at(Vec3::new(0., 3., 0.), Vec3::Y);}
         }
         if flight.is_some() {
-            camera.is_active = !open;
+            if camera.is_active==open {camera.is_active = !open;}
         }
     }
     if !open {
         return;
     }
-    let mut props = world.query::<(
+    let mut props = world.query_filtered::<(
         &mut Visibility,
         Option<&HangarProp>,
         Option<&SpaceProp>,
         Option<&EarthProp>,
         &mut Transform,
-    )>();
+    ),Or<(With<HangarProp>,With<SpaceProp>,With<EarthProp>)>>();
     for (mut v, hangar, stars, earth, mut t) in props.iter_mut(world) {
         if hangar.is_some() {
-            *v = if space {
+            v.set_if_neq(if space {
                 Visibility::Hidden
             } else {
                 Visibility::Inherited
-            };
+            });
         }
         if stars.is_some() {
-            *v = if space {
+            v.set_if_neq(if space {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
-            };
+            });
         }
         if earth.is_some() {
             t.rotation = Quat::from_rotation_y(time * 0.025);

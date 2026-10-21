@@ -9,6 +9,56 @@ pub struct Root(pub Aircraft);
 pub struct AircraftPart(pub Aircraft);
 #[derive(Component)]
 pub struct CockpitRoot(pub Aircraft);
+#[cfg(test)]
+mod cabin_clearance_tests {
+    use super::*;
+    fn matrix(w:&World,e:Entity)->Mat4 {
+        let m=w.get::<Transform>(e).map_or(Mat4::IDENTITY,Transform::to_matrix);
+        w.get::<ChildOf>(e).map_or(m,|p|matrix(w,p.parent())*m)
+    }
+    fn belongs(w:&World,mut e:Entity,root:Entity)->bool {
+        loop { if e==root{return true;} let Some(p)=w.get::<ChildOf>(e) else{return false;};e=p.parent(); }
+    }
+    #[test]
+    fn cockpit_floor_and_seat_are_not_occluded_by_airframe_or_gear_well() {
+        let mut app=App::new();
+        app.init_resource::<Assets<Mesh>>().init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Image>>().add_systems(Startup,setup);
+        app.update();
+        let w=app.world_mut();
+        let root=w.query::<(Entity,&Root)>().iter(w).find(|(_,r)|r.0==Aircraft::F22).unwrap().0;
+        let mut hits=Vec::new();
+        for (x,z) in [(0.,-3.3_f32),(0.,-2.8),(0.,-2.4),(0.29,-3.44),(-0.29,-3.44)] {
+            let point=Vec2::new(x,Aircraft::F22.cabin_offset().z+z);
+            for (e,handle,material) in w.query::<(Entity,&Mesh3d,&MeshMaterial3d<StandardMaterial>)>().iter(w) {
+                if !belongs(w,e,root) {continue;}
+                let mesh=w.resource::<Assets<Mesh>>().get(&handle.0).unwrap();
+                let mat=w.resource::<Assets<StandardMaterial>>().get(&material.0).unwrap();
+                if mat.alpha_mode!=AlphaMode::Opaque {continue;}
+                let Some(bevy::mesh::VertexAttributeValues::Float32x3(v))=mesh.attribute(Mesh::ATTRIBUTE_POSITION) else{continue;};
+                let t=matrix(w,e);
+                let indices:Vec<_>=mesh.indices().map_or_else(||(0..v.len()).collect(),|i|i.iter().collect());
+                for tri in indices.chunks_exact(3) {
+                    let p=[tri[0],tri[1],tri[2]].map(|i|t.transform_point3(Vec3::from_array(v[i])));
+                    let q=p.map(|p|Vec2::new(p.x,p.z));
+                    let det=(q[1]-q[0]).perp_dot(q[2]-q[0]);
+                    if det.abs()<1e-8 {continue;}
+                    let u=(point-q[0]).perp_dot(q[2]-q[0])/det;
+                    let v=(q[1]-q[0]).perp_dot(point-q[0])/det;
+                    if u>=-1e-5&&v>=-1e-5&&u+v<=1.00001 {
+                        let y=p[0].y+(p[1].y-p[0].y)*u+(p[2].y-p[0].y)*v;
+                        hits.push((x,z,y,e,mat.base_color));
+                    }
+                }
+            }
+        }
+        for (x,z) in [(0.,-3.3_f32),(0.,-2.8),(0.,-2.4),(0.29,-3.44),(-0.29,-3.44)] {
+            let top=hits.iter().filter(|h|h.0==x&&h.1==z).max_by(|a,b|a.2.total_cmp(&b.2)).expect("closed floor or seat");
+            assert!(top.2 > -0.3 && top.2 < 0.4,"cabin obstruction: {top:?}");
+            assert!(top.4.to_srgba().red<0.3,"airframe/white wheel-well occludes interior: {top:?}");
+        }
+    }
+}
 #[derive(Component)]
 pub(crate) struct Moving(Aircraft, usize);
 #[derive(Component)]
@@ -564,6 +614,8 @@ fn material(
         ..default()
     })
 }
+#[derive(Component)]
+pub(crate) struct ImmutableGeometry;
 fn part(
     c: &mut Commands,
     m: &mut Assets<Mesh>,
@@ -572,7 +624,7 @@ fn part(
     mat: Handle<StandardMaterial>,
     t: Transform,
 ) -> Entity {
-    let e = c.spawn((Mesh3d(m.add(shape)), MeshMaterial3d(mat), t)).id();
+    let e = c.spawn((ImmutableGeometry, Mesh3d(m.add(shape)), MeshMaterial3d(mat), t)).id();
     c.entity(root).add_child(e);
     e
 }
@@ -960,7 +1012,9 @@ pub fn setup(
                 &mut c,
                 &mut meshes,
                 root,
-                crate::combat::missile_mesh(),
+                if a == Aircraft::F22 && i < 2 { crate::combat::aim9x_mesh() }
+                else if i>=spec.ammo[0] as usize {crate::combat::radar_visual::body(false,true)}
+                else { crate::combat::missile_mesh() },
                 silver.clone(),
                 transform,
             );
@@ -1492,25 +1546,28 @@ pub fn update(
             let wet = ((f.spool - 0.88) / 0.12).clamp(0., 1.) as f32;
             let length = 0.6 + f.spool as f32 * 0.8 + wet * 4.;
             let l = *layer as f32;
+            let motion = crate::plume_motion::sample(f.elapsed, (*i * 37 + *layer) as u32);
             if *a == Aircraft::F22 {
                 // A narrow hot core sits inside a longer blue envelope. All
                 // layers originate in the recessed duct, before the exit lip.
                 let length = (0.6 + f.spool as f32 * 0.8 + wet * 7.0)
-                    * if *layer < 2 { 0.65 + l * 0.15 } else { 1. - (l - 2.) * 0.035 };
-                let radius = if *layer < 2 { 0.34 + l * 0.16 } else { 0.80 + (l - 2.) * 0.08 };
-                let vector=Quat::from_rotation_x(f.systems.nozzle[*i] as f32);
+                    * if *layer < 2 { 0.65 + l * 0.15 } else { 1. - (l - 2.) * 0.035 }
+                    * motion.length;
+                let radius = (if *layer < 2 { 0.34 + l * 0.16 } else { 0.80 + (l - 2.) * 0.08 }) * motion.width;
+                let vector=Quat::from_rotation_x(f.systems.nozzle[*i] as f32) * motion.bend;
                 // Fixed interior origin; bend the downstream jet with TVC.
                 t.translation = Vec3::Z*raptor_detail::EXHAUST_START + vector*(Vec3::Z*length*0.5);
                 t.rotation = vector*Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
                 t.scale = Vec3::new(radius, length, radius * 0.65);
                 continue;
             }
-            t.translation = Vec3::new(0., 0., if *a==Aircraft::F22{1.42}else{0.65} + length * 0.5 + l * 0.08);
-            t.rotation = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+            let length = length * (1. - l * 0.06) * motion.length;
+            t.translation = Vec3::Z * (0.65 + l * 0.08) + motion.bend * (Vec3::Z * length * 0.5);
+            t.rotation = motion.bend * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
             t.scale = Vec3::new(
-                (if *a==Aircraft::F22{1.15}else{1.}) * (1. - l * 0.08) * (1. + wet * 0.25),
-                length * (1. - l * 0.06),
-                if *a==Aircraft::F22{0.65}else{1.},
+                (1. - l * 0.08) * (1. + wet * 0.25) * motion.width,
+                length,
+                motion.width,
             );
             continue;
         }
@@ -1613,5 +1670,33 @@ pub fn gauges(
         };
         t.rotation =
             Quat::from_rotation_z((-2.5 + value.clamp(0., 1.) as f32 * 5.).clamp(-2.5, 2.5));
+    }
+}
+
+#[cfg(test)]
+mod plume_tests {
+    use super::*;
+    #[test]
+    fn raptor_plumes_move_independently_but_keep_their_recessed_origins() {
+        let mut app = App::new();
+        let mut f = Flight::runway();
+        super::super::select(&mut f, Aircraft::F22);
+        f.spool = 1.; f.throttle = 1.; f.thrust = 312000.; f.engine = true;
+        f.systems.nozzle = [0.2, -0.1];
+        app.add_plugins(MinimalPlugins).insert_resource(f).add_systems(Update, update);
+        let a = app.world_mut().spawn((Plume(Aircraft::F22, 0, 2), Transform::default(), Visibility::Inherited)).id();
+        let b = app.world_mut().spawn((Plume(Aircraft::F22, 1, 2), Transform::default(), Visibility::Inherited)).id();
+        let mut poses = Vec::new();
+        for elapsed in [0., 0.037, 0.037] {
+            app.world_mut().resource_mut::<Flight>().elapsed = elapsed;
+            app.update();
+            let t = *app.world().get::<Transform>(a).unwrap();
+            let root = t.transform_point(Vec3::new(0., -0.5, 0.));
+            assert!(root.distance(Vec3::Z * raptor_detail::EXHAUST_START) < 1e-5);
+            assert_ne!(t.scale, app.world().get::<Transform>(b).unwrap().scale);
+            poses.push(t);
+        }
+        assert_ne!(poses[0], poses[1]);
+        assert_eq!(poses[1], poses[2]);
     }
 }

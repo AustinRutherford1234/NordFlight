@@ -265,7 +265,7 @@ impl Combat {
             rounds: vec![],
             flares: 24,
             chaff: 24,
-            gun: 300,
+            gun: f.aircraft.spec().gun,
             next_decoy: 1,
             flare_at: -10.0,
             chaff_at: -10.0,

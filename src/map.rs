@@ -139,7 +139,15 @@ pub struct Forecast {
     at: f32,
     epoch: f64,
     key: [u64; 4],
+    state:[u64;18],
     result: crate::space::navigation::Prediction,
+}
+fn prediction_state(f:&Flight,node:Option<Maneuver>,generation:u64)->[u64;18]{
+    let mut key=[0;18];key[0]=generation;key[1]=f.space.body as u64;
+    key[2..5].copy_from_slice(&f.position.to_array().map(f64::to_bits));
+    key[5..8].copy_from_slice(&f.velocity.to_array().map(f64::to_bits));key[8]=f.elapsed.to_bits();
+    if let Some(n)=node{key[9]=1;key[10]=n.anomaly.to_bits();key[11..14].copy_from_slice(&n.dv.to_array().map(f64::to_bits));key[14..17].copy_from_slice(&n.reference.to_array().map(f64::to_bits));key[17]=n.epoch.to_bits();}
+    key
 }
 pub fn setup(mut c: Commands) {
     editor::setup(&mut c);
@@ -396,6 +404,13 @@ fn nearest_orbit(
     }
     result
 }
+#[derive(Default)]
+pub(crate) struct MapLines {
+    state: Option<[u64;18]>,
+    orbit: Vec<DVec3>,
+    moon: Vec<DVec3>,
+    moon_epoch: Option<u64>,
+}
 pub fn draw(
     f: Res<Flight>,
     view: Res<ViewState>,
@@ -407,6 +422,7 @@ pub fn draw(
     mut markers: Query<(&Marker, &mut Node, &mut Visibility), Without<Root>>,
     time: Res<Time>,
     mut forecast: Local<Option<Forecast>>,
+    mut lines: Local<MapLines>,
 ) {
     for mut v in &mut roots {
         v.set_if_neq(if view.map && f.vehicle == Vehicle::Spacecraft {
@@ -426,16 +442,13 @@ pub fn draw(
     let relative = f.position - center;
     let color = Color::srgb(0.2, 0.72, 1.0);
     let anomaly = current_anomaly(orbit, relative);
-    gizmos.linestrip_gradient((0..=512).map_while(|i| {
-        orbit
-            .point(anomaly + i as f64 / 512.0 * std::f64::consts::TAU, relative)
-            .map(|p| {
-                (
-                    local(p + center, &f),
-                    trajectory_color(color, i as f64 / 512.0),
-                )
-            })
-    }));
+    let line_state=prediction_state(&f,None,view.generation);
+    if lines.state!=Some(line_state) {
+        lines.orbit.clear();
+        lines.orbit.extend((0..=512).map_while(|i|orbit.point(anomaly+i as f64/512.*std::f64::consts::TAU,relative).map(|p|p+center)));
+        lines.state=Some(line_state);
+    }
+    gizmos.linestrip_gradient(lines.orbit.iter().enumerate().map(|(i,p)|(local(*p,&f),trajectory_color(color,i as f64/512.))));
     let scale = if view.map_target == 3 {
         crate::space::MOON_DISTANCE as f32 * 0.004
     } else {
@@ -447,17 +460,13 @@ pub fn draw(
             && view.map_target != 1
             && view.map_target != 3);
     if !moon_focus {
+        if lines.moon_epoch!=Some(f.elapsed.to_bits()) {
+            lines.moon.clear();
+            lines.moon.extend((0..=256).map(|i|crate::space::earth_rotation(f.elapsed).conjugate()*crate::space::moon_inertial(f.elapsed+i as f64/256.*crate::space::MOON_PERIOD).0));
+            lines.moon_epoch=Some(f.elapsed.to_bits());
+        }
         gizmos.linestrip(
-            (0..=256).map(|i| {
-                local(
-                    crate::space::earth_rotation(f.elapsed).conjugate()
-                        * crate::space::moon_inertial(
-                            f.elapsed + i as f64 / 256. * crate::space::MOON_PERIOD,
-                        )
-                        .0,
-                    &f,
-                )
-            }),
+            lines.moon.iter().map(|p|local(*p,&f)),
             Color::srgba(0.6, 0.65, 0.7, 0.5),
         );
         gizmos.sphere(
@@ -501,15 +510,17 @@ pub fn draw(
         node_key[1],
         node_key[2],
     ];
-    if forecast
-        .as_ref()
-        .is_none_or(|c| time.elapsed_secs() - c.at > 0.2 || c.key != key)
+    let state=prediction_state(&f,planner.node,view.generation);
+    if forecast.as_ref().is_none_or(|c|c.key!=key || (c.state!=state && (f.paused||time.elapsed_secs()-c.at>0.2)))
     {
+        let mut result=forecast.take().map(|c|c.result).unwrap_or_default();
+        crate::space::navigation::predict_into(&f,planner.node,&mut result);
         *forecast = Some(Forecast {
             at: time.elapsed_secs(),
             epoch: f.elapsed,
             key,
-            result: crate::space::navigation::predict(&f, planner.node),
+            state,
+            result,
         });
     }
     if let Some(cache) = forecast.as_ref() {
@@ -703,6 +714,19 @@ pub fn guidance(planner: Res<Planner>, mut f: ResMut<Flight>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prediction_cache_key_tracks_epoch_state_node_frame_and_scene() {
+        let f=Flight::spacecraft();let key=prediction_state(&f,None,1);
+        let mut changed=f.clone();changed.position.x+=0.001;assert_ne!(key,prediction_state(&changed,None,1));
+        changed=f.clone();changed.velocity.y+=0.001;assert_ne!(key,prediction_state(&changed,None,1));
+        changed=f.clone();changed.elapsed+=0.01;assert_ne!(key,prediction_state(&changed,None,1));
+        assert_ne!(key,prediction_state(&f,None,2));
+        let node=Maneuver {anomaly:0.4,dv:DVec3::X,reference:DVec3::Y,epoch:f.elapsed};
+        let key=prediction_state(&f,Some(node),1);
+        for changed in [Maneuver {reference:DVec3::Z,..node},Maneuver {epoch:node.epoch+1.,..node},Maneuver {dv:DVec3::Z,..node},Maneuver {anomaly:0.5,..node}] {
+            assert_ne!(key,prediction_state(&f,Some(changed),1));
+        }
+    }
     #[test]
     fn warp_to_maneuver_arms_existing_burn_stop_and_respects_safe_coast_limits() {
         let mut f = Flight::spacecraft();

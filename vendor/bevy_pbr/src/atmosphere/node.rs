@@ -38,9 +38,9 @@ struct StaticLutKey {
     // Medium textures and both destination textures identify their actual contents.
     textures: [TextureViewId; 4],
     pipelines: [ComputePipelineId; 2],
-    parameters: [u32; 23],
+    parameters: [u32; 12],
 }
-fn static_parameters(a: &ExtractedAtmosphere, s: &GpuAtmosphereSettings) -> [u32; 23] {
+fn static_parameters(a: &ExtractedAtmosphere, s: &GpuAtmosphereSettings) -> [u32; 12] {
     [
         a.bottom_radius.to_bits(),
         a.top_radius.to_bits(),
@@ -51,24 +51,27 @@ fn static_parameters(a: &ExtractedAtmosphere, s: &GpuAtmosphereSettings) -> [u32
         s.transmittance_lut_size.y,
         s.multiscattering_lut_size.x,
         s.multiscattering_lut_size.y,
-        s.sky_view_lut_size.x,
-        s.sky_view_lut_size.y,
-        s.aerial_view_lut_size.x,
-        s.aerial_view_lut_size.y,
-        s.aerial_view_lut_size.z,
         s.transmittance_lut_samples,
         s.multiscattering_lut_dirs,
         s.multiscattering_lut_samples,
-        s.sky_view_lut_samples,
-        s.aerial_view_lut_samples,
-        s.aerial_view_lut_max_distance.to_bits(),
-        s.scene_units_to_m.to_bits(),
-        s.sky_max_samples,
-        s.rendering_method,
     ]
+}
+pub(super) fn atmosphere_parameters(atmosphere: &ExtractedAtmosphere, settings: &GpuAtmosphereSettings) -> [u32;23] {
+    [atmosphere.bottom_radius.to_bits(),atmosphere.top_radius.to_bits(),atmosphere.ground_albedo.x.to_bits(),atmosphere.ground_albedo.y.to_bits(),atmosphere.ground_albedo.z.to_bits(),
+                settings.transmittance_lut_size.x,settings.transmittance_lut_size.y,settings.multiscattering_lut_size.x,settings.multiscattering_lut_size.y,settings.sky_view_lut_size.x,settings.sky_view_lut_size.y,
+                settings.aerial_view_lut_size.x,settings.aerial_view_lut_size.y,settings.aerial_view_lut_size.z,settings.transmittance_lut_samples,settings.multiscattering_lut_dirs,settings.multiscattering_lut_samples,
+                settings.sky_view_lut_samples,settings.aerial_view_lut_samples,settings.aerial_view_lut_max_distance.to_bits(),settings.scene_units_to_m.to_bits(),settings.sky_max_samples,settings.rendering_method]
 }
 #[derive(Default)]
 struct StaticLutCache(HashMap<TextureViewId, StaticLutKey>);
+#[derive(Clone, PartialEq, Eq)]
+struct DynamicLutKey {
+    base: StaticLutKey,
+    outputs: [TextureViewId;2],
+    pipelines: [ComputePipelineId;2],
+    parameters: [u32;59],
+    lights: crate::AtmosphereLightKey,
+}
 impl StaticLutCache {
     fn contains(&self, key: &StaticLutKey) -> bool {
         // Track each output separately: TextureCache can reassign a texture to
@@ -87,11 +90,21 @@ impl StaticLutCache {
 #[cfg(test)]
 mod static_lut_tests {
     use super::*;
+    #[test]
+    fn view_settings_invalidate_dynamic_luts_without_discarding_static_integrals() {
+        let a=ExtractedAtmosphere {bottom_radius:6360000.,top_radius:6460000.,ground_albedo:bevy_math::Vec3::splat(0.3),medium:bevy_asset::Handle::<crate::ScatteringMedium>::default().id()};
+        let original=GpuAtmosphereSettings::default();
+        let mut changed=original.clone();changed.aerial_view_lut_max_distance*=2.;changed.scene_units_to_m*=2.;changed.sky_view_lut_samples+=1;
+        assert_eq!(static_parameters(&a,&original),static_parameters(&a,&changed));
+        assert_ne!(atmosphere_parameters(&a,&original),atmosphere_parameters(&a,&changed));
+        changed.multiscattering_lut_samples+=1;
+        assert_ne!(static_parameters(&a,&original),static_parameters(&a,&changed));
+    }
     fn key() -> StaticLutKey {
         StaticLutKey {
             textures: core::array::from_fn(|_| TextureViewId::new()),
             pipelines: core::array::from_fn(|_| ComputePipelineId::new()),
-            parameters: [0; 23],
+            parameters: [0; 12],
         }
     }
     #[test]
@@ -101,7 +114,7 @@ mod static_lut_tests {
         assert!(!cache.contains(&original));
         cache.record(original);
         assert!(cache.contains(&original));
-        for i in 0..23 {
+        for i in 0..12 {
             let mut changed = original;
             changed.parameters[i] ^= 1;
             assert!(!cache.contains(&changed));
@@ -143,12 +156,14 @@ mod static_lut_tests {
 pub(super) struct AtmosphereLutsNode {
     cache: Mutex<StaticLutCache>,
     cache_enabled: bool,
+    dynamic: Mutex<HashMap<TextureViewId,DynamicLutKey>>,
 }
 impl Default for AtmosphereLutsNode {
     fn default() -> Self {
         Self {
             cache: Mutex::new(StaticLutCache::default()),
             cache_enabled: std::env::var_os("BEVY_DISABLE_STATIC_ATMOSPHERE_CACHE").is_none(),
+            dynamic: Mutex::new(HashMap::default()),
         }
     }
 }
@@ -164,6 +179,9 @@ impl ViewNode for AtmosphereLutsNode {
         Read<ViewLightsUniformOffset>,
         Read<ExtractedAtmosphere>,
         Read<AtmosphereTextures>,
+        Read<bevy_render::view::ExtractedView>,
+        Read<crate::AtmosphereLightKey>,
+        Option<Read<bevy_render::camera::TemporalJitter>>,
     );
 
     fn run(
@@ -180,6 +198,9 @@ impl ViewNode for AtmosphereLutsNode {
             lights_uniforms_offset,
             atmosphere,
             textures,
+            view,
+            light_key,
+            jitter,
         ): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
@@ -201,7 +222,7 @@ impl ViewNode for AtmosphereLutsNode {
         };
 
         // These two integrals depend on the medium/model/settings, not the
-        // camera or sun. Sky and aerial LUTs still dispatch every frame below.
+        // camera or sun. View-dependent LUTs have their own complete input key.
         let key = world
             .resource::<RenderAssets<GpuScatteringMedium>>()
             .get(atmosphere.medium)
@@ -222,6 +243,17 @@ impl ViewNode for AtmosphereLutsNode {
             && key
                 .as_ref()
                 .is_some_and(|key| self.cache.lock().expect("atmosphere cache").contains(key));
+
+        let dynamic_key=key.map(|base| {
+            let mut p=[0;59];
+            p[..16].copy_from_slice(&view.world_from_view.to_matrix().to_cols_array().map(f32::to_bits));
+            p[16..32].copy_from_slice(&view.clip_from_view.to_cols_array().map(f32::to_bits));
+            p[32..36].copy_from_slice(&view.viewport.to_array());
+            p[36..].copy_from_slice(&atmosphere_parameters(atmosphere, settings));
+            DynamicLutKey {base,outputs:[textures.sky_view_lut.default_view.id(),textures.aerial_view_lut.default_view.id()],pipelines:[sky_view_lut_pipeline.id(),aerial_view_lut_pipeline.id()],parameters:p,lights:*light_key}
+        });
+        if reuse && jitter.is_none() && view.clip_from_world.is_none() && std::env::var_os("NORD_RENDER_REFERENCE").is_none() && std::env::var_os("NORD_LUT_REFERENCE").is_none()
+            && dynamic_key.as_ref().is_some_and(|key|{let cache=self.dynamic.lock().unwrap();key.outputs.iter().all(|id|cache.get(id)==Some(key))}) {return Ok(());}
 
         let diagnostics = render_context.diagnostic_recorder();
 
@@ -313,6 +345,10 @@ impl ViewNode for AtmosphereLutsNode {
         dispatch_2d(&mut luts_pass, settings.aerial_view_lut_size.xy());
 
         pass_span.end(&mut luts_pass);
+        if let Some(key)=dynamic_key {
+            let mut cache=self.dynamic.lock().unwrap();if cache.len()>60 {cache.clear();}
+            for id in key.outputs {cache.insert(id,key.clone());}
+        }
 
         Ok(())
     }

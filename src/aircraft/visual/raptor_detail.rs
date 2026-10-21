@@ -451,7 +451,9 @@ pub(super) fn cut_cockpit(points: Vec<Vec3>) -> Vec<Vec<Vec3>> {
         ring.push(canopy_point(j as f32 / 24., std::f32::consts::PI));
     }
     let center = ring.iter().copied().sum::<Vec3>() / ring.len() as f32;
-    let mut planes = vec![(Vec3::Y, 0.25)];
+    // Hollow the cabin down to its lined floor. A roof-only cut left airframe
+    // skin through the seat and lower instrument/radar faces.
+    let mut planes = vec![(Vec3::Y, -0.30)];
     for j in 0..ring.len() {
         let a = ring[j];
         let b = ring[(j + 1) % ring.len()];
@@ -511,7 +513,7 @@ pub(super) fn canopy_frame(
     // around the cockpit. Both ends converge continuously onto the dorsal skin.
     for t in [0., std::f32::consts::PI] {
         for j in 0..64 {
-            tube(
+            let rail=tube(
                 c,
                 m,
                 root,
@@ -520,7 +522,8 @@ pub(super) fn canopy_frame(
                 canopy_point((j + 1) as f32 / 64., t),
                 0.026,
             );
-            tube(
+            c.entity(rail).insert(crate::render_batch::RigidGeometry);
+            let gasket=tube(
                 c,
                 m,
                 root,
@@ -529,6 +532,7 @@ pub(super) fn canopy_frame(
                 canopy_point((j + 1) as f32 / 64., t) + Vec3::Y * 0.012,
                 0.007,
             );
+            c.entity(gasket).insert(crate::render_batch::RigidGeometry);
         }
     }
 }
@@ -1103,6 +1107,13 @@ fn strut_mesh(radius: f32, kind: usize) -> Mesh {
     raptor_mesh::smooth(mesh(v, ix))
 }
 
+fn nose_well_ceiling(z:f32, mount_z:f32)->f32 {
+    let ramp=|a:f32,b:f32|((z-mount_z-a)/(b-a)).clamp(0.,1.);
+    // The wheel stows forward of the cockpit; the aft strut pocket needs far
+    // less height. Step below the footwell, then below the seat, instead of
+    // carrying the wheel-sized ceiling through the entire cabin.
+    0.32-0.20*ramp(-1.10,-0.60)-0.44*ramp(0.10,0.35)
+}
 pub(super) fn gear(
     c: &mut Commands,
     m: &mut Assets<Mesh>,
@@ -1143,27 +1154,51 @@ pub(super) fn gear(
         ] {
             rim.push(Vec3::new(at.x + x, skin_y(at.x + x, z, false) - 0.003, z));
         }
+        if i==0 {
+            let breaks=[at.z-1.10,at.z-0.60,at.z+0.10,at.z+0.35];
+            let mut split=Vec::new();
+            for k in 0..rim.len() {
+                let a=rim[k];let b=rim[(k+1)%rim.len()];
+                split.push(a);
+                let mut cuts=breaks.iter().copied().filter(|z|*z>a.z.min(b.z)&&*z<a.z.max(b.z)).collect::<Vec<_>>();
+                if a.z>b.z {cuts.reverse();}
+                for z in cuts {let t=(z-a.z)/(b.z-a.z);let x=a.x+(b.x-a.x)*t;
+                    split.push(Vec3::new(x,skin_y(x,z,false)-0.003,z));}
+            }
+            rim=split;
+        }
         let roof = rim
             .iter()
             .map(|p| {
                 Vec3::new(
                     p.x,
-                    (skin_y(p.x, p.z, true) - 0.045).min(if i == 0 { 0.32 } else { 0.28 }),
+                    (skin_y(p.x, p.z, true) - 0.045).min(if i == 0 { nose_well_ceiling(p.z,at.z) } else { 0.28 }),
                     p.z,
                 )
             })
             .collect::<Vec<_>>();
-        part(
+        if i==0 {
+            let zs=[z0,z0+0.18,at.z-1.10,at.z-0.60,at.z+0.10,at.z+0.35,z1-0.15,z1];
+            let point=|z:f32,side:f32| {
+                let width=if z==z0||z==z1{w-0.13}else{w};
+                let x=at.x+side*width;
+                Vec3::new(x,(skin_y(x,z,true)-0.045).min(nose_well_ceiling(z,at.z)),z)
+            };
+            for z in zs.windows(2) {
+                let e=part(c,m,root,solid(&[point(z[0],-1.),point(z[0],1.),point(z[1],1.),point(z[1],-1.)],Vec3::Y*0.008),white.clone(),Transform::default());
+                c.entity(e).insert(crate::render_batch::RigidGeometry);
+            }
+        } else {part(
             c,
             m,
             root,
             solid(&roof, Vec3::Y * 0.008),
             white.clone(),
             Transform::default(),
-        );
+        );}
         for k in 0..rim.len() {
             let j = (k + 1) % rim.len();
-            part(
+            let e=part(
                 c,
                 m,
                 root,
@@ -1171,6 +1206,7 @@ pub(super) fn gear(
                 white.clone(),
                 Transform::default(),
             );
+            if i==0 {c.entity(e).insert(crate::render_batch::RigidGeometry);}
         }
         for k in 0..5 {
             tube(
@@ -1180,12 +1216,12 @@ pub(super) fn gear(
                 dark.clone(),
                 Vec3::new(
                     at.x - 0.33,
-                    if i == 0 { 0.285 } else { 0.265 },
+                    if i == 0 { nose_well_ceiling(z0+0.25+k as f32*0.40,at.z)-0.035 } else { 0.265 },
                     z0 + 0.25 + k as f32 * 0.40,
                 ),
                 Vec3::new(
                     at.x + 0.33,
-                    if i == 0 { 0.285 } else { 0.265 },
+                    if i == 0 { nose_well_ceiling(z0+0.25+k as f32*0.40,at.z)-0.035 } else { 0.265 },
                     z0 + 0.25 + k as f32 * 0.40,
                 ),
                 0.012,
@@ -1601,10 +1637,11 @@ pub fn update(
             let wet = ((power - 0.88) / 0.12).clamp(0., 1.);
             let k = *cell as f32;
             let envelope = (wet * 6. - k).clamp(0., 1.);
-            let flicker = 1. + 0.035 * (f.elapsed as f32 * 43. + k * 1.7).sin();
+            let motion = crate::plume_motion::sample(f.elapsed, (*engine * 37 + *cell + 200) as u32);
+            let flicker = motion.radiance;
             let energy = envelope * (1. - k * 0.115) * flicker;
-            let spacing = 0.72 + wet * 0.23;
-            let vector = Quat::from_rotation_x(f.systems.nozzle[*engine] as f32);
+            let spacing = (0.72 + wet * 0.23) * (1. + (motion.length - 1.) * 0.35);
+            let vector = Quat::from_rotation_x(f.systems.nozzle[*engine] as f32) * motion.bend;
             t.rotation = vector;
             t.translation = Vec3::Z * EXHAUST_START
                 + vector * (Vec3::Z * (1.58 - EXHAUST_START + (k + 0.5) * spacing));
@@ -1636,7 +1673,7 @@ pub fn update(
         if let Some(GlowLayer(engine, layer, mat)) = glow {
             let power = exhaust_power(&f, *engine);
             let wet = ((power - 0.88) / 0.12).clamp(0., 1.);
-            let pulse = 1. + wet * 0.035 * (f.elapsed as f32 * 37. + *layer as f32).sin();
+            let pulse = crate::plume_motion::sample(f.elapsed, (*engine * 37 + *layer) as u32).radiance;
             let strength = (0.12 + power * 0.55 + wet * 0.9) * pulse;
             let core = *layer < 2;
             let color = if *layer == 7 {
@@ -2055,6 +2092,21 @@ mod tests {
                     assert!(p.y > skin_y(p.x, p.z, false) + 0.01, "gear {i}: {p:?}");
                 }
             }
+        }
+    }
+    #[test]
+    fn stowed_nose_wheel_remains_below_the_stepped_cockpit_partition() {
+        let mut f=Flight::runway();
+        super::super::super::select(&mut f,Aircraft::F22);
+        f.gear_extension=0.;f.gear_compression=[0.;3];
+        let (_,at,q)=detail_gear_pose(&f,0);
+        let wheel=tire(0.29,0.19);
+        let mount=gear_mount(Aircraft::F22,0).z as f32;
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices))=wheel.attribute(Mesh::ATTRIBUTE_POSITION) else{panic!("wheel vertices");};
+        for p in vertices {
+            let p=(at+q*Vec3::from_array(*p).as_dvec3()).as_vec3();
+            let ceiling=(skin_y(p.x,p.z,true)-0.045).min(nose_well_ceiling(p.z,mount))-0.008;
+            assert!(p.y<ceiling,"nose-wheel/partition intersection: {p:?}, roof {ceiling}");
         }
     }
     #[test]

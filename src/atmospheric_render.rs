@@ -39,10 +39,12 @@ pub fn synchronize(
     let enabled = !v.map && !(f.vehicle == Vehicle::Spacecraft
         && (f.space.body == space::Body::Moon || f.altitude() > 100000.));
     for (transform, mut scene) in &mut cameras {
-        // The atmosphere shader's sky basis depends on camera orientation, so
-        // rotations remain inputs. Use exact bits, not change ticks/thresholds.
+        // The dedicated indirect probe uses a canonical basis. The reference
+        // path still consumes camera orientation. Both use exact input bits.
         let mut inputs = [0u32; 23];
-        inputs[..16].copy_from_slice(&transform.to_matrix().to_cols_array().map(f32::to_bits));
+        let probe=std::env::var_os("NORD_RENDER_REFERENCE").is_none() && std::env::var_os("NORD_PROBE_REFERENCE").is_none();
+        let source_transform=if probe {Transform::from_translation(transform.translation)} else {*transform};
+        inputs[..16].copy_from_slice(&source_transform.to_matrix().to_cols_array().map(f32::to_bits));
         inputs[16..19].copy_from_slice(&(crate::frame(&f).conjugate() * e.sun_direction())
             .as_vec3().to_array().map(f32::to_bits));
         inputs[19] = crate::earth::sky_density(f.altitude()).to_bits();

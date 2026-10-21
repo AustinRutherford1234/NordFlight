@@ -10,6 +10,9 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 pub mod ai;
+pub mod aim9x;
+pub mod radar_visual;
+pub mod smoke_gpu;
 pub mod bvr;
 pub mod contact;
 pub mod damage;
@@ -21,11 +24,17 @@ pub mod rwr;
 
 const TARGET_COUNT: usize = 3;
 const MAX_AIRCRAFT: usize = 11;
+// Mechanism children never carry the generic presentation roles. These filters
+// let Bevy prove independent transform/visibility access without relaxing any
+// input, simulation, camera, or damage ordering.
+pub type MechanismFilter = (Without<TargetVisual>,Without<MissileVisual>,Without<MotorVisual>,Without<FlashVisual>,Without<StoreVisual>,Without<GenericMissileDecoration>);
 /// Gameplay muzzle velocity relative to the firing aircraft (m/s).
 const CANNON_MUZZLE_SPEED: f64 = 4250.0;
-pub(super) const MISSILE_COUNT: usize = 4;
+// Reserve stable player slots for the largest aircraft loadout. Enemy slots
+// must not overlap later player launches or change as missiles are fired.
+pub(super) const MISSILE_COUNT: usize = 10;
 const RENDER_MISSILES: usize = 64;
-const STATIONS: [DVec3; MISSILE_COUNT] = [
+const STATIONS: [DVec3; 4] = [
     DVec3::new(-3.15, -0.48, 0.9),
     DVec3::new(3.15, -0.48, 0.9),
     DVec3::new(-2.05, -0.65, 0.1),
@@ -38,6 +47,14 @@ pub enum Weapon {
     Radar,
 }
 impl Weapon {
+    fn player_range(self, f: &Flight) -> f64 {
+        if self == Self::Heat && f.aircraft == crate::aircraft::Aircraft::F22 { 10000.0 } else { self.range() }
+    }
+    fn player_cone(self, f: &Flight) -> f64 {
+        if self == Self::Heat {
+            if f.aircraft == crate::aircraft::Aircraft::F22 { 60.0 } else { 16.0 }
+        } else { 35.0 }
+    }
     fn index(self) -> usize {
         if self == Self::Heat { 0 } else { 1 }
     }
@@ -239,11 +256,22 @@ impl Combat {
         }
         if matches!(
             mode,
-            "combat-launch" | "combat-flight" | "combat-follow" | "combat-impact"
+            "combat-launch" | "combat-flight" | "combat-follow" | "combat-impact" | "combat-vector"
         ) {
+            if std::env::var("NORD_MISSILE_KIND").as_deref()==Ok("radar") {
+                self.weapon=Weapon::Radar;
+                self.lock=Weapon::Radar.lock_time();
+            }
+            if mode=="combat-vector" {
+                // Disposable visual check: a real off-axis launch demand, not a
+                // decorative oscillation of surfaces independent of the GNC.
+                let target=&mut self.targets[0];
+                target.position+=f.orientation*DVec3::new(600.,150.,0.);
+                target.dynamics.position=target.position;
+            }
             self.fire(f);
             let steps = match mode {
-                "combat-launch" => 48,
+                "combat-launch" | "combat-vector" => 48,
                 "combat-flight" | "combat-follow" => 150,
                 _ => 3600,
             };
@@ -252,6 +280,9 @@ impl Combat {
                 if mode == "combat-impact" && self.hits > 0 {
                     break;
                 }
+            }
+            if let Some(m)=self.missiles.first().filter(|m|m.gnc.aim9x) {
+                println!("AIM-9X native pose: age={:.3}, thrust={:.1}, controller={:?}, body={:?}",m.age,m.gnc.thrust,m.gnc.fins,m.gnc.body);
             }
             if mode == "combat-impact" && self.hits > 0 {
                 for _ in 0..42 {
@@ -264,6 +295,7 @@ impl Combat {
         *self = Self {
             active: true,
             generation,
+            ammo: f.aircraft.spec().ammo,
             ..default()
         };
         let up = f.up();
@@ -329,14 +361,10 @@ impl Combat {
         if range < 250.0 {
             return Err("TOO CLOSE");
         }
-        if range > self.weapon.range() {
+        if range > self.weapon.player_range(f) {
             return Err("OUT OF RANGE");
         }
-        let cone: f64 = if self.weapon == Weapon::Heat {
-            16.0
-        } else {
-            35.0
-        };
+        let cone = self.weapon.player_cone(f);
         if f.forward().dot(r.normalize()) < cone.to_radians().cos() {
             return Err("POINT NOSE AT TARGET");
         }
@@ -406,7 +434,7 @@ impl Combat {
                 f.velocity + f.forward() * 18.0,
                 guidance::target(&self.targets[self.selected]),
                 self.generation.wrapping_mul(997) + self.fired as u64 + 1,
-            ),
+            ).for_aircraft(f.aircraft, self.weapon),
             decoy: None,
             position,
             velocity: f.velocity + f.forward() * 18.0 - (f.orientation * DVec3::Y) * 4.0,
@@ -431,7 +459,7 @@ impl Combat {
         self.last_launch = self.clock;
         self.notify(format!(
             "{} AWAY / TARGET {:02}",
-            self.weapon.label(),
+            crate::aircraft::missile_name(f.aircraft, self.weapon),
             self.selected + 1
         ));
         true
@@ -445,8 +473,13 @@ impl Combat {
             return;
         }
         self.clock += dt;
-        let alive_before: Vec<_> = self.targets.iter().map(|t| t.alive).collect();
-        let old_targets: Vec<_> = self.targets.iter().map(|t| t.position).collect();
+        // Formation capacity is bounded; snapshots never allocate per substep.
+        let mut alive_before = [false; MAX_AIRCRAFT];
+        let mut old_targets = [DVec3::ZERO; MAX_AIRCRAFT];
+        for (i,t) in self.targets.iter().enumerate() {
+            alive_before[i]=t.alive;
+            old_targets[i]=t.position;
+        }
         if let Some(fight) = &self.fight {
             dogfight::advance_targets(
                 &mut self.targets,
@@ -633,6 +666,51 @@ pub struct TargetMarker(usize);
 #[derive(Component)]
 pub struct TargetLabel(usize);
 #[derive(Component)]
+pub(crate) struct CockpitIconsButton;
+#[derive(Component)]
+pub(crate) struct CockpitIconsLabel;
+
+pub fn cockpit_icon_controls(
+    keys: Res<ButtonInput<KeyCode>>,
+    f: Res<Flight>,
+    mut v: ResMut<ViewState>,
+    mut buttons: Query<(Ref<Interaction>, &mut Node, &mut BackgroundColor), With<CockpitIconsButton>>,
+    mut labels: Query<&mut Text, With<CockpitIconsLabel>>,
+) {
+    let cockpit = v.index == 3 && !v.map && !v.following() && f.vehicle == Vehicle::Gripen;
+    let clicked = buttons.iter().any(|(interaction, _, _)| *interaction == Interaction::Pressed
+        && interaction.is_changed());
+    if cockpit && ((keys.just_pressed(KeyCode::KeyH)
+        && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)))
+        || (clicked && !v.left_camera_drag)) {
+        v.cockpit_enemy_icons = !v.cockpit_enemy_icons;
+    }
+    for (_, mut node, mut color) in &mut buttons {
+        let display = if cockpit { Display::Flex } else { Display::None };
+        if node.display != display { node.display = display; }
+        let tint = if v.cockpit_enemy_icons { Color::srgb(0.08, 0.25, 0.24) }
+            else { Color::srgba(0.025, 0.065, 0.075, 0.9) };
+        if color.0 != tint { color.0 = tint; }
+    }
+    for mut text in &mut labels {
+        let label = if v.cockpit_enemy_icons { "ALT+H / ENEMY ICONS ON" } else { "ALT+H / ENEMY ICONS OFF" };
+        if text.0 != label { text.0 = label.into(); }
+    }
+}
+
+fn target_marker_visible(combat: &Combat, f: &Flight, v: &ViewState, index: usize) -> bool {
+    if !combat.active || f.vehicle != Vehicle::Gripen || v.map || v.following()
+        || !combat.targets.get(index).is_some_and(|t| t.alive) {
+        return false;
+    }
+    if v.index == 3 {
+        v.cockpit_enemy_icons && !f.crashed
+            && !combat.bvr.as_ref().is_some_and(|b| b.friendly(index))
+    } else {
+        combat.bvr.is_none() && !v.simple && index != combat.selected
+    }
+}
+#[derive(Component)]
 pub struct TargetVisual(usize);
 #[derive(Component)]
 pub struct TargetControl {
@@ -778,15 +856,32 @@ fn target_control_mesh(i: usize) -> (Mesh, Vec3, Vec3) {
     )
 }
 pub(crate) fn missile_mesh() -> Mesh {
+    missile_mesh_profile(false)
+}
+/// NAVAIR dimensions: 3.02 m length, 5-inch body, 0.45 m overall fin span.
+pub(crate) fn aim9x_mesh() -> Mesh {
+    aim9x::body_mesh(true)
+}
+fn missile_mesh_profile(aim9x: bool) -> Mesh {
     let mut p = vec![];
     let mut idx = vec![];
-    for (z, r) in [(-1.65, 0.005), (-1.22, 0.075), (1.25, 0.085), (1.38, 0.060)] {
+    let rings: &[(f32, f32)] = if aim9x {
+        &[(-1.51, 0.010), (-1.30, 0.0635), (-1.29, 0.0635), (1.36, 0.0635), (1.51, 0.050)]
+    } else { &[(-1.65, 0.005), (-1.22, 0.075), (1.25, 0.085), (1.38, 0.060)] };
+    for &(z, r) in rings {
         for i in 0..24 {
             let a = i as f32 * std::f32::consts::TAU / 24.0;
             p.push(Vec3::new(r * a.cos(), r * a.sin(), z));
         }
     }
-    for j in 0..3 {
+    // Close the seeker and motor ends rather than leaving open cylinders.
+    for (ring, reverse) in [(0_u32, true), (((rings.len()-1)*24) as u32, false)] {
+        for i in 1..23 {
+            let triangle = if reverse { [ring, ring+i+1, ring+i] } else { [ring, ring+i, ring+i+1] };
+            idx.extend(triangle);
+        }
+    }
+    for j in 0..rings.len()-1 {
         for i in 0..24 {
             let a = (j * 24 + i) as u32;
             let b = (j * 24 + (i + 1) % 24) as u32;
@@ -799,19 +894,34 @@ pub(crate) fn missile_mesh() -> Mesh {
         std::f32::consts::PI,
         3.0 * std::f32::consts::FRAC_PI_2,
     ] {
-        for (front, rear, span) in [(-0.45, 0.1, 0.22), (0.72, 1.28, 0.33)] {
+        let fins = if aim9x { [(-1.03, -0.68, 0.16), (0.93, 1.46, 0.225)] }
+            else { [(-0.45, 0.1, 0.22), (0.72, 1.28, 0.33)] };
+        for (front, rear, span) in fins {
             let n = p.len() as u32;
             let radial = Vec3::new(angle.cos(), angle.sin(), 0.0);
             p.extend([
-                radial * 0.08 + Vec3::Z * front,
+                radial * if aim9x { 0.0635 } else { 0.08 } + Vec3::Z * front,
                 radial * span + Vec3::Z * rear,
-                radial * 0.08 + Vec3::Z * rear,
+                radial * if aim9x { 0.0635 } else { 0.08 } + Vec3::Z * rear,
             ]);
             idx.extend([n, n + 1, n + 2]);
         }
     }
-    mesh(p, idx)
+    let colors: Vec<[f32; 4]> = (0..p.len()).map(|i| if i<48 {
+        [0.025, 0.045, 0.055, 1.0]
+    } else { [0.82, 0.84, 0.81, 1.0] }).collect();
+    let mut result = mesh(p, idx);
+    if aim9x { result.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors); }
+    result
 }
+#[derive(Resource)]
+pub struct MissileMeshes {
+    generic: Handle<Mesh>, aim9x: Handle<Mesh>,
+    motors: [Handle<Mesh>;3], motor_materials: [Handle<StandardMaterial>;3],
+    smoke: Handle<StandardMaterial>,
+}
+#[derive(Component)]
+pub struct GenericMissileDecoration(usize);
 fn part(
     c: &mut Commands,
     parent: Entity,
@@ -832,8 +942,9 @@ fn missile_details(
     band: &Handle<Mesh>,
     dark: &Handle<StandardMaterial>,
     stripe: &Handle<StandardMaterial>,
+    missile: Option<usize>,
 ) {
-    part(
+    let seeker_entity = part(
         c,
         root,
         seeker.clone(),
@@ -841,8 +952,9 @@ fn missile_details(
         Transform::from_xyz(0.0, 0.0, -1.435)
             .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
     );
+    if let Some(i) = missile { c.entity(seeker_entity).insert((GenericMissileDecoration(i), Visibility::Inherited)); }
     for (z, material) in [(-0.9, stripe), (0.57, dark)] {
-        part(
+        let band_entity = part(
             c,
             root,
             band.clone(),
@@ -850,12 +962,14 @@ fn missile_details(
             Transform::from_xyz(0.0, 0.0, z)
                 .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
         );
+        if let Some(i) = missile { c.entity(band_entity).insert((GenericMissileDecoration(i), Visibility::Inherited)); }
     }
 }
 pub fn setup(
     mut c: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     jet: Query<Entity, With<world::Jet>>,
 ) {
     let gray = materials.add(StandardMaterial {
@@ -930,11 +1044,36 @@ pub fn setup(
     let body = meshes.add(body_mesh());
     let surfaces = meshes.add(surfaces_mesh());
     let rocket = meshes.add(missile_mesh());
+    let radar_store = meshes.add(radar_visual::body(false,true));
+    let aim9x = meshes.add(aim9x::body_mesh(false));
+    let aim9x_assets = aim9x::prepare(&mut meshes,&mut materials,&mut images);
+    let radar_assets = radar_visual::prepare(&mut meshes,&mut materials);
+    c.insert_resource(MissileMeshes { generic: rocket.clone(), aim9x,
+        motors: motor_meshes.clone(), motor_materials: motor_materials.clone(), smoke: smoke.clone() });
     let sphere = meshes.add(Sphere::new(1.0).mesh().uv(20, 12));
     let cube = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
     let cone = meshes.add(Cone::new(0.14, 1.2));
     let seeker = meshes.add(Cone::new(0.077, 0.43));
     let band = meshes.add(Torus::new(0.080, 0.088));
+    c.spawn((
+        Button,
+        CockpitIconsButton,
+        Node {
+            position_type: PositionType::Absolute,
+            right: px(200),
+            top: px(20),
+            padding: UiRect::axes(px(12), px(7)),
+            border_radius: BorderRadius::all(px(5)),
+            display: Display::None,
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.025, 0.065, 0.075, 0.9)),
+        ZIndex(50),
+    )).with_children(|p| {
+        p.spawn((CockpitIconsLabel, Text::new("ALT+H / ENEMY ICONS OFF"),
+            TextFont { font_size: 12., ..default() },
+            TextColor(Color::srgb(0.75, 0.93, 0.91))));
+    });
     for i in 0..MAX_AIRCRAFT {
         let root = c
             .spawn((TargetVisual(i), Transform::default(), Visibility::Hidden))
@@ -1017,16 +1156,11 @@ pub fn setup(
     }
     for i in 0..RENDER_MISSILES {
         let root = c
-            .spawn((MissileVisual(i), Transform::default(), Visibility::Hidden))
+            .spawn((MissileVisual(i), Mesh3d(rocket.clone()), MeshMaterial3d(white.clone()), Transform::default(), Visibility::Hidden))
             .id();
-        part(
-            &mut c,
-            root,
-            rocket.clone(),
-            white.clone(),
-            Transform::default(),
-        );
-        missile_details(&mut c, root, &seeker, &band, &dark, &orange);
+        missile_details(&mut c, root, &seeker, &band, &dark, &orange, Some(i));
+        aim9x::install(&mut c,root,i,&aim9x_assets);
+        radar_visual::install(&mut c,root,i,&radar_assets);
         for (layer, material) in motor_materials.iter().enumerate() {
             let flame = part(
                 &mut c,
@@ -1051,6 +1185,8 @@ pub fn setup(
             bevy::camera::visibility::NoAutoAabb,
         ));
     }
+    c.insert_resource(aim9x_assets);
+    c.insert_resource(radar_assets);
     if let Some(jet) = jet.iter().next() {
         for (i, station) in STATIONS.iter().enumerate() {
             let pylon = part(
@@ -1065,16 +1201,12 @@ pub fn setup(
             let store = part(
                 &mut c,
                 jet,
-                rocket.clone(),
+                if i<2{rocket.clone()}else{radar_store.clone()},
                 white.clone(),
-                Transform::from_translation(station.as_vec3()).with_scale(if i < 2 {
-                    Vec3::ONE
-                } else {
-                    Vec3::new(1.2, 1.2, 1.15)
-                }),
+                Transform::from_translation(station.as_vec3()),
             );
             c.entity(store).insert(StoreVisual(i, false));
-            missile_details(&mut c, store, &seeker, &band, &dark, &orange);
+            if i<2{missile_details(&mut c, store, &seeker, &band, &dark, &orange, None);}
         }
     }
     for i in 0..4 {
@@ -1382,9 +1514,15 @@ pub fn camera_controls(
 pub fn render(
     f: Res<Flight>,
     combat: Res<Combat>,
+    missile_meshes: Res<MissileMeshes>,
+    aim9x_assets: Res<aim9x::VisualAssets>,
+    radar_assets: Res<radar_visual::Assets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     cameras: Query<&GlobalTransform, With<FlightCamera>>,
+    mut decorations: Query<(&GenericMissileDecoration, &mut Visibility), (
+        Without<TargetVisual>, Without<MissileVisual>, Without<MotorVisual>,
+        Without<FlashVisual>, Without<StoreVisual>)>,
     mut targets: Query<
         (&TargetVisual, &mut Transform, &mut Visibility),
         (
@@ -1395,7 +1533,7 @@ pub fn render(
         ),
     >,
     mut missiles: Query<
-        (&MissileVisual, &mut Transform, &mut Visibility),
+        (&MissileVisual, &mut Transform, &mut Visibility, &mut Mesh3d),
         (
             Without<TargetVisual>,
             Without<MotorVisual>,
@@ -1404,7 +1542,7 @@ pub fn render(
         ),
     >,
     mut motors: Query<
-        (&MotorVisual, &mut Transform, &mut Visibility),
+        (&MotorVisual, &mut Transform, &mut Visibility, &mut Mesh3d, &mut MeshMaterial3d<StandardMaterial>),
         (
             Without<TargetVisual>,
             Without<MissileVisual>,
@@ -1437,55 +1575,79 @@ pub fn render(
         ),
     >,
 ) {
+    for (tag, mut visibility) in &mut decorations {
+        let desired = if combat.render_missile(tag.0).is_some_and(|m|m.gnc.aim9x||m.kind==Weapon::Radar) {
+            Visibility::Hidden
+        } else { Visibility::Inherited };
+        if *visibility != desired { *visibility = desired; }
+    }
     for (tag, mut transform, mut visibility) in &mut targets {
         let target = combat
             .targets
             .get(tag.0)
             .filter(|t| combat.active && t.alive);
-        *visibility = if target.is_some() {
+        visibility.set_if_neq(if target.is_some() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         if let Some(t) = target {
-            transform.translation = world::local(t.position, &f);
-            transform.rotation = world::local_rot(t.orientation, &f);
+            let mut desired=*transform;
+            desired.translation = world::local(t.position, &f);
+            desired.rotation = world::local_rot(t.orientation, &f);
+            transform.set_if_neq(desired);
         }
     }
-    for (tag, mut transform, mut visibility) in &mut missiles {
+    for (tag, mut transform, mut visibility, mut mesh) in &mut missiles {
         let missile = combat
             .render_missile(tag.0)
             .filter(|m| combat.active && m.alive);
-        *visibility = if missile.is_some() {
+        visibility.set_if_neq(if missile.is_some() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         if let Some(m) = missile {
-            transform.translation = world::local(m.position, &f);
+            let handle = if m.gnc.aim9x { &missile_meshes.aim9x }
+                else if m.kind==Weapon::Radar {&radar_assets.bodies[usize::from(m.gnc.long_range)]}
+                else { &missile_meshes.generic };
+            if mesh.0 != *handle { mesh.0 = handle.clone(); }
+            let mut desired=*transform;
+            desired.translation = world::local(m.position, &f);
             let nose = if m.gnc.body.length_squared() > 0.5 {
                 m.gnc.body
             } else {
                 m.velocity.normalize()
             };
-            transform.rotation = world::local_rot(facing(nose, m.position.normalize()), &f);
-            transform.scale = if m.kind == Weapon::Radar {
-                Vec3::new(1.2, 1.2, 1.15)
-            } else {
-                Vec3::ONE
-            };
+            desired.rotation = world::local_rot(facing(nose, m.position.normalize()), &f);
+            desired.scale = Vec3::ONE;
+            transform.set_if_neq(desired);
         }
     }
-    for (tag, mut transform, mut visibility) in &mut motors {
+    for (tag, mut transform, mut visibility, mut mesh, mut material) in &mut motors {
         let missile = combat
             .render_missile(tag.0)
             .filter(|m| combat.active && m.alive && m.gnc.thrust > 0.0);
-        *visibility = if missile.is_some() {
+        visibility.set_if_neq(if missile.is_some() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         if let Some(m) = missile {
+            let (mesh_handle,mat_handle)=if m.gnc.aim9x || m.kind==Weapon::Radar {
+                (&aim9x_assets.plumes[tag.1],&aim9x_assets.plume_materials[tag.1])
+            }else{(&missile_meshes.motors[tag.1],&missile_meshes.motor_materials[tag.1])};
+            if mesh.0!=*mesh_handle{mesh.0=mesh_handle.clone();}
+            if material.0!=*mat_handle{material.0=mat_handle.clone();}
+            if m.gnc.aim9x {
+                transform.set_if_neq(aim9x::plume_transform(m,tag.1));
+                continue;
+            }
+            if m.kind==Weapon::Radar {
+                transform.set_if_neq(radar_visual::plume(m,tag.1));
+                continue;
+            }
+            transform.rotation=Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
             let ignition = ((m.age - 0.18) / 0.16).clamp(0.0, 1.0) as f32;
             let pulse = 1.0 + 0.055 * (m.age as f32 * 47.0).sin();
             let length = [1.8, 2.4, 3.0][tag.1] * ignition * pulse;
@@ -1497,21 +1659,21 @@ pub fn render(
     for (tag, mut visibility) in &mut stores {
         let kind = tag.0 / 2;
         let round = tag.0 % 2;
-        *visibility = if combat.active
+        visibility.set_if_neq(if combat.active
             && (tag.1 || round >= 2_usize.saturating_sub(combat.ammo[kind] as usize))
         {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
     }
     for (tag, mut transform, mut visibility, handle, mesh_handle) in &mut flashes {
         let impact = combat.impacts.get(tag.0).filter(|_| combat.active);
-        *visibility = if impact.is_some() {
+        visibility.set_if_neq(if impact.is_some() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         if let Some(i) = impact {
             transform.translation = world::local(i.position, &f);
             transform.scale = Vec3::splat((2.0 + i.age * 13.0) as f32);
@@ -1644,24 +1806,31 @@ pub fn draw(
     let camera = camera.iter().next();
     for (tag, mut node, mut border, mut visibility) in &mut markers {
         *visibility = Visibility::Hidden;
-        if !active || v.index == 3 || v.simple || v.following() || tag.0 == combat.selected {
+        if !target_marker_visible(&combat, &f, &v, tag.0) {
             continue;
         }
         if let (Some(t), Some((camera, transform))) =
             (combat.targets.get(tag.0).filter(|t| t.alive), camera)
         {
+            if v.index == 3 && !guidance::terrain_visible(f.position, t.position) {
+                continue;
+            }
             if let Ok(p) = camera.world_to_viewport(transform, world::local(t.position, &f)) {
                 if let Some(size) = camera.logical_viewport_size() {
-                    if p.x < 20.0 || p.x > size.x - 150.0 || p.y < 165.0 || p.y > size.y - 240.0 {
+                    let top = if v.index == 3 { 45. } else { 165. };
+                    let bottom = if v.index == 3 { 30. } else { 240. };
+                    let (left, right) = if v.index == 3 { (45., 95.) } else { (20., 150.) };
+                    if p.x < left || p.x > size.x - right || p.y < top || p.y > size.y - bottom {
                         continue;
                     }
                 }
                 node.left = px(p.x - 14.0);
                 node.top = px(p.y - 14.0);
                 *border = BorderColor::all(if tag.0 == combat.selected {
-                    Color::NONE
+                    Color::srgb(1.0, 0.73, 0.30)
                 } else {
-                    Color::srgb(0.45, 0.65, 0.72)
+                    if v.index == 3 { Color::srgb(1., 0.48, 0.40) }
+                        else { Color::srgb(0.45, 0.65, 0.72) }
                 });
                 *visibility = Visibility::Inherited;
             }
@@ -1669,7 +1838,7 @@ pub fn draw(
     }
     for (mut text, label, readout) in &mut texts {
         if let Some(label) = label {
-            if label.0 == combat.selected && v.missile_follow.is_none() {
+            if label.0 == combat.selected && v.missile_follow.is_none() && v.index != 3 {
                 text.0.clear();
                 continue;
             }
@@ -1735,7 +1904,7 @@ pub fn draw(
         return;
     }
     for m in combat.missiles_for_draw() {
-        if m.alive {
+        if m.alive && !m.gnc.aim9x && m.kind!=Weapon::Radar {
             for (i, pair) in m.trail.windows(2).enumerate() {
                 let alpha = 0.08 + 0.4 * i as f32 / m.trail.len().max(1) as f32;
                 gizmos.line(
@@ -1766,17 +1935,22 @@ pub fn draw(
 pub fn smoke(
     f: Res<Flight>,
     combat: Res<Combat>,
+    aim9x_assets: Res<aim9x::VisualAssets>,
+    missile_meshes: Res<MissileMeshes>,
+    cameras: Query<&Transform, With<FlightCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut smoke: Query<(&SmokeVisual, &Mesh3d, &mut Visibility, &mut Aabb)>,
+    mut smoke: Query<(&SmokeVisual, &Mesh3d, &mut MeshMaterial3d<StandardMaterial>, &mut Visibility, &mut Aabb)>,
     mut previous: Local<Vec<Option<TrailState>>>,
 ) {
     previous.resize(RENDER_MISSILES, None);
     let basis = world::frame(&f).conjugate();
     let origin = world::render_origin(&f);
-    for (tag, handle, mut visibility, mut bounds) in &mut smoke {
+    let camera=cameras.iter().next().copied().unwrap_or_default();
+    for (tag, handle, mut material, mut visibility, mut bounds) in &mut smoke {
         let missile = combat.render_missile(tag.0).filter(|m| {
             combat.active
                 && m.alive
+                && !(smoke_gpu::enabled() && (m.gnc.aim9x || m.kind == Weapon::Radar))
                 && m.trail.len() > 2
                 && m.age < (if m.gnc.long_range { 24. } else { m.kind.burn() }) + 3.8
         });
@@ -1789,6 +1963,9 @@ pub fn smoke(
             previous[tag.0] = None;
             continue;
         };
+        let detailed=missile.gnc.aim9x||missile.kind==Weapon::Radar;
+        let mat=if detailed{&aim9x_assets.smoke}else{&missile_meshes.smoke};
+        if material.0!=*mat{material.0=mat.clone();}
         let state = TrailState {
             basis,
             origin,
@@ -1798,11 +1975,17 @@ pub fn smoke(
             powered: missile.gnc.thrust > 0.,
             points: missile.trail.len(),
             generation: combat.generation,
+            camera: detailed.then_some((camera.translation,camera.rotation)),
         };
         if previous[tag.0] == Some(state) {
             continue;
         }
         if let Some(asset) = meshes.get_mut(&handle.0) {
+            if detailed {
+                *bounds=aim9x::write_smoke(asset,missile,basis,origin,camera.translation,camera.rotation*Vec3::Y);
+                previous[tag.0]=Some(state);
+                continue;
+            }
             let tail = state
                 .powered
                 .then(|| missile.position - missile.velocity.normalize() * 1.6);
@@ -1821,6 +2004,7 @@ pub(crate) struct TrailState {
     powered: bool,
     points: usize,
     generation: u64,
+    camera: Option<(Vec3,Quat)>,
 }
 fn write_smoke_mesh(
     asset: &mut Mesh,
@@ -1924,7 +2108,7 @@ pub fn capture_camera(
         return;
     };
     let focus = match mode {
-        "combat-launch" | "combat-flight" => combat
+        "combat-launch" | "combat-flight" | "combat-vector" => combat
             .missiles
             .first()
             .map(|m| (m.position, m.velocity.normalize(), 12.0)),
@@ -1941,8 +2125,12 @@ pub fn capture_camera(
     if let Some((center, forward, distance)) = focus {
         let up = center.normalize();
         let right = forward.cross(up).normalize();
-        let eye = center + right * distance + forward * (distance * 0.45) + up * (distance * 0.23);
-        let look = center - forward * if mode == "combat-flight" { 7.0 } else { 1.0 };
+        let close=std::env::var("NORD_MISSILE_CLOSE").ok();
+        let eye = if close.as_deref()==Some("rear") { center-forward*3.7+right*1.0+up*0.4 }
+            else if close.as_deref()==Some("detail"){center+right*4.0+forward*0.7+up*0.7}
+            else if close.as_deref()==Some("plume"){center+right*5.0-forward*1.5+up*0.6}
+            else{center + right * distance + forward * (distance * 0.45) + up * (distance * 0.23)};
+        let look = center - forward * if close.is_some(){0.0}else if mode == "combat-flight" { 7.0 } else { 1.0 };
         for mut transform in &mut cameras {
             *transform = Transform::from_translation(world::local(eye, &f)).looking_at(
                 world::local(look, &f),
@@ -1956,10 +2144,110 @@ pub fn capture_camera(
 mod tests {
     use super::*;
     #[test]
+    fn cockpit_icons_include_selected_enemies_in_simple_and_bvr_views() {
+        let f = flight();
+        let mut c = Combat::default();
+        c.start(&f, 1);
+        let mut v = ViewState { index: 3, simple: true, ..default() };
+        assert!(!target_marker_visible(&c, &f, &v, c.selected));
+        v.cockpit_enemy_icons = true;
+        assert!(target_marker_visible(&c, &f, &v, c.selected));
+        c.targets[1].alive = false;
+        assert!(!target_marker_visible(&c, &f, &v, 1));
+        v.map = true;
+        assert!(!target_marker_visible(&c, &f, &v, 0));
+        v.map = false;
+        v.follow_aircraft(0);
+        assert!(!target_marker_visible(&c, &f, &v, 0));
+        v.restore_camera();
+        let mut menu = bvr::Menu::default();
+        menu.formation = 1;
+        bvr::start(&mut c, &f, 1, &menu);
+        assert!(target_marker_visible(&c, &f, &v, 0));
+        assert!(!target_marker_visible(&c, &f, &v, 2));
+    }
+    #[test]
+    fn cockpit_icon_button_toggles_once_per_click_and_shortcut_works_paused() {
+        let mut app = App::new();
+        let mut f = flight();
+        f.paused = true;
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(f)
+            .insert_resource(ViewState { index: 3, ..default() })
+            .add_systems(Update, cockpit_icon_controls);
+        let button = app.world_mut().spawn((CockpitIconsButton, Interaction::Pressed,
+            Node::default(), BackgroundColor::default())).id();
+        app.update();
+        assert!(app.world().resource::<ViewState>().cockpit_enemy_icons);
+        app.update();
+        assert!(app.world().resource::<ViewState>().cockpit_enemy_icons);
+        *app.world_mut().get_mut::<Interaction>(button).unwrap() = Interaction::None;
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.press(KeyCode::AltLeft);
+        keys.press(KeyCode::KeyH);
+        app.update();
+        assert!(!app.world().resource::<ViewState>().cockpit_enemy_icons);
+    }
+    #[test]
+    fn f22_launch_uses_aim9x_and_wider_acquisition_cone() {
+        for a in crate::aircraft::Aircraft::ALL {
+            let mut f = flight();
+            crate::aircraft::select(&mut f, a);
+            f.systems.bays = 1.0;
+            let mut c = Combat::default();
+            c.start(&f, 1);
+            c.lock = Weapon::Heat.lock_time();
+            assert!(c.fire(&f));
+            assert_eq!(c.missiles[0].gnc.aim9x, a == crate::aircraft::Aircraft::F22);
+            c.targets[0].position = f.position + f.orientation * DVec3::new(1500.0, 0.0, -1500.0);
+            assert_eq!(c.cue(&f).is_ok(), a == crate::aircraft::Aircraft::F22);
+        }
+    }
+    #[test]
+    fn aim9x_mesh_matches_public_envelope() {
+        use bevy::mesh::VertexAttributeValues;
+        let mesh = aim9x_mesh();
+        let Some(VertexAttributeValues::Float32x3(vertices)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else { panic!("missing vertices") };
+        let min_z = vertices.iter().map(|p|p[2]).fold(f32::INFINITY, f32::min);
+        let max_z = vertices.iter().map(|p|p[2]).fold(f32::NEG_INFINITY, f32::max);
+        let span = vertices.iter().map(|p|p[0].abs().max(p[1].abs())).fold(0_f32, f32::max)*2.0;
+        assert!((max_z-min_z-3.02).abs()<1e-5);
+        assert!((span-0.45).abs()<1e-5);
+    }
+    #[test]
     fn fleet_inventory_launches_every_station_without_two_round_assumption(){
-        for a in crate::aircraft::Aircraft::ALL {let mut f=flight();crate::aircraft::select(&mut f,a);f.systems.bays=1.;let mut c=Combat::default();c.start(&f,1);c.ammo=a.spec().ammo;
-            for kind in [Weapon::Heat,Weapon::Radar]{c.weapon=kind;let n=c.ammo[kind.index()];for _ in 0..n {c.lock=kind.lock_time();c.clock+=1.;assert!(c.fire(&f),"{a:?} {kind:?}: {}",c.message);let m=c.missiles.last().unwrap();assert!(m.position.distance(f.position)<a.spec().length);assert!(m.position.is_finite());}assert!(!c.fire(&f));}
+        for a in crate::aircraft::Aircraft::ALL {let mut f=flight();crate::aircraft::select(&mut f,a);f.systems.bays=1.;let mut c=Combat::default();c.start(&f,1);
+            assert_eq!(c.ammo,a.spec().ammo);
+            for kind in [Weapon::Heat,Weapon::Radar]{c.weapon=kind;let n=c.ammo[kind.index()];for _ in 0..n {c.lock=kind.lock_time();c.clock+=1.;assert!(c.fire(&f),"{a:?} {kind:?}: {}",c.message);let m=c.missiles.last().unwrap();assert!(m.position.distance(f.position)<a.spec().length);assert!(m.position.is_finite());let index=c.missiles.len()-1;assert!(std::ptr::eq(c.render_missile(index).expect("every launch must be visible"),m));}assert!(!c.fire(&f));}
             assert_eq!(c.ammo,[0,0]);assert_eq!(c.missiles.len(),(a.spec().ammo[0]+a.spec().ammo[1])as usize);assert!(c.targets.iter().all(|t|t.dynamics.aircraft==crate::aircraft::Aircraft::Gripen));
+        }
+    }
+    #[test]
+    fn f22_air_combat_renders_all_six_radar_launches_and_preserves_enemy_slots() {
+        let mut f = flight();
+        crate::aircraft::select(&mut f, crate::aircraft::Aircraft::F22);
+        let mut c = Combat::default();
+        for scenario in 5..=7 {
+            // Restart at the same generation: inventory belongs to scenario
+            // initialization, not a later hangar generation check.
+            c.start_air(&f, 1, scenario);
+            assert_eq!(c.ammo, [2, 6]);
+            assert_eq!(c.fight.as_ref().unwrap().gun, f.aircraft.spec().gun);
+            c.targets[0].position = f.position + f.forward() * 3500.;
+            for _ in 0..6 {
+                c.lock = Weapon::Radar.lock_time();
+                c.clock += 1.;
+                assert!(c.fire(&f), "{}", c.message);
+                let index = c.missiles.len() - 1;
+                assert!(std::ptr::eq(c.render_missile(index).unwrap(), &c.missiles[index]));
+            }
+            c.fight.as_mut().unwrap().enemy_missiles.push(c.missiles[0].clone());
+            assert!(std::ptr::eq(c.render_missile(MISSILE_COUNT).unwrap(),
+                &c.fight.as_ref().unwrap().enemy_missiles[0]));
+            assert!(!c.fire(&f));
+            assert_eq!(c.ammo, [2, 0]);
+            assert_eq!(c.fired, 6);
         }
     }
     #[test]

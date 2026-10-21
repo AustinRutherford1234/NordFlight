@@ -631,6 +631,7 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
     let custom = f.aircraft != crate::aircraft::Aircraft::Gripen;
     let wing_area = spec.area;
     let previous = f.position;
+    let previous_velocity = f.velocity;
     let previous_rotation = f.orientation;
     if f.vehicle == Vehicle::Gripen {
         if custom {f.systems.engines=f.damage.engines;f.systems.lift_fan=f.damage.lift_fan;}
@@ -822,7 +823,7 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
         crate::combat::damage::aero(&f.damage, b, q, coefficients.lift);
     aero += f.orientation * damage_force;
     acc += f.orientation * damage_force / f.mass();
-    f.g_load = aero.dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
+    f.g_load = (aero + thrust).dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
     let natural = DVec3::new(
         q * wing_area * chord * coefficients.pitch,
         q * wing_area * span * coefficients.yaw,
@@ -895,7 +896,7 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
         .fold(0.0, f64::max);
     aero += surface_force;
     acc += surface_force / f.mass();
-    f.g_load = aero.dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
+    f.g_load = (aero + thrust).dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
     let torque = natural + panels.moment + engine_moment - crate::aircraft::mass_center(f).cross(f.orientation.conjugate()*(aero+thrust));
     // Publish the total loads so the aerodynamic overlay includes moving panels.
     if q * wing_area > 1e-6 {
@@ -924,7 +925,7 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
         f.aero_coeff.roll = torque.z / (q * wing_area * span);
     }
     let angular_acc = (torque - f.rates.cross(inertia * f.rates)) / inertia;
-    f.g_load = aero.dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
+    f.g_load = (aero + thrust).dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
     f.rates += angular_acc * dt;
     f.orientation = (f.orientation * DQuat::from_scaled_axis(f.rates * dt)).normalize();
     if f.g_load.abs() > spec.g+0.5 {
@@ -1010,6 +1011,11 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
         f.landed = false;
         f.gear_compression = [0.0; 3];
     }
+    // A normal accelerometer measures specific force along the aircraft's up
+    // axis, not only aerodynamic lift or total coordinate acceleration. Include
+    // vectored thrust, suspension, tire and contact-constraint loads, but exclude
+    // gravitational and rotating-reference-frame accelerations. Use this step's axis
+    // rather than the attitude already advanced above.
     f.velocity += acc * dt;
     f.position += f.velocity * dt;
     // A hard lower bound backs up the compliant landing-gear spring.
@@ -1020,6 +1026,8 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
             f.velocity -= up * vn * 0.8;
         }
     }
+    let measured_acceleration = if dt > 0. { (f.velocity - previous_velocity) / dt } else { acc };
+    f.g_load = normal_load(measured_acceleration - gravity - rotational - tidal, previous_rotation);
     crate::collision::check_airframe(f, previous, previous_rotation);
     if !f.landed && !f.crashed {
         let status = if f.autopilot {
@@ -1038,9 +1046,57 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
     }
 }
 
+fn normal_load(specific_acceleration: DVec3, orientation: DQuat) -> f64 {
+    specific_acceleration.dot(orientation * DVec3::Y) / 9.80665
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn normal_accelerometer_is_signed_body_axis_specific_force() {
+        assert_eq!(normal_load(DVec3::ZERO, DQuat::IDENTITY), 0.);
+        assert!((normal_load(DVec3::Y * 9.80665, DQuat::IDENTITY) - 1.).abs() < 1e-12);
+        assert!((normal_load(-DVec3::Y * 19.6133, DQuat::IDENTITY) + 2.).abs() < 1e-12);
+        let attitude = DQuat::from_rotation_z(0.7) * DQuat::from_rotation_x(-0.3);
+        let force = attitude * DVec3::new(200., 3. * 9.80665, -100.);
+        assert!((normal_load(force, attitude) - 3.).abs() < 1e-12);
+    }
+    #[test]
+    fn parked_aircraft_g_meter_includes_wheel_support() {
+        let mut f = Flight::runway();
+        let e = Environment { wind_enabled: false, ..default() };
+        let mut sum = 0.;
+        for i in 0..1200 {
+            simulate(&mut f, &e, 1. / 120.);
+            assert!(!f.crashed);
+            if i >= 1080 { sum += f.g_load; }
+        }
+        assert!((sum / 120. - 1.).abs() < 0.04, "parked G {}", sum / 120.);
+    }
+    #[test]
+    fn g_meter_includes_actual_vectored_engine_normal_force() {
+        let mut powered = crate::combat::flight();
+        crate::aircraft::select(&mut powered, crate::aircraft::Aircraft::F22);
+        powered.position = surface_point(0., 0., 6000.);
+        powered.orientation = DQuat::IDENTITY;
+        powered.velocity = -DVec3::Z * 200.;
+        powered.assist = false;
+        powered.infinite_fuel = true;
+        powered.spool = 1.;
+        powered.throttle = 1.;
+        powered.surface = -DVec3::X * 0.5;
+        powered.controls = powered.surface;
+        powered.systems.nozzle = [10_f64.to_radians(); 2];
+        let mut unpowered = powered.clone();
+        unpowered.engine = false;
+        let e = Environment { wind_enabled: false, ..default() };
+        simulate(&mut powered, &e, 1. / 120.);
+        simulate(&mut unpowered, &e, 1. / 120.);
+        let expected = powered.thrust * powered.systems.nozzle[0].sin() / (powered.mass() * 9.80665);
+        assert!(expected > 0.1);
+        assert!((powered.g_load - unpowered.g_load - expected).abs() < 1e-8);
+    }
     #[test]
     fn exact_solar_caches_follow_direct_phase_edits_and_alternating_environments() {
         let bits = |v: DVec3| v.to_array().map(f64::to_bits);

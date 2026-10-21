@@ -17,6 +17,9 @@ mod control_surfaces;
 mod display_upload;
 mod earth;
 mod earth_gpu;
+mod terrain_ready;
+mod mesh_reuse;
+mod render_batch;
 mod flight_study;
 mod gear;
 mod instruments;
@@ -27,6 +30,7 @@ mod optimization_study;
 mod orbit;
 mod performance;
 mod physics;
+mod plume_motion;
 mod propulsion;
 mod render_cache;
 mod skin_damage;
@@ -63,6 +67,7 @@ struct ViewState {
     collision_debug: bool,
     help: bool,
     simple: bool,
+    cockpit_enemy_icons: bool,
     guide: bool,
     left_camera_drag: bool,
     benchmark_msaa: bool,
@@ -96,6 +101,7 @@ impl Default for ViewState {
             collision_debug: false,
             help: true,
             simple: false,
+            cockpit_enemy_icons: false,
             guide: true,
             left_camera_drag: false,
             benchmark_msaa: false,
@@ -209,6 +215,8 @@ struct SimClock {
     accumulator: f64,
 }
 
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FlightStage { Controls, Simulation, World, Camera, Presentation, Interface, Capture }
 fn main() {
     if std::env::args().any(|a|a=="--export-f22-nozzle"){aircraft::visual::raptor_detail::export_nozzle_preview();return;}
     if std::env::args().any(|a|a=="--study-f22"){aircraft::raptor::study();return;}
@@ -815,6 +823,7 @@ fn main() {
                 "combat-cockpit"
                     | "air-cockpit"
                     | "air-hud-cockpit"
+                    | "air-hud-cockpit-icons"
                     | "air-hud-cockpit-simple"
                     | "air-component-cockpit-simple"
             )
@@ -822,6 +831,7 @@ fn main() {
             initial_view.index = 3;
             initial_view.yaw = 0.0;
             initial_view.pitch = -0.10;
+            initial_view.cockpit_enemy_icons = preview.as_deref() == Some("air-hud-cockpit-icons");
         }
         if matches!(
             preview.as_deref(),
@@ -936,11 +946,28 @@ fn main() {
     planner.capture_context(&initial_flight, &initial_view);
     if let Some(a)=std::env::var("NORD_AIRCRAFT").ok().and_then(|s|aircraft::Aircraft::parse(&s)) {
         aircraft::select(&mut initial_flight,a);
+        // Prepare weapon captures after selecting the actual launcher; otherwise
+        // the prebuilt missiles still belong to the default Gripen loadout.
+        if let Some(mode) = preview.as_deref().filter(|m| m.starts_with("combat-")) {
+            let paused = initial_flight.paused;
+            initial_flight.paused = false;
+            combat.start(&initial_flight, initial_view.generation);
+            combat.prepare_capture(&initial_flight, mode);
+            initial_flight.paused = paused;
+        }
         if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
             initial_view.help=false;initial_view.map=false;initial_view.zoom=0.65;initial_view.yaw=2.30;initial_view.pitch=-0.30;initial_view.index=0;
             if a==aircraft::Aircraft::F22 && mode!="ground" && mode!="gear"{initial_flight.gear=false;initial_flight.gear_extension=0.;initial_flight.flaps=0.;}
             if mode=="cockpit"{initial_view.index=3;initial_view.yaw=0.;initial_view.pitch=-0.13;initial_view.zoom=1.;}
             if mode=="cockpit" && a==aircraft::Aircraft::F22{initial_view.pitch=-0.22;}
+            if mode.starts_with("cockpit-") {
+                initial_view.index=3;initial_view.zoom=1.;initial_view.yaw=0.;
+                initial_view.simple=true;
+                initial_view.pitch=match mode.as_str() {"cockpit-floor"=>-1.12,"cockpit-seat"=>-0.72,_=>-0.62};
+                if mode=="cockpit-seat"{initial_view.yaw=std::f32::consts::PI;}
+                if mode=="cockpit-right"{initial_view.yaw=-0.38;}
+                if mode=="cockpit-left"{initial_view.yaw=0.58;}
+            }
             if mode=="top"{initial_view.yaw=2.8;initial_view.pitch=-1.1;}
             if mode=="rear"{initial_view.yaw=0.35;initial_view.pitch=-0.12;}
             if mode=="rear-off"{initial_view.yaw=0.35;initial_view.pitch=-0.12;initial_flight.engine=false;initial_flight.spool=0.;initial_flight.thrust=0.;}
@@ -1058,6 +1085,7 @@ fn main() {
                         mode: if std::env::var_os("NORD_BENCH_FULLSCREEN").is_some() {
                             bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Primary)
                         } else { bevy::window::WindowMode::Windowed },
+                        desired_maximum_frame_latency: std::env::var("NORD_FRAME_LATENCY").ok().and_then(|s|s.parse::<u32>().ok()).filter(|v|matches!(v,1|2)).and_then(std::num::NonZeroU32::new),
                         present_mode: match std::env::var("NORD_PRESENT_MODE").as_deref() {
                             Ok("no-vsync") => PresentMode::AutoNoVsync,
                             _ => PresentMode::AutoVsync,
@@ -1070,6 +1098,9 @@ fn main() {
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_plugins(performance::PerformancePlugin)
         .add_plugins(earth_gpu::EarthGpuPlugin)
+        .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
+        .add_plugins(terrain_ready::TerrainReadyPlugin)
+        .add_systems(PostStartup, (mesh_reuse::share,render_batch::build).chain())
         .add_plugins(sound::FlightAudioPlugin)
         .add_plugins(display_upload::DisplayUploadPlugin)
         .insert_resource(atmospheric_render::TransitionRun::configured())
@@ -1099,16 +1130,18 @@ fn main() {
             )
                 .chain(),
         )
+        .configure_sets(Update, (FlightStage::Controls, FlightStage::Simulation, FlightStage::World, FlightStage::Camera, FlightStage::Presentation, FlightStage::Interface, FlightStage::Capture).chain())
         .add_systems(
             Update,
             (
-                start_screen::controls,
+                (start_screen::controls,
                 (
                     (apply_font,hangar::controls.run_if(start_screen::flight_controls),input.run_if(start_screen::flight_controls)).chain(),
                     warp::controls.run_if(start_screen::flight_controls),
                     (map::controls, lunar::controls, map::guidance).chain().run_if(start_screen::flight_controls),
                     scenario_buttons.run_if(start_screen::flight_controls),
                     view_controls.run_if(start_screen::flight_controls),
+                    combat::cockpit_icon_controls.run_if(start_screen::flight_controls),
                     instruments::buttons.run_if(start_screen::flight_controls),
                     (
                         combat::bvr::controls,
@@ -1122,7 +1155,9 @@ fn main() {
                     combat::dogfight::buttons.run_if(start_screen::flight_controls),
                     sound::ui.run_if(start_screen::flight_controls),
                     (benchmark::exercise, atmospheric_render::exercise).chain(),
-                    step,
+                ).chain()).chain().in_set(FlightStage::Controls),
+                    step.in_set(FlightStage::Simulation),
+                (
                     combat::camera_controls.run_if(start_screen::flight_controls),
                     (
                         terrain::update,
@@ -1134,18 +1169,20 @@ fn main() {
                         update_stars,
                         update_destruction,
                     ),
+                ).chain().in_set(FlightStage::World),
+                (
                     (update_camera, atmospheric_render::synchronize, earth::update).chain(),
                     combat::capture_camera,
                     sound::update,
                     sound::diagnostics,
                     draw_guidance,
                 )
-                    .chain(),
+                    .chain().in_set(FlightStage::Camera),
                 (
                     (gear::update,aircraft::visual::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
-                    combat::render,
+                    (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
                     combat::smoke,
                     aero_fx::update,
                     update_hud,
@@ -1173,13 +1210,13 @@ fn main() {
                         combat::bvr::cockpit_radar::visuals,
                     )
                         .chain(),
-                ),
-                declutter_ui,
+                ).in_set(FlightStage::Presentation),
+                (declutter_ui,
                 start_screen::ui,
-                start_screen::presentation,
-                (capture_visual_check, atmospheric_render::capture, benchmark_render).chain(),
+                start_screen::presentation).chain().in_set(FlightStage::Interface),
+                (capture_visual_check, atmospheric_render::capture, benchmark_render).chain().in_set(FlightStage::Capture),
             )
-                .chain(),
+                ,
         )
         .run();
 }
@@ -1268,7 +1305,7 @@ fn setup_view(
     atmosphere.bottom_radius = RADIUS as f32;
     atmosphere.top_radius = (RADIUS + 100000.0) as f32;
     c.insert_resource(SkyProfile(atmosphere.clone()));
-    c.spawn((
+    let camera=c.spawn((
         Camera3d::default(),
         FlightCamera,
         bevy::ui::IsDefaultUiCamera,
@@ -1300,7 +1337,12 @@ fn setup_view(
         },
         Msaa::Off,
         Fxaa::default(),
-    ));
+    )).id();
+    // Developer comparison: reject hidden opaque fragments before their full
+    // material shaders, without changing geometry, MSAA or lighting quality.
+    if std::env::var_os("NORD_TERRAIN_DEPTH_PREPASS").is_some() {
+        c.entity(camera).insert(bevy::core_pipeline::prepass::DepthPrepass);
+    }
     c.spawn((
         DirectionalLight {
             color: Color::WHITE,
@@ -1746,13 +1788,7 @@ fn input(
         v.index = 10;
     }
     if keys.just_pressed(KeyCode::KeyR) {
-        let id = if (4..=10).contains(&v.scenario) {
-            v.scenario
-        } else if f.vehicle == Vehicle::Spacecraft {
-            3
-        } else {
-            2
-        };
+        let id = v.scenario;
         reset(&mut f, id, &mut v);
     }
     if keys.just_pressed(KeyCode::KeyP) || keys.just_pressed(KeyCode::Escape) {
@@ -1782,7 +1818,7 @@ fn input(
             v.zoom = 1.0;
         }
     }
-    if keys.just_pressed(KeyCode::KeyH) {
+    if keys.just_pressed(KeyCode::KeyH) && !(keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)) {
         v.help = !v.help;
     }
     if keys.just_pressed(KeyCode::F1) {
@@ -2779,6 +2815,40 @@ fn capture_visual_check(
 #[cfg(test)]
 mod camera_input_tests {
     use super::*;
+    #[test]
+    fn restart_key_preserves_scenario_and_selected_aircraft() {
+        for aircraft in [aircraft::Aircraft::Gripen, aircraft::Aircraft::F22] {
+            for scenario in 0..=10 {
+                let mut app = scene(false);
+                let mut expected = Flight::runway();
+                expected.aircraft = aircraft;
+                let mut view = ViewState::default();
+                reset(&mut expected, scenario, &mut view);
+                app.insert_resource(expected.clone()).insert_resource(view);
+                {
+                    let mut f = app.world_mut().resource_mut::<Flight>();
+                    f.elapsed = 42.;
+                    f.crashed = true;
+                    f.position += DVec3::splat(100.);
+                    f.fuel = 0.;
+                }
+                app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyR);
+                app.update();
+                let view = app.world().resource::<ViewState>();
+                let f = app.world().resource::<Flight>();
+                assert_eq!(view.scenario, scenario, "R changed scenario {scenario}");
+                assert_eq!(view.generation, 2);
+                assert_eq!(f.vehicle, expected.vehicle);
+                assert_eq!(f.aircraft, aircraft);
+                assert_eq!(f.position, expected.position);
+                assert_eq!(f.velocity, expected.velocity);
+                assert_eq!(f.engine, expected.engine);
+                assert_eq!(f.fuel, expected.fuel);
+                assert_eq!(f.elapsed, 0.);
+                assert!(!f.crashed);
+            }
+        }
+    }
     #[test]
     fn simplified_view_toggles_when_paused_and_does_not_change_camera_or_help() {
         let mut app = scene(false);

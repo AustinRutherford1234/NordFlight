@@ -73,6 +73,7 @@ fn fragment(
 
 #ifndef PREPASS_PIPELINE
 #ifndef NORD_REFERENCE_LIGHTS
+#ifdef NORD_ZERO_ALPHA_DISCARD
     // Blend-mode output is premultiplied by alpha below. After decals, exact
     // zero-alpha pixels cannot change colour, alpha or depth. Avoid lighting
     // the empty portion of cockpit HUD/display textures. Do not apply this to
@@ -82,6 +83,7 @@ fn fragment(
             && pbr_input.material.base_color.a == 0.0) {
         discard;
     }
+#endif
 #endif
 #endif
 

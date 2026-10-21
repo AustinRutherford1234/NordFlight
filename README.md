@@ -16,6 +16,10 @@ A playable Rust / Bevy flight game with a selectable Gripen, Su-27SM, F-35B, F-2
 
 The F-22 has received a dedicated [exterior, cockpit and flight-model refinement](docs/F22_RAPTOR.md), including controlled low-speed high-AoA flight with FBW, swept surface hinges and optional external carriage. Its aerodynamic and control-law parameters remain transparent gameplay estimates.
 
+The F-22 alone carries the distinct [AIM-9X infrared missile](docs/AIM9X.md), with public dimensions/mass, high off-boresight acquisition, powered thrust-vector steering and improved flare rejection. Select it with **O** and launch with **Space**. Classified performance limits are represented by documented simulation estimates.
+
+Radar weapons now use a detailed [AIM-120D-style exterior](docs/RADAR_MISSILE_VISUALS.md), with clipped solid wings, controller-driven tail fins, a ceramic radome, recessed exhaust and textured smoke. This is a visual refinement of the existing radar/BVR profiles; their flight and seeker tuning is unchanged.
+
 Its [differential nozzle control](docs/F22_DIFFERENTIAL_TVC.md) now contributes roll torque through separate engine thrust forces, with 30% stronger stabilator loads and matching FBW allocation.
 
 The [roll-control correction](docs/F22_ROLL_CONTROL_FIX.md) aligns nozzle, stabilator and wing-surface directions and increases low-AoA FBW roll response, with Q/E regression coverage across low speed and cruise.
@@ -55,6 +59,10 @@ Targets, seeker dwell and missile flight use the same configured simulation time
 ## Air combat
 
 Press **F1**, or click **SIMPLIFY VIEW**, to toggle a clear flight view. It hides the toolbar, large weapon/system panels, help text and external instrument panels while retaining aiming cues, essential flight data, a compact ammunition strip and incoming-missile warnings. **H** remains the help shortcut. The cockpit's physical instruments remain available; the combiner uses a less crowded pitch ladder. F1 also works while paused, and the map retains its controls.
+
+In aircraft cockpits, click **ENEMY ICONS** or press **Option/Alt + H** to toggle floating enemy brackets and range labels across the outside view, beyond the HUD combiner. The selected enemy is amber; other enemies are red. This optional visual aid also works in simplified view and BVR, excludes allies and destroyed aircraft, and hides targets obscured by terrain. It starts disabled and remembers your choice while switching cameras.
+
+The F-22 can sustain **Mach 1.5 without afterburner** at high altitude: use up to **88% throttle** for military power. Full afterburner is tuned for approximately **Mach 2.5 at 15 km / 49,200 ft**, gear retracted, bays closed and the standard internal loadout. This is a simulator performance target; fuel mass, altitude, external stores and damage change the available margin. The G-meter reports signed normal specific acceleration, including thrust-vectoring and landing-gear support, with approximately 1 G when parked after the suspension settles.
 
 The selected target has a circular seeker-lock progress cue, range and closing speed (`Vc`; positive means closing). An amber edge arrow points toward a target outside the clear aiming area and identifies targets behind you. In external views, the small cannon circle shows the required aim direction; align the gun cross with it and hold **U**. In the **cockpit**, a small dim ring shows gun direction and a larger bright ring with a central dot is the computed gun director: **put the large ring on the actual target aircraft**, then hold **U**. It accounts for inherited aircraft velocity, gravity and constant target velocity; a moving range tick, range/flight-time text and a `SHOOT` cue help judge the shot. Both rings remain in simplified cockpit view. No valid solution is shown for destroyed, rearward, unreachable or out-of-range targets. Cannon rounds leave the aircraft at **4,250 m/s** (the requested fivefold gameplay increase); both sides and the aiming cues use this speed. The director cannot guarantee hits against an accelerating or evading target.
 

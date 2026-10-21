@@ -954,16 +954,17 @@ pub fn update_world(
             }
             effect.last_expansion = expansion;
         }
-        let pulse = 1.0 + 0.035 * (e.time as f32 * 29.0 + effect.layer as f32 * 1.7).sin();
+        let motion = crate::plume_motion::sample(f.elapsed, effect.layer as u32);
         let length = if effect.vehicle == Vehicle::Gripen {
             // A short dry-engine plume remains visible below the afterburner range.
-            (0.20 + 0.18 * power + 0.24 * burner) * pulse
+            (0.20 + 0.18 * power + 0.24 * burner) * motion.length
         } else {
-            (0.12 + 1.05 * power) * pulse
+            (0.12 + 1.05 * power) * motion.length
         };
         let opening = nozzle_opening(&f, effect.vehicle);
-        t.scale = Vec3::new(opening, length, opening);
-        t.translation.z = effect.exit + 3.0 * length;
+        t.scale = Vec3::new(opening * motion.width, length, opening * motion.width);
+        t.rotation = motion.bend * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+        t.translation = Vec3::Z * effect.exit + motion.bend * (Vec3::Z * (3.0 * length));
     }
 }
 
@@ -2274,7 +2275,9 @@ mod visual_contract_tests {
             for (e, v, t) in jet {
                 assert_eq!(*v, Visibility::Inherited);
                 assert!(t.scale.y > 0.0);
-                assert!((t.translation.z - 3.0 * t.scale.y - e.exit).abs() < 1e-5);
+                // The fluctuating jet may bend; its upstream centre must still
+                // coincide with the nozzle in all three axes.
+                assert!(t.transform_point(Vec3::new(0., -3., 0.)).distance(Vec3::Z * e.exit) < 1e-5);
             }
         }
         app.world_mut().resource_mut::<Flight>().thrust = 0.0;
@@ -2285,6 +2288,29 @@ mod visual_contract_tests {
                 .iter(app.world())
                 .all(|(_, v)| *v == Visibility::Hidden)
         );
+    }
+    #[test]
+    fn plume_motion_preserves_nozzle_anchor_and_freezes_with_simulation_time() {
+        let mut app = scene();
+        {
+            let mut f = app.world_mut().resource_mut::<Flight>();
+            f.engine = true; f.spool = 1.; f.throttle = 1.; f.thrust = 80500.;
+            f.paused = true;
+        }
+        let mut poses = Vec::new();
+        for elapsed in [0., 0.037, 0.037] {
+            app.world_mut().resource_mut::<Flight>().elapsed = elapsed;
+            app.world_mut().resource_mut::<Environment>().time += 10.;
+            app.update();
+            let mut query = app.world_mut().query::<(&Exhaust, &Transform)>();
+            let (effect, transform) = query.iter(app.world())
+                .find(|(e, _)| e.vehicle == Vehicle::Gripen && e.layer == 0).unwrap();
+            assert!(transform.transform_point(Vec3::new(0., -3., 0.)).distance(Vec3::Z * effect.exit) < 1e-5);
+            poses.push(*transform);
+        }
+        assert_ne!(poses[0], poses[1]);
+        assert_eq!(poses[1], poses[2]);
+        assert_eq!(app.world().resource::<Flight>().thrust, 80500.);
     }
     #[test]
     fn daytime_afterburner_is_brighter_without_changing_thrust() {

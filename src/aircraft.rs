@@ -109,7 +109,7 @@ impl Aircraft {
                 inertia: DVec3::new(220000., 290000., 65000.),
                 g: 9.,
                 alpha: 1.05,
-                limit_mach: 2.3,
+                limit_mach: 2.55,
                 gun: 480,
                 gun_interval: 0.02,
                 ammo: [2, 6],
@@ -387,7 +387,6 @@ pub struct Systems {
     pub stores: [bool; 10],
     pub bays: f64,
     pub bays_target: bool,
-    pub weapon_generation: u64,
 }
 impl Default for Systems {
     fn default() -> Self {
@@ -403,7 +402,6 @@ impl Default for Systems {
             stores: [true; 10],
             bays: 0.,
             bays_target: false,
-            weapon_generation: u64::MAX,
         }
     }
 }
@@ -496,13 +494,25 @@ pub fn stores_mass(f: &Flight) -> f64 {
             +if f.aircraft==Aircraft::F22&&f.systems.external_stores{70.}else{0.}
     }
 }
-fn store_unit_mass(a:Aircraft,i:usize)->f64{if a==Aircraft::F22{if i<2{85.}else{152.}}else{160.}}
+fn store_unit_mass(a:Aircraft,i:usize)->f64{if a==Aircraft::F22{if i<2{84.37}else{152.}}else{160.}}
 pub fn jet_output(a: Aircraft, power: f64, rho: f64, mach: f64) -> (f64, f64) {
     let s = a.spec();
     let lapse = (rho / 1.225).max(0.).powf(0.62) * (1. + 0.32 * mach * mach)
         / (1. + 0.16 * mach * mach * mach);
-    let wet = (s.wet - s.dry) * ((power - 0.88) / 0.12).clamp(0., 1.) * lapse;
-    ((s.dry * (power / 0.88).clamp(0., 1.)) * lapse + wet, wet)
+    let smooth = |a: f64, b: f64| {
+        let t = ((mach - a) / (b - a)).clamp(0., 1.);
+        t * t * (3. - 2. * t)
+    };
+    // F-22 installed-engine tuning: retain military-power supercruise and
+    // stronger augmented thrust with inlet ram compression. The high-Mach
+    // recovery loss produces a powered-flight ceiling rather than clamping
+    // velocity. These are game-envelope parameters, not an F119 engine deck.
+    let (augmentation, recovery) = if a == Aircraft::F22 {
+        (1. + 3.4 * smooth(0.9, 2.5), 1. - 0.9 * smooth(2.5, 2.7))
+    } else { (1., 1.) };
+    let wet = (s.wet - s.dry) * ((power - 0.88) / 0.12).clamp(0., 1.) * lapse
+        * augmentation * recovery;
+    ((s.dry * (power / 0.88).clamp(0., 1.)) * lapse * recovery + wet, wet)
 }
 pub fn mass_center(f: &Flight) -> DVec3 {
     if f.aircraft == Aircraft::Gripen {
@@ -584,7 +594,9 @@ pub fn missile_name(a: Aircraft, kind: crate::combat::Weapon) -> &'static str {
         (Aircraft::Su27, crate::combat::Weapon::Radar) => "R-77",
         (Aircraft::Gripen, crate::combat::Weapon::Heat) => "IRIS-T",
         (Aircraft::Gripen, crate::combat::Weapon::Radar) => "METEOR",
-        (_, crate::combat::Weapon::Heat) => "AIM-9X",
+        (Aircraft::F22, crate::combat::Weapon::Heat) => "AIM-9X",
+        (Aircraft::F22, crate::combat::Weapon::Radar) => "AIM-120D",
+        (_, crate::combat::Weapon::Heat) => "IR MISSILE",
         _ => "AIM-120",
     }
 }
@@ -672,7 +684,9 @@ pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3
         / (1. + 0.16 * mach * mach * mach);
     let dry = s.dry * (f.spool / 0.88).clamp(0., 1.);
     let burner = (s.wet - s.dry) * ((f.spool - 0.88) / 0.12).clamp(0., 1.) * (1. - conv);
-    let installed = ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse;
+    let installed = if f.aircraft == Aircraft::F22 {
+        jet_output(f.aircraft, f.spool, rho, mach).0
+    } else { ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse };
     let running = f.engine && (f.fuel > 0. || f.infinite_fuel);
     let mut force = DVec3::ZERO;
     let mut moment = DVec3::ZERO;

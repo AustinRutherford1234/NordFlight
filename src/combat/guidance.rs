@@ -46,6 +46,8 @@ impl Mode {
 }
 #[derive(Clone)]
 pub struct Gnc {
+    /// Distinct player F-22 loadout; never inferred from the target or camera.
+    pub aim9x: bool,
     pub long_range: bool,
     pub mode: Mode,
     pub body: DVec3,
@@ -79,6 +81,7 @@ pub struct Gnc {
 impl Default for Gnc {
     fn default() -> Self {
         Self {
+            aim9x: false,
             long_range: false,
             mode: Mode::Separation,
             body: DVec3::ZERO,
@@ -111,6 +114,10 @@ impl Default for Gnc {
     }
 }
 impl Gnc {
+    pub fn for_aircraft(mut self, aircraft: crate::aircraft::Aircraft, kind: Weapon) -> Self {
+        self.aim9x = aircraft == crate::aircraft::Aircraft::F22 && kind == Weapon::Heat;
+        self
+    }
     pub fn launch(velocity: DVec3, target: Contact, seed: u64) -> Self {
         Self {
             body: velocity.normalize_or_zero(),
@@ -368,7 +375,9 @@ pub fn decoy_probability(
         // Breaking across the LOS separates the airframe from its slowing flare.
         let transverse = aircraft.velocity - aircraft_los * aircraft.velocity.dot(aircraft_los);
         let maneuver = (transverse.length() / 120.0).clamp(0.0, 1.0);
-        ((0.30 + 0.48 * maneuver) * salience * freshness * separation_factor).clamp(0.0, 0.65)
+        let imaging_rejection = if m.gnc.aim9x { 0.30 } else { 1.0 };
+        (((0.30 + 0.48 * maneuver) * salience * freshness * separation_factor)
+            * imaging_rejection).clamp(0.0, 0.65)
     } else {
         (0.88 * salience * freshness * separation_factor).clamp(0.0, 0.88)
     }
@@ -381,7 +390,7 @@ pub fn retain_decoy(m: &Missile, aircraft: Contact, decoy: Contact, age: f64, su
     if !decoy.alive || age >= 4.0 || quality(m.kind, m.position, decoy, sun).0 < 0.18 {
         return false;
     }
-    if age < 0.75 {
+    if age < if m.gnc.aim9x { 0.25 } else { 0.75 } {
         return true;
     }
     let a = (aircraft.position - m.position).normalize_or_zero();
@@ -468,13 +477,17 @@ fn fly_profile(
         m.gnc.active = true;
     }
     let mut supported = m.kind == Weapon::Radar && !m.gnc.active;
-    let gimbal_limit = if m.kind == Weapon::Heat {
+    let gimbal_limit = if m.gnc.aim9x {
+        80.0_f64 // Estimated; public sources confirm high off-boresight, not limits.
+    } else if m.kind == Weapon::Heat {
         45.0_f64
     } else {
         55.0_f64
     }
     .to_radians();
-    let gimbal_rate = if m.kind == Weapon::Heat {
+    let gimbal_rate = if m.gnc.aim9x {
+        90.0_f64 // Estimated imaging seeker slew, degrees/s.
+    } else if m.kind == Weapon::Heat {
         22.0_f64
     } else {
         40.0_f64
@@ -524,7 +537,7 @@ fn fly_profile(
         signal = 0.0;
         reason = "SEEKER GIMBAL LIMIT";
     }
-    if range > m.kind.range() * 1.3 && !supported {
+    if range > (if m.gnc.aim9x { 12000.0 } else { m.kind.range() * 1.3 }) && !supported {
         signal = 0.0;
         reason = "SEEKER RANGE";
     }
@@ -593,6 +606,8 @@ fn fly_profile(
     let burn_elapsed = (m.age - 0.18).clamp(0.0, duration);
     let wet_mass = if m.gnc.long_range {
         190.0
+    } else if m.gnc.aim9x {
+        84.37 // NAVAIR launch weight, kg.
     } else if m.kind == Weapon::Heat {
         85.0
     } else {
@@ -619,10 +634,19 @@ fn fly_profile(
     } else {
         0.0
     };
-    let area = if m.kind == Weapon::Heat { 0.020 } else { 0.029 };
+    let area = if m.gnc.aim9x {
+        std::f64::consts::PI * (0.127_f64 / 2.0).powi(2)
+    } else if m.kind == Weapon::Heat { 0.020 } else { 0.029 };
     let q = 0.5 * rho * speed * speed;
-    let aero_limit =
-        (q * area * 24.0 / m.gnc.mass).min(if m.kind == Weapon::Heat { 28.0 } else { 24.0 } * 9.81);
+    let aerodynamic_limit = (q * area * 24.0 / m.gnc.mass)
+        .min(if m.gnc.aim9x { 40.0 } else if m.kind == Weapon::Heat { 28.0 } else { 24.0 } * 9.81);
+    // Tail jet vanes provide low-speed authority only while the motor burns.
+    // A 20-degree equivalent deflection and 40-g structural limit are estimates.
+    let vector_limit = if m.gnc.aim9x {
+        m.gnc.thrust * 20_f64.to_radians().sin() / m.gnc.mass
+    } else { 0.0 };
+    let aero_limit = (aerodynamic_limit + vector_limit).min(
+        if m.gnc.aim9x { 40.0 * 9.81 } else { f64::INFINITY });
     m.gnc.available_g = aero_limit / 9.81;
     let mut command = DVec3::ZERO;
     m.gnc.loft_blend = 0.0;
@@ -697,9 +721,12 @@ fn fly_profile(
     m.gnc.body = rotate_toward(rotated, velocity_axis, 30.0_f64.to_radians(), dt);
     let mach = speed / sound;
     let wave = 0.20 * (-((mach - 1.1) / 0.35).powi(2)).exp();
-    let lift_coeff = normal.length() * m.gnc.mass / (q * area).max(1.0);
+    let vector_accel = if aero_limit > 0.0 { normal.length() * vector_limit / aero_limit } else { 0.0 };
+    let aerodynamic_accel = (normal.length() - vector_accel).max(0.0);
+    let lift_coeff = aerodynamic_accel * m.gnc.mass / (q * area).max(1.0);
     m.gnc.drag = q * area * (0.32 + wave + 0.012 * lift_coeff * lift_coeff);
-    m.velocity += (gravity + normal + m.gnc.body * (m.gnc.thrust / m.gnc.mass)
+    let axial_thrust = (m.gnc.thrust.powi(2) - (vector_accel * m.gnc.mass).powi(2)).max(0.0).sqrt();
+    m.velocity += (gravity + normal + m.gnc.body * (axial_thrust / m.gnc.mass)
         - velocity_axis * (m.gnc.drag / m.gnc.mass))
         * dt;
     m.position += m.velocity * dt;
@@ -1114,6 +1141,62 @@ fn ir_evasion_trial_dt(seed: u64, flares: bool, turn: bool, dt: f64) -> (bool, u
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn aim9x_is_exclusive_to_f22_infrared_loadout() {
+        use crate::aircraft::Aircraft;
+        for a in Aircraft::ALL {
+            for kind in [Weapon::Heat, Weapon::Radar] {
+                let g = Gnc::default().for_aircraft(a, kind);
+                assert_eq!(g.aim9x, a == Aircraft::F22 && kind == Weapon::Heat);
+            }
+        }
+    }
+    #[test]
+    fn aim9x_has_published_mass_and_motor_limited_vector_authority() {
+        let (mut m, c, s) = scene(Weapon::Heat, 1800.0);
+        m.gnc.aim9x = true;
+        m.velocity = DVec3::Z * 60.0;
+        m.age = 0.17;
+        fly(&mut m, c, s, -DVec3::Y, 0.001);
+        assert!((m.gnc.mass - 84.37).abs() < 1e-10);
+        let mut coast = m.clone();
+        coast.age = 8.0;
+        m.age = 0.3;
+        fly(&mut m, c, s, -DVec3::Y, 0.001);
+        fly(&mut coast, c, s, -DVec3::Y, 0.001);
+        assert!(m.gnc.thrust > 0.0);
+        assert_eq!(coast.gnc.thrust, 0.0);
+        assert!(m.gnc.available_g > coast.gnc.available_g + 3.0);
+        assert!(m.gnc.actual_g <= m.gnc.available_g + 1e-9);
+    }
+    #[test]
+    fn aim9x_tracks_high_off_boresight_without_radar_support() {
+        let (mut m, mut c, mut s) = scene(Weapon::Heat, 1800.0);
+        let direction = DVec3::new(60_f64.to_radians().sin(), 0.0, 60_f64.to_radians().cos());
+        c.position = m.position + direction * 1800.0;
+        m.gnc.estimate = c.position;
+        m.gnc.gimbal = direction;
+        m.age = 1.0;
+        s.available = false;
+        let mut generic = m.clone();
+        m.gnc.aim9x = true;
+        fly(&mut m, c, s, -DVec3::Y, 0.01);
+        fly(&mut generic, c, s, -DVec3::Y, 0.01);
+        assert_eq!(m.gnc.mode, Mode::Infrared);
+        assert_eq!(generic.gnc.reason, "SEEKER GIMBAL LIMIT");
+    }
+    #[test]
+    fn aim9x_rejects_more_flares_without_becoming_immune() {
+        let (mut m, c, _) = scene(Weapon::Heat, 2000.0);
+        let decoy = Contact { position: c.position - DVec3::Z * 20.0,
+            strength: 8.0, decoy: true, ..c };
+        m.gnc.gimbal = DVec3::Z;
+        let generic = decoy_probability(&m, c, decoy, 0.3, -DVec3::Y);
+        m.gnc.aim9x = true;
+        let imaging = decoy_probability(&m, c, decoy, 0.3, -DVec3::Y);
+        assert!(imaging > 0.0 && imaging < generic);
+        assert!((imaging / generic - 0.30).abs() < 1e-10);
+    }
     #[test]
     fn infrared_uses_radar_datalink_during_glare_then_returns_to_its_seeker() {
         let (mut m, mut c, s) = scene(Weapon::Heat, 4000.0);

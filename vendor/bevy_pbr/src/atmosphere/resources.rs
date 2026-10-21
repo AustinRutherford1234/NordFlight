@@ -391,6 +391,7 @@ pub struct AtmosphereTextures {
     pub transmittance_lut: CachedTexture,
     pub multiscattering_lut: CachedTexture,
     pub sky_view_lut: CachedTexture,
+    pub probe_sky_view_lut: CachedTexture,
     pub aerial_view_lut: CachedTexture,
 }
 
@@ -443,6 +444,11 @@ pub(super) fn prepare_atmosphere_textures(
             },
         );
 
+        let probe_sky_view_lut = texture_cache.get(&render_device, TextureDescriptor {
+            label: Some("probe_sky_view_lut"), size: lut_settings.sky_view_lut_size.to_extents(), mip_level_count: 1,
+            sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba16Float,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING, view_formats: &[],
+        });
         let aerial_view_lut = texture_cache.get(
             &render_device,
             TextureDescriptor {
@@ -462,6 +468,7 @@ pub(super) fn prepare_atmosphere_textures(
                 transmittance_lut,
                 multiscattering_lut,
                 sky_view_lut,
+                probe_sky_view_lut,
                 aerial_view_lut,
             }
         });
@@ -515,6 +522,7 @@ pub struct AtmosphereTransform {
 #[derive(Component)]
 pub struct AtmosphereTransformsOffset {
     index: u32,
+    pub(crate) probe_index: u32,
 }
 
 impl AtmosphereTransformsOffset {
@@ -535,7 +543,7 @@ pub(super) fn prepare_atmosphere_transforms(
     let Some(mut writer) =
         atmo_uniforms
             .uniforms
-            .get_writer(atmo_count, &render_device, &render_queue)
+            .get_writer(atmo_count * 2, &render_device, &render_queue)
     else {
         return;
     };
@@ -555,11 +563,11 @@ pub(super) fn prepare_atmosphere_transforms(
 
         let world_from_atmosphere = Mat4::from(world_from_atmosphere);
 
-        commands.entity(entity).insert(AtmosphereTransformsOffset {
-            index: writer.write(&AtmosphereTransform {
-                world_from_atmosphere,
-            }),
+        let index = writer.write(&AtmosphereTransform { world_from_atmosphere });
+        let probe_index = writer.write(&AtmosphereTransform {
+            world_from_atmosphere: Mat4::from_translation(world_from_view.translation.into()),
         });
+        commands.entity(entity).insert(AtmosphereTransformsOffset { index, probe_index });
     }
 }
 
@@ -570,6 +578,16 @@ pub(crate) struct AtmosphereBindGroups {
     pub sky_view_lut: BindGroup,
     pub aerial_view_lut: BindGroup,
     pub render_sky: BindGroup,
+}
+
+// Bindings identify storage, not its changing contents or dynamic offsets.
+// A resized/replaced buffer, texture, sampler or layout always invalidates it.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AtmosphereBindingKey {
+    buffers: [(BufferId, u64); 5],
+    textures: [TextureViewId; 7],
+    samplers: [SamplerId; 2],
+    layouts: [BindGroupLayoutId; 5],
 }
 
 #[derive(Copy, Clone, Debug, thiserror::Error)]
@@ -596,6 +614,8 @@ pub(super) fn prepare_atmosphere_bind_groups(
             &AtmosphereTextures,
             &ViewDepthTexture,
             &Msaa,
+            Option<&AtmosphereBindingKey>,
+            Option<&AtmosphereBindGroups>,
         ),
         (With<Camera3d>, With<ExtractedAtmosphere>),
     >,
@@ -640,10 +660,23 @@ pub(super) fn prepare_atmosphere_bind_groups(
         .binding()
         .ok_or(AtmosphereBindGroupError::LightUniforms)?;
 
-    for (entity, atmosphere, textures, view_depth_texture, msaa) in &views {
+    for (entity, atmosphere, textures, view_depth_texture, msaa, previous, present) in &views {
         let gpu_medium = gpu_media
             .get(atmosphere.medium)
             .ok_or(ScatteringMediumMissingError(atmosphere.medium))?;
+
+        let key = AtmosphereBindingKey {
+            buffers: [atmosphere_uniforms.uniforms().buffer().unwrap(), settings_uniforms.uniforms().buffer().unwrap(),
+                atmosphere_transforms.uniforms().buffer().unwrap(), view_uniforms.uniforms.buffer().unwrap(), lights_uniforms.view_gpu_lights.buffer().unwrap()]
+                .map(|b| (b.id(), b.size())),
+            textures: [gpu_medium.density_lut_view.id(), gpu_medium.scattering_lut_view.id(), textures.transmittance_lut.default_view.id(),
+                textures.multiscattering_lut.default_view.id(), textures.sky_view_lut.default_view.id(), textures.aerial_view_lut.default_view.id(), view_depth_texture.view().id()],
+            samplers: [medium_sampler.sampler().id(), atmosphere_sampler.id()],
+            layouts: [&layouts.transmittance_lut, &layouts.multiscattering_lut, &layouts.sky_view_lut, &layouts.aerial_view_lut,
+                if *msaa == Msaa::Off { &render_sky_layouts.render_sky } else { &render_sky_layouts.render_sky_msaa }]
+                .map(|l| pipeline_cache.get_bind_group_layout(l).id()),
+        };
+        if std::env::var_os("NORD_RENDER_REFERENCE").is_none() && present.is_some() && previous == Some(&key) { continue; }
 
         let transmittance_lut = render_device.create_bind_group(
             "transmittance_lut_bind_group",
@@ -754,13 +787,13 @@ pub(super) fn prepare_atmosphere_bind_groups(
             )),
         );
 
-        commands.entity(entity).insert(AtmosphereBindGroups {
+        commands.entity(entity).insert((key, AtmosphereBindGroups {
             transmittance_lut,
             multiscattering_lut,
             sky_view_lut,
             aerial_view_lut,
             render_sky,
-        });
+        }));
     }
 
     Ok(())

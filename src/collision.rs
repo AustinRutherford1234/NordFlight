@@ -254,7 +254,8 @@ pub fn check_airframe(f: &mut Flight, previous: DVec3, previous_rotation: bevy::
     let radius=if f.aircraft==crate::aircraft::Aircraft::Gripen{9.}else{f.aircraft.spec().length*0.6};
     let margin = radius * (angle / steps as f64 * 0.5).sin().abs() + 0.015;
     let mut first_hit: Option<(f64, DVec3)> = None;
-    let vegetation = crate::terrain::obstacles(previous, end);
+    let vegetation = crate::terrain::obstacles_reused(previous, end);
+    let has_vegetation=!vegetation.is_empty();
     let airport = previous.length().min(end.length()) - RADIUS < RUNWAY_HEIGHT + 45.0+radius
         && previous.x.min(end.x) < 310.0+radius
         && previous.x.max(end.x) > 105.0-radius
@@ -262,7 +263,7 @@ pub fn check_airframe(f: &mut Flight, previous: DVec3, previous_rotation: bevy::
         && previous.z.max(end.z) > -240.0-radius;
     let near_ground = f.agl() < 12.0
         || previous.length() - RADIUS - terrain_height(previous.x, previous.z).max(0.0) < 12.0;
-    if !airport && !near_ground && vegetation.is_empty() {
+    if !airport && !near_ground && !has_vegetation {
         return;
     }
     // Every convex piece uses the same trajectory. Interpolate it once rather
@@ -309,7 +310,7 @@ pub fn check_airframe(f: &mut Flight, previous: DVec3, previous_rotation: bevy::
             continue;
         }
         let (hinge, offset) = hull.pose(f);
-        if airport || !vegetation.is_empty() {
+        if airport || has_vegetation {
             for step in 0..steps {
                 let t0 = step as f64 / steps as f64;
                 let t1 = (step + 1) as f64 / steps as f64;

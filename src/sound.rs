@@ -825,6 +825,7 @@ struct Voice {
     total: u32,
     gain: f32,
     pan: f32,
+    pan_gains: [f32;2],
     pitch: f32,
     noise: f32,
     phase: f32,
@@ -849,6 +850,7 @@ impl Voice {
             total,
             gain: t.gain,
             pan: t.pan,
+            pan_gains: pan_gains(t.pan),
             pitch: t.pitch,
             noise: 0.,
             phase: 0.,
@@ -938,6 +940,7 @@ impl Mixer {
                     v.life = v.total;
                     v.gain = t.gain;
                     v.pan = t.pan;
+                    v.pan_gains=pan_gains(t.pan);
                     v.pitch = t.pitch;
                     continue;
                 }
@@ -963,6 +966,7 @@ impl Mixer {
                 v.life = v.total;
                 v.gain = t.gain;
                 v.pan = t.pan;
+                v.pan_gains=pan_gains(t.pan);
                 v.pitch = t.pitch;
             } else {
                 let slot = self.voices.iter().position(Option::is_none).unwrap_or(0);
@@ -1116,7 +1120,8 @@ impl Mixer {
                 v.attack = (v.attack + 1. / (RATE as f32 * 0.008)).min(1.);
             }
             let sound = signal * amplitude * v.gain * self.controls.settings.effects;
-            pan_mix(sound, v.pan, &mut left, &mut right);
+            left+=sound*v.pan_gains[0];
+            right+=sound*v.pan_gains[1];
             v.life -= 1;
             self.voices[i] = (v.life > 0).then_some(v);
         }
@@ -1183,6 +1188,7 @@ fn pan_mix(sample: f32, pan: f32, left: &mut f32, right: &mut f32) {
     *left += sample * ((1. - pan) * 0.5).sqrt();
     *right += sample * ((1. + pan) * 0.5).sqrt();
 }
+fn pan_gains(pan:f32)->[f32;2]{[((1.-pan)*0.5).sqrt(),((1.+pan)*0.5).sqrt()]}
 impl Iterator for Mixer {
     type Item = f32;
     fn next(&mut self) -> Option<f32> {
