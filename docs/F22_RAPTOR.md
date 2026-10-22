@@ -12,6 +12,10 @@ sensor-signature or missile-guidance overhaul is included.
 
 ## Exterior and cockpit
 
+The [lower fuselage volume update](F22_BELLY_VOLUME.md) adds a deeper bay body,
+paired lower engine housings, fitted doors and matching collision contours,
+using USAF underside and side-view photographs as references.
+
 The Raptor now has a dedicated broad, flattened chine/body loft, clipped diamond
 wing, separate flaperons/ailerons, larger swept stabilators, canted fixed fins
 and fitted rudders. Moving-panel outlines also define their collision skins;

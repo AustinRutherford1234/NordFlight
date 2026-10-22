@@ -164,6 +164,16 @@ pub struct Hull {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn raptor_collision_covers_the_new_belly_and_engine_housings() {
+        use crate::aircraft::{Aircraft, raptor};
+        for (z, width, _, cy) in raptor::sections().into_iter().skip(1).take(12) {
+            for x in [-0.82_f32, -0.48, 0., 0.48, 0.82] {
+                let point = DVec3::new(width * x as f64, cy + raptor::lower_profile(x, z as f32) as f64, z);
+                assert!(distance_to_aircraft(point, Aircraft::F22) < 0.025, "missing belly collision at {point:?}");
+            }
+        }
+    }
     fn overlaps(f: &Flight, point: DVec3) -> bool {
         hulls(f.vehicle).iter().any(|h| {
             let (q, offset) = h.pose(f);
@@ -355,6 +365,30 @@ impl Hull {
             bounds: OnceLock::new(),
         }
     }
+    fn raptor_section(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64), side: f64) -> Self {
+        use crate::aircraft::raptor::{lower_profile, upper_profile};
+        // Separate convex halves preserve the shallow channel between engine
+        // housings instead of filling it with a single enlarged elliptical hull.
+        let mut vertices = Vec::new();
+        for (z, w, h, y) in [a, b] {
+            for x in [0., 0.48, 0.58, 0.88, 1.] {
+                vertices.push(DVec3::new(side * w * x, y + h * upper_profile(x as f32) as f64 + 0.012 * (1. - x), z));
+            }
+            for x in [0.82, 0.66, 0.48, 0.25, 0.] {
+                vertices.push(DVec3::new(side * w * x, y + lower_profile(x as f32, z as f32) as f64 - 0.012 * (1. - x), z));
+            }
+        }
+        let n = vertices.len() / 2;
+        let mut normals = vec![DVec3::Z];
+        let mut edges = Vec::new();
+        for i in 0..n {
+            let ring = vertices[(i + 1) % n] - vertices[i];
+            let length = vertices[i + n] - vertices[i];
+            normals.push(ring.cross(length).normalize());
+            edges.extend([ring.normalize(), length.normalize()]);
+        }
+        Self { vertices, normals, edges, hinge: None, fleet_surface: None, planes: OnceLock::new(), bounds: OnceLock::new() }
+    }
     pub fn pose(&self, f: &Flight) -> (DQuat, DVec3) {
         if let Some(i)=self.fleet_surface {
             let p=f.aircraft.panels()[i];
@@ -482,7 +516,10 @@ pub fn aircraft_hulls(a:crate::aircraft::Aircraft)-> &'static [Hull]{
     let all=FLEET.get_or_init(||[Aircraft::Su27,Aircraft::F35B,Aircraft::F22,Aircraft::Hornet].map(|a|{
         let mut h=Vec::new();
         let sections=crate::aircraft::visual::sections(a);
-        for p in sections.windows(2){h.push(Hull::section(p[0],p[1]));}
+        for p in sections.windows(2){
+            if a==Aircraft::F22 {for side in [-1.,1.] {h.push(Hull::raptor_section(p[0],p[1],side));}}
+            else {h.push(Hull::section(p[0],p[1]));}
+        }
         let d=a.cabin_offset().as_dvec3();let canopy=[(d.z-4.08,0.06,0.10,0.66),(d.z-3.4,0.49,0.88,0.66),(d.z-2.5,0.55,0.95,0.66),(d.z-1.35,0.06,0.10,0.66)];for p in canopy.windows(2){h.push(Hull::section(p[0],p[1]));}
         for side in [-1.,1.] {for piece in crate::aircraft::visual::fixed_wing(a,side){h.push(Hull::prism(&piece.iter().map(|p|p.as_dvec3()).collect::<Vec<_>>(),DVec3::Y*0.045));}let(fin,thickness)=crate::aircraft::visual::fin(a,side);h.push(Hull::prism(&fin.map(|p|p.as_dvec3()),thickness.as_dvec3()));}
         for(i,p)in a.panels().iter().enumerate().filter(|(_,p)|p.area>0.){

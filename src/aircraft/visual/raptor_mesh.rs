@@ -37,14 +37,7 @@ pub(super) fn exhaust() -> Mesh {
     m
 }
 pub(super) fn upper(x: f32) -> f32 {
-    let x = x.abs();
-    if x < 0.58 {
-        1. - 0.06 * (x / 0.58).powi(2)
-    } else if x < 0.88 {
-        0.94 - (x - 0.58) * 1.9
-    } else {
-        0.37 - (x - 0.88) * 3.08
-    }
+    super::super::raptor::upper_profile(x)
 }
 pub(super) fn nozzle_plate(j: usize) -> Mesh {
     if j < 2 {
@@ -174,6 +167,7 @@ pub(super) fn details(
     _silver: Handle<StandardMaterial>,
 ) {
     let ram = material(mats, Color::srgb(0.45, 0.47, 0.47), 0.18);
+    raptor_intake::setup(c,m,mats,root,skin.clone(),ram.clone());
     for side in [-1., 1.] {
         // Low-visibility fin code, laid directly in the canted fin plane.
         let up = Vec3::new(side * 0.4848, 0.8746, 0.);
@@ -197,50 +191,6 @@ pub(super) fn details(
                 );
             }
         }
-        // Four intake walls and a recessed duct; no plate across the inlet.
-        let front = [
-            Vec3::new(side * 1.02, 0.20, -4.30),
-            Vec3::new(side * 2.07, 0.18, -3.63),
-            Vec3::new(side * 2.12, -0.60, -3.48),
-            Vec3::new(side * 1.11, -0.64, -4.17),
-        ];
-        let back = front.map(|p| Vec3::new(p.x * 0.93, p.y * 0.8, p.z + 1.25));
-        for j in 0..4 {
-            let k = (j + 1) % 4;
-            part(
-                c,
-                m,
-                root,
-                solid(&[front[j], front[k], back[k], back[j]], Vec3::Y * 0.018),
-                skin.clone(),
-                Transform::default(),
-            );
-            tube(c, m, root, ram.clone(), front[j], front[k], 0.022);
-        }
-        part(
-            c,
-            m,
-            root,
-            solid(&back, Vec3::Z * 0.01),
-            black.clone(),
-            Transform::default(),
-        );
-        part(
-            c,
-            m,
-            root,
-            solid(
-                &[
-                    front[1],
-                    Vec3::new(side * 2.18, 0.24, -2.0),
-                    Vec3::new(side * 2.22, 0.16, 1.1),
-                    Vec3::new(side * 1.52, 0.38, -1.5),
-                ],
-                Vec3::Y * 0.025,
-            ),
-            skin.clone(),
-            Transform::default(),
-        );
         let mut v=Vec::new();let mut ix=Vec::new();
         for j in 0..32 {for k in 0..16 {
             let point=|j:usize,k:usize|{let u=j as f32/32.;let t=k as f32/16.;let z=1.8+4.4*u;Vec3::new(side*(0.10+(1.78-0.27*u)*t),0.43-0.18*u+0.15*(t*std::f32::consts::PI).sin()*(u*std::f32::consts::PI).sin(),z)};

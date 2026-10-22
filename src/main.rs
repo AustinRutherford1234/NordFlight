@@ -1,3 +1,6 @@
+// Release builds launch as a normal Windows game; development builds keep console logs.
+#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+
 mod aero_fx;
 mod aircraft;
 mod hangar;
@@ -973,6 +976,12 @@ fn main() {
             if mode=="rear-off"{initial_view.yaw=0.35;initial_view.pitch=-0.12;initial_flight.engine=false;initial_flight.spool=0.;initial_flight.thrust=0.;}
             if mode=="front"{initial_view.yaw=3.14;initial_view.pitch=-0.05;}
             if mode=="side"{initial_view.yaw=1.57;initial_view.pitch=-0.05;}
+            if mode.starts_with("belly") {
+                initial_view.simple=true;
+                initial_flight.engine=false;initial_flight.spool=0.;initial_flight.thrust=0.;
+                initial_flight.systems.bays=match mode.as_str(){"belly-open"|"belly-bay-side"=>1.,"belly-quarter"=>0.25,"belly-half"=>0.5,_=>0.};
+                if mode=="belly-gear" {initial_flight.gear=true;initial_flight.gear_extension=1.;initial_flight.gear_door=0.;}
+            }
             if mode=="external"{initial_flight.systems.external_stores=true;}
             if mode=="highalpha"{initial_flight.orientation*=bevy::math::DQuat::from_rotation_x(0.8);initial_flight.surface.x=0.65;initial_flight.systems.nozzle=[-13_f64.to_radians();2];}
             if mode=="hover"{initial_flight.systems.conversion=1.;initial_flight.systems.conversion_target=true;initial_flight.systems.nozzle=[std::f64::consts::FRAC_PI_2;2];initial_flight.spool=1.;initial_flight.thrust=190000.;}
@@ -2155,6 +2164,20 @@ fn update_camera(
         p = center + look * (p - center) * v.zoom;
     }
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
+        if mode.starts_with("belly") {
+            target=pos+rot*Vec3::new(0.,-0.35,-0.3);
+            let offset=match mode.as_str(){
+                "belly-side"|"belly-bay-side"=>Vec3::new(20.,-0.8,-1.5),
+                "belly-profile"=>Vec3::new(20.,0.,0.),
+                "belly-profile-left"=>Vec3::new(-20.,0.,0.),
+                "belly-intake"=>Vec3::new(3.7,-1.0,-9.5),
+                "belly-front"=>Vec3::new(11.,-7.,-19.),
+                "belly-bottom"=>Vec3::new(0.01,-25.,0.),
+                _=>Vec3::new(14.,-10.,17.),
+            };
+            p=target+rot*offset;
+            up_view=rot*if mode=="belly-bottom"{Vec3::NEG_Z}else{Vec3::Y};
+        }
         if mode.starts_with("nozzle-") {target=pos+rot*Vec3::new(0.,0.,7.05);p=target+rot*Vec3::new(1.2,1.1,6.8);up_view=rot*Vec3::Y;}
         if mode=="gear-main-close" {target=pos+rot*Vec3::new(1.15,-1.1,1.7);p=target+rot*Vec3::new(2.7,-0.8,3.0);up_view=rot*Vec3::Y;}
         if mode=="gear-nose-close" {target=pos+rot*Vec3::new(0.,-1.1,-5.5);p=target+rot*Vec3::new(2.1,-0.6,2.8);up_view=rot*Vec3::Y;}

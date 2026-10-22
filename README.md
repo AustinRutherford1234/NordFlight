@@ -28,6 +28,23 @@ The [roll-control correction](docs/F22_ROLL_CONTROL_FIX.md) aligns nozzle, stabi
 
 **Windows:** install stable Rust with the MSVC toolchain and Visual Studio C++ Build Tools, then run `build-windows.ps1`. Launch `dist/NordFlight.exe`. A normal `cargo run --release --locked` also works on either platform. A modern GPU is required; Bevy selects Metal on Mac and the appropriate Windows graphics backend.
 
+`build-windows.ps1` also automatically creates **`dist/installer/NordFlight-Setup.exe`**.
+Windows release builds open as GUI applications, without a terminal window.
+Development builds retain the console for logs and diagnostics.
+This single installer includes the game, runtime assets, branding icon, Desktop and
+Start menu shortcuts, and an uninstaller. It installs into your local Programs
+folder without administrator access; players do not need Rust or build tools.
+The packaging script installs Inno Setup 6 through WinGet if it is missing.
+
+For local updates, double-click **`Update NordFlight.cmd`** in this checkout (or
+the **Update NordFlight** Desktop shortcut created by `build-windows.ps1 -Install`). It
+pulls GitHub changes with `git pull --ff-only`, compiles the game, creates a new
+installer and installs the update. Close the game before updating. The checkout
+and build tools must remain available for this developer update command.
+To update after pulling manually, run `./update-windows.ps1 -SkipPull`.
+To rebuild and install without pulling, `./build-windows.ps1 -Install` also works.
+To only repackage an existing build, use `./build-windows.ps1 -SkipBuild`.
+
 ## Scenarios
 
 The buttons at the top work with the mouse. Function keys select the same scenarios (Mac keyboards may require Fn):

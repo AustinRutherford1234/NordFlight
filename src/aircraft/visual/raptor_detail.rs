@@ -392,10 +392,84 @@ fn skin_y(x: f32, z: f32, top: bool) -> f32 {
     let w = p[0].1 as f32 * (1. - t) + p[1].1 as f32 * t;
     let h = p[0].2 as f32 * (1. - t) + p[1].2 as f32 * t;
     let y = p[0].3 as f32 * (1. - t) + p[1].3 as f32 * t;
-    y + h * if top {
-        raptor_mesh::upper(x / w)
+    if top {
+        y + h * raptor_mesh::upper(x / w)
     } else {
-        -0.83 * (1. - (x / w).powi(4)).max(0.).sqrt()
+        y + super::super::raptor::lower_profile(x / w, z)
+    }
+}
+
+/// A closed, tessellated panel projected onto the actual lower skin. Merely
+/// moving the old flat doors down leaves their edges floating above the belly.
+fn conformal_panel(outline: &[Vec3], origin: Vec3, offset: f32, thickness: f32) -> Mesh {
+    const N: usize = 8;
+    let mut v = Vec::new();
+    let mut ix = Vec::new();
+    let project = |p: Vec3| {
+        // Shared fan/boundary samples must be bit-identical after projection.
+        // Snap only in-plane coordinates (10 micrometres), before skin lookup.
+        let p = Vec3::new((p.x * 100000.).round() / 100000., p.y, (p.z * 100000.).round() / 100000.);
+        let world = p + origin;
+        Vec3::new(p.x, skin_y(world.x, world.z, false) + offset - origin.y, p.z)
+    };
+    let depth = Vec3::Y * thickness;
+    for k in 1..outline.len() - 1 {
+        let p = [outline[0], outline[k], outline[k + 1]];
+        let at = |i: usize, j: usize| project(p[0] + (p[1] - p[0]) * (i as f32 / N as f32) + (p[2] - p[0]) * (j as f32 / N as f32));
+        let mut face = |mut points: [Vec3; 3]| {
+            if (points[1] - points[0]).cross(points[2] - points[0]).y < 0. { points.swap(1, 2); }
+            polygon_into(&mut v, &mut ix, &points.map(|p| p + depth));
+            points.swap(1, 2);
+            polygon_into(&mut v, &mut ix, &points.map(|p| p - depth));
+        };
+        for i in 0..N {
+            for j in 0..N - i {
+                face([at(i, j), at(i + 1, j), at(i, j + 1)]);
+                if i + j + 1 < N { face([at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]); }
+            }
+        }
+    }
+    let mut boundary = outline.to_vec();
+    if (boundary[1] - boundary[0]).cross(boundary[2] - boundary[0]).y < 0. { boundary.reverse(); }
+    for k in 0..boundary.len() {
+        let a = boundary[k];
+        let b = boundary[(k + 1) % boundary.len()];
+        for j in 0..N {
+            let p = project(a.lerp(b, j as f32 / N as f32));
+            let q = project(a.lerp(b, (j + 1) as f32 / N as f32));
+            quad(&mut v, &mut ix, [p - depth, q - depth, q + depth, p + depth]);
+        }
+    }
+    mesh(v, ix)
+}
+
+pub(super) fn main_bay(c: &mut Commands, m: &mut Assets<Mesh>, root: Entity, skin: Handle<StandardMaterial>, interior: Handle<StandardMaterial>) {
+    for side in [-1., 1.] {
+        let hinge = Vec3::new(side * 0.95, skin_y(side * 0.95, 0., false), 0.);
+        let outline = [Vec3::new(0., 0., -1.75), Vec3::new(side * 0.95, 0., -1.75), Vec3::new(side * 0.95, 0., 1.75), Vec3::new(0., 0., 1.75)].map(|p| p - hinge);
+        let door = part(c, m, root, raptor_mesh::paint_at(conformal_panel(&outline, hinge, -0.008, 0.009), hinge), skin.clone(), Transform::from_translation(hinge));
+        c.entity(door).insert(WeaponDoor(Aircraft::F22, side, hinge));
+    }
+    let perimeter = [Vec3::new(-0.95, 0., -1.75), Vec3::new(0.95, 0., -1.75), Vec3::new(0.95, 0., 1.75), Vec3::new(-0.95, 0., 1.75)];
+    let mut v = Vec::new();
+    let mut ix = Vec::new();
+    for k in 0..4 {
+        for j in 0..16 {
+            let a = perimeter[k].lerp(perimeter[(k + 1) % 4], j as f32 / 16.);
+            let b = perimeter[k].lerp(perimeter[(k + 1) % 4], (j + 1) as f32 / 16.);
+            quad(&mut v, &mut ix, [Vec3::new(a.x, skin_y(a.x, a.z, false), a.z), Vec3::new(b.x, skin_y(b.x, b.z, false), b.z), Vec3::new(b.x, -0.28, b.z), Vec3::new(a.x, -0.28, a.z)]);
+        }
+    }
+    part(c, m, root, mesh(v, ix), interior, Transform::default());
+}
+
+/// Keep the main-wheel pockets outside the weapons bay, with the original
+/// wheel/strut locations and contact geometry unchanged.
+pub(super) fn well_layout(i: usize) -> (Vec3, f32) {
+    let mut center = gear_mount(Aircraft::F22, i).as_vec3();
+    if i == 0 { (center, 0.41) } else {
+        center.x += center.x.signum() * 0.13;
+        (center, 0.30)
     }
 }
 pub(super) fn sill() -> Mesh {
@@ -1135,32 +1209,35 @@ pub(super) fn gear(
     let washer_mesh = m.add(Cylinder::new(0.033, 0.012).mesh().resolution(24).build());
     let hex_mesh = m.add(Cylinder::new(0.025, 0.025).mesh().resolution(6).build());
     for i in 0..3 {
-        let at = gear_mount(Aircraft::F22, i).as_vec3();
+        let (at, w) = well_layout(i);
         let z0 = at.z - 1.85;
         let z1 = at.z + 0.65;
-        let w = 0.41;
+        let bevel = if i == 0 { 0.13 } else { 0.03 };
         // Recessed polygonal wheel well follows the belly contour. No external
         // housing block and no tall cuboid side walls protrude through the skin.
         let mut rim = Vec::new();
         for (x, z) in [
             (-w, z0 + 0.18),
-            (-w + 0.13, z0),
-            (w - 0.13, z0),
+            (-w + bevel, z0),
+            (w - bevel, z0),
             (w, z0 + 0.18),
             (w, z1 - 0.15),
-            (w - 0.13, z1),
-            (-w + 0.13, z1),
+            (w - bevel, z1),
+            (-w + bevel, z1),
             (-w, z1 - 0.15),
         ] {
             rim.push(Vec3::new(at.x + x, skin_y(at.x + x, z, false) - 0.003, z));
         }
-        if i==0 {
-            let breaks=[at.z-1.10,at.z-0.60,at.z+0.10,at.z+0.35];
+        {
+            let mut breaks = super::super::raptor::sections().iter().map(|p| p.0 as f32).collect::<Vec<_>>();
+            if i == 0 { breaks.extend([at.z-1.10,at.z-0.60,at.z+0.10,at.z+0.35]); }
+            breaks.sort_by(f32::total_cmp);
+            breaks.dedup();
             let mut split=Vec::new();
             for k in 0..rim.len() {
                 let a=rim[k];let b=rim[(k+1)%rim.len()];
                 split.push(a);
-                let mut cuts=breaks.iter().copied().filter(|z|*z>a.z.min(b.z)&&*z<a.z.max(b.z)).collect::<Vec<_>>();
+                let mut cuts=breaks.iter().copied().filter(|z| (a.x-b.x).abs()<1e-6 && *z>a.z.min(b.z)&&*z<a.z.max(b.z)).collect::<Vec<_>>();
                 if a.z>b.z {cuts.reverse();}
                 for z in cuts {let t=(z-a.z)/(b.z-a.z);let x=a.x+(b.x-a.x)*t;
                     split.push(Vec3::new(x,skin_y(x,z,false)-0.003,z));}
@@ -1215,12 +1292,12 @@ pub(super) fn gear(
                 root,
                 dark.clone(),
                 Vec3::new(
-                    at.x - 0.33,
+                    at.x - (w - 0.08),
                     if i == 0 { nose_well_ceiling(z0+0.25+k as f32*0.40,at.z)-0.035 } else { 0.265 },
                     z0 + 0.25 + k as f32 * 0.40,
                 ),
                 Vec3::new(
-                    at.x + 0.33,
+                    at.x + (w - 0.08),
                     if i == 0 { nose_well_ceiling(z0+0.25+k as f32*0.40,at.z)-0.035 } else { 0.265 },
                     z0 + 0.25 + k as f32 * 0.40,
                 ),
@@ -1258,18 +1335,17 @@ pub(super) fn gear(
                     c,
                     m,
                     root,
-                    raptor_mesh::paint_at(solid(&q, Vec3::Y * 0.011), hinge),
+                    raptor_mesh::paint_at(conformal_panel(&q, hinge, -0.009, 0.011), hinge),
                     skin.clone(),
                     Transform::from_translation(hinge),
                 );
                 c.entity(door).insert(GearDoor(i, side, hinge, short));
                 // Inner face, longitudinal stiffening ribs, hinge barrels and latches.
-                let inner = q.iter().map(|p| *p + Vec3::Y * 0.024).collect::<Vec<_>>();
                 part(
                     c,
                     m,
                     door,
-                    solid(&inner, Vec3::Y * 0.004),
+                    conformal_panel(&q, hinge, 0.015, 0.004),
                     white.clone(),
                     Transform::default(),
                 );
@@ -1872,6 +1948,55 @@ pub fn export_nozzle_preview() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn belly_doors_are_closed_outward_solids_seated_on_the_deeper_skin() {
+        for side in [-1., 1.] {
+            let hinge = Vec3::new(side * 0.95, skin_y(side * 0.95, 0., false), 0.);
+            let q = [Vec3::new(0., 0., -1.75), Vec3::new(side * 0.95, 0., -1.75), Vec3::new(side * 0.95, 0., 1.75), Vec3::new(0., 0., 1.75)].map(|p| p - hinge);
+            let panel = conformal_panel(&q, hinge, -0.008, 0.009);
+            let Some(bevy::mesh::VertexAttributeValues::Float32x3(p)) = panel.attribute(Mesh::ATTRIBUTE_POSITION) else { panic!("door vertices"); };
+            let mut edges = std::collections::HashMap::new();
+            let mut volume = 0.;
+            let indices = panel.indices().unwrap().iter().collect::<Vec<_>>();
+            let key = |i: usize| p[i].map(|x| (x * 10000.).round() as i32);
+            for t in indices.chunks_exact(3) {
+                let [a, b, c] = [t[0], t[1], t[2]].map(|i| Vec3::from_array(p[i]));
+                assert!((b - a).cross(c - a).length() > 1e-7);
+                volume += a.dot(b.cross(c)) / 6.;
+                for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                    let mut edge = [key(a), key(b)]; edge.sort();
+                    *edges.entry(edge).or_insert(0) += 1;
+                }
+            }
+            assert!(volume > 0.05, "door must have outward winding and thickness: {volume}");
+            assert!(edges.values().all(|n| *n == 2), "door must be watertight");
+            for p in p {
+                let world = Vec3::from_array(*p) + hinge;
+                assert!((world.y - skin_y(world.x, world.z, false) + 0.008).abs() <= 0.00901);
+            }
+        }
+    }
+
+    #[test]
+    fn main_wheel_pockets_clear_the_weapon_doors_and_contain_folded_tires() {
+        let mut f = Flight::runway();
+        super::super::super::select(&mut f, Aircraft::F22);
+        f.gear_extension = 0.; f.gear_compression = [0.; 3];
+        for i in 1..3 {
+            let (center, width) = well_layout(i);
+            assert!(center.x.abs() - width >= 0.97);
+            let (_, wheel, rotation) = detail_gear_pose(&f, i);
+            let mesh = tire(0.34, 0.25);
+            let Some(bevy::mesh::VertexAttributeValues::Float32x3(vertices)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else { panic!("tire vertices"); };
+            for p in vertices {
+                let p = (wheel + rotation * Vec3::from_array(*p).as_dvec3()).as_vec3();
+                assert!((p.x - center.x).abs() < width, "folded tire outside well: {p:?}");
+                assert!(p.z > center.z - 1.85 && p.z < center.z + 0.65);
+                assert!(p.y > skin_y(p.x, p.z, false) + 0.01);
+            }
+        }
+    }
+
     use super::*;
     #[test]
     fn nozzle_wedges_are_closed_outward_solids_and_mirror_away_from_the_flow() {

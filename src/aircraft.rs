@@ -532,7 +532,7 @@ pub fn station(a: Aircraft, i: usize) -> DVec3 {
     let side = if i % 2 == 0 { -1. } else { 1. };
     if a == Aircraft::F22 {
         return if i < 2 {
-            DVec3::new(side * 1.35, 0., -0.6)
+            DVec3::new(side * 1.72, -0.40, -0.6)
         } else {
             DVec3::new(((i - 2) as f64 - 2.5) * 0.32, -0.5, 0.4)
         };

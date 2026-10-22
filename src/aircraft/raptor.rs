@@ -4,8 +4,8 @@ use super::*;
 use bevy::math::DMat3;
 
 pub fn sections() -> Vec<(f64, f64, f64, f64)> {
-    // z, half-width, half-height, vertical centre, metres. The chines widen
-    // behind the cockpit into a flat engine/weapon-bay body, not a round tube.
+    // z, half-width, upper half-height, vertical centre, metres. Chines widen
+    // behind the cockpit; lower_profile supplies the deeper bay/engine body.
     vec![
         (-9.46, 0.012, 0.012, 0.),
         (-8.7, 0.28, 0.19, 0.),
@@ -23,6 +23,91 @@ pub fn sections() -> Vec<(f64, f64, f64, f64)> {
         (7.7, 1.54, 0.31, -0.05),
         (8.1, 1.42, 0.24, -0.06),
     ]
+}
+
+/// Existing upper silhouette, shared by the render skin and collision contour.
+pub fn upper_profile(x: f32) -> f32 {
+    let x = x.abs();
+    if x < 0.58 {
+        1. - 0.06 * (x / 0.58).powi(2)
+    } else if x < 0.88 {
+        0.94 - (x - 0.58) * 1.9
+    } else {
+        (0.37 - (x - 0.88) * 3.08).max(0.)
+    }
+}
+
+/// Positive depth below each chine/section centre, in metres. These are
+/// photo-guided exterior proportions, not inferred internal engineering data.
+pub fn belly_depth(z: f32) -> f32 {
+    // Interpolate the aircraft-space keel, then convert to the section frame.
+    // Interpolating depths alone preserved kinks from the section-centre line.
+    const STATIONS: [(f32, f32); 15] = [
+        (-9.46, 0.010), (-8.7, 0.17), (-7.6, 0.36), (-6.5, 0.395),
+        (-5.4, 0.45), (-4.3, 0.505), (-3.3, 0.69), (-2.1, 0.94),
+        (0., 1.08), (2., 1.03), (4., 0.99), (5.8, 0.83),
+        (7., 0.45), (7.7, 0.37), (8.1, 0.32),
+    ];
+    const CENTRES:[f32;15]=[0.,0.,0.,0.02,0.04,0.02,-0.03,-0.06,-0.04,-0.02,0.,0.,-0.03,-0.05,-0.06];
+    let z = z.clamp(STATIONS[0].0, STATIONS[14].0);
+    let i = STATIONS.windows(2).position(|p| z <= p[1].0).unwrap();
+    let pair = &STATIONS[i..=i + 1];
+    let t = (z - pair[0].0) / (pair[1].0 - pair[0].0);
+    // Monotone cubic slopes remove station kinks without overshooting the keel.
+    let slope = |i: usize| {
+        let secant = |j: usize| (STATIONS[j + 1].1 - STATIONS[j].1) / (STATIONS[j + 1].0 - STATIONS[j].0);
+        if i == 0 { return secant(0); }
+        if i == STATIONS.len() - 1 { return secant(i - 1); }
+        let a = secant(i - 1); let b = secant(i);
+        if a * b <= 0. { 0. } else { 2. * a * b / (a + b) }
+    };
+    let h = pair[1].0 - pair[0].0;
+    (2.*t*t*t-3.*t*t+1.)*pair[0].1 + (t*t*t-2.*t*t+t)*h*slope(i)
+        + (-2.*t*t*t+3.*t*t)*pair[1].1 + (t*t*t-t*t)*h*slope(i+1)
+        + CENTRES[i]*(1.-t)+CENTRES[i+1]*t
+}
+
+/// Lower body in the same section frame as upper_profile. A broad bay keel
+/// blends into two engine lobes aft; the original sharp chine stays at x=1.
+pub fn lower_profile(x: f32, z: f32) -> f32 {
+    const X: [f32; 6] = [0., 0.25, 0.48, 0.66, 0.82, 1.];
+    const BAY: [f32; 6] = [1., 0.995, 0.96, 0.84, 0.48, 0.];
+    const ENGINES: [f32; 6] = [0.62, 0.91, 1., 0.91, 0.56, 0.];
+    let x = x.abs().clamp(0., 1.);
+    let blend = ((z - 1.1) / 2.9).clamp(0., 1.);
+    let blend = blend * blend * (3. - 2. * blend);
+    let i = X.windows(2).position(|p| x <= p[1]).unwrap();
+    let t = (x - X[i]) / (X[i + 1] - X[i]);
+    let shape = |j: usize| BAY[j] + (ENGINES[j] - BAY[j]) * blend;
+    -belly_depth(z) * (shape(i) + (shape(i + 1) - shape(i)) * t)
+}
+
+#[cfg(test)]
+mod nose_contour_tests {
+    use super::*;
+    #[test]
+    fn intake_keel_has_a_gradual_continuous_slope() {
+        let keel=|z:f32| {
+            let sections=sections();
+            let p=sections.windows(2).find(|p|z as f64<=p[1].0).unwrap();
+            let t=(z as f64-p[0].0)/(p[1].0-p[0].0);
+            belly_depth(z)-(p[0].3*(1.-t)+p[1].3*t)as f32
+        };
+        for z in [-5.4,-4.3,-3.3,-2.1] {
+            let left=(keel(z)-keel(z-0.002))/0.002;
+            let right=(keel(z+0.002)-keel(z))/0.002;
+            assert!((left-right).abs()<0.002,"station kink at {z}");
+        }
+        for j in 0..100 {
+            let z=-5.4+3.3*j as f32/100.;
+            let slope=(keel(z+0.01)-keel(z))/0.01;
+            assert!((0.02..0.26).contains(&slope),"sudden inlet rise at {z}: {slope}");
+            if z< -4.4 {assert!(slope<0.085,"cockpit belly must remain a shallow slope");}
+        }
+        // Beneath the cockpit midpoint, substantially shallower than the first
+        // fuller-belly pass; the central weapon-bay depth remains unchanged.
+        assert!(belly_depth(-4.85)<0.515);
+    }
 }
 pub fn wing(side: f32) -> [Vec3; 4] {
     [
@@ -360,6 +445,31 @@ fn landing_trial() -> Flight {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn belly_has_bay_volume_engine_lobes_and_a_sharp_chine() {
+        use super::{belly_depth, lower_profile};
+        let mut added_area = 0.;
+        let mut old_area = 0.;
+        for i in 0..1000 {
+            let x = (i as f32 + 0.5) / 1000.;
+            added_area -= lower_profile(x, 0.);
+            old_area += 0.83 * 0.62 * (1. - x.powi(4)).sqrt();
+        }
+        assert!(added_area > old_area * 1.6, "bay cross section must have meaningful additional depth");
+        assert!(lower_profile(0.48, 4.) < lower_profile(0., 4.) - 0.25);
+        assert!((belly_depth(0.) - 1.04).abs() < 1e-5);
+        for i in 0..1800 {
+            let z = -9.4 + i as f32 * 0.0097;
+            assert_eq!(lower_profile(1., z), 0.);
+            for x in [0., 0.25, 0.48, 0.66, 0.82, 0.99] {
+                let y = lower_profile(x, z);
+                assert!(y.is_finite() && y <= 0.);
+                assert_eq!(y, lower_profile(-x, z));
+                assert!((lower_profile(x, z + 0.001) - y).abs() < 0.002);
+            }
+        }
+    }
+
     use super::*;
     use bevy::math::DQuat;
     // Steady trim through the real six-DOF force, surface and engine path.
