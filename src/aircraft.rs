@@ -2,6 +2,8 @@
 //! inertias and control laws are deliberately tunable gameplay estimates.
 pub mod visual;
 pub mod raptor;
+pub mod bays;
+pub mod main_bay;
 use crate::physics::*;
 use bevy::{math::DVec3, prelude::*};
 
@@ -387,6 +389,10 @@ pub struct Systems {
     pub stores: [bool; 10],
     pub bays: f64,
     pub bays_target: bool,
+    pub side_bays: [bays::State; 2],
+    pub side_request: Option<usize>,
+    pub main_request: Option<usize>,
+    pub main_stroke: [f64;6],
 }
 impl Default for Systems {
     fn default() -> Self {
@@ -402,6 +408,10 @@ impl Default for Systems {
             stores: [true; 10],
             bays: 0.,
             bays_target: false,
+            side_bays: [bays::State::default(); 2],
+            side_request: None,
+            main_request: None,
+            main_stroke: [0.;6],
         }
     }
 }
@@ -534,7 +544,7 @@ pub fn station(a: Aircraft, i: usize) -> DVec3 {
         return if i < 2 {
             DVec3::new(side * 1.72, -0.40, -0.6)
         } else {
-            DVec3::new(((i - 2) as f64 - 2.5) * 0.32, -0.5, 0.4)
+            main_bay::station(i-2)
         };
     }
     if a == Aircraft::F35B {
@@ -568,7 +578,11 @@ pub fn launch_station(f: &Flight, kind: crate::combat::Weapon, ammo: [u8; 2]) ->
     } else {
         (s.ammo[0] + s.ammo[1].saturating_sub(ammo[1])) as usize
     };
-    station_for(f, i.min(9))
+    if f.aircraft==Aircraft::F22 && kind==crate::combat::Weapon::Heat {
+        bays::missile_pose(i.min(1), f.systems.side_bays[i.min(1)].launcher).translation.as_dvec3()
+    } else if f.aircraft==Aircraft::F22 && kind==crate::combat::Weapon::Radar && !(f.systems.external_stores&&i>=6) {
+        main_bay::store_position(i.saturating_sub(2).min(5),f.systems.main_stroke[i.saturating_sub(2).min(5)])
+    } else {station_for(f, i.min(9))}
 }
 pub fn gun_origin(a: Aircraft) -> DVec3 {
     let l = a.spec().length;
@@ -669,8 +683,15 @@ pub fn panel_loads(
 /// orientation changes are used for vectoring or hover control.
 pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3, f64) {
     let s = f.aircraft.spec();
+    if f.aircraft == Aircraft::F22 {
+        let powered=f.damage.hydraulics>0.12 && !f.crashed;
+        main_bay::advance(&mut f.systems,powered,dt);
+        for i in 0..2 {
+            f.systems.side_bays[i].advance(f.systems.manual_bays || f.systems.side_request==Some(i), powered, dt);
+        }
+    }
     let t = f.systems.conversion_target && f.aircraft == Aircraft::F35B;
-    if f.damage.hydraulics > 0.12 {
+    if f.aircraft!=Aircraft::F22 && f.damage.hydraulics > 0.12 {
         let target = if f.systems.bays_target { 1. } else { 0. };
         f.systems.bays += (target - f.systems.bays).clamp(-dt * 2.5, dt * 2.5);
     }

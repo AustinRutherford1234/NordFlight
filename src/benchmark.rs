@@ -80,7 +80,7 @@ fn initialize(
     crate::reset(f, scenario, v);
     *e = Environment::default();
     if !matches!(scenario, 4..=8) { *c=combat::Combat::default(); }
-    w.selected = 0;
+    w.normal();
     w.effective = 1.;
     c.diagnostic_controls(f, false, false, false);
     match script {

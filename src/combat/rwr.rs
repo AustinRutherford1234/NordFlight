@@ -75,7 +75,7 @@ fn emissions(c: &Combat, f: &Flight) -> Vec<(usize, DVec3, Level)> {
             continue;
         }
         let offset = f.position - t.position;
-        if offset.length() > 240000. || !guidance::terrain_visible(t.position, f.position) {
+        if offset.length() > 240000. {
             continue;
         }
         let local = t.orientation.conjugate() * offset;
@@ -90,7 +90,10 @@ fn emissions(c: &Combat, f: &Flight) -> Vec<(usize, DVec3, Level)> {
         );
         let sweep = (((c.clock * 32. + i as f64 * 27.).rem_euclid(240.) - 120.).abs() - 60.)
             .clamp(-60., 60.);
-        if tracking || (az - sweep).abs() < 10. {
+        // Terrain line of sight last: it is the only expensive gate.
+        if (tracking || (az - sweep).abs() < 10.)
+            && guidance::terrain_visible(t.position, f.position)
+        {
             result.push((
                 i,
                 t.position,
@@ -111,7 +114,7 @@ fn emissions(c: &Combat, f: &Flight) -> Vec<(usize, DVec3, Level)> {
             continue;
         }
         let offset = f.position - m.position;
-        if offset.length() > 35000. || !guidance::terrain_visible(m.position, f.position) {
+        if offset.length() > 35000. {
             continue;
         }
         if m.gnc
@@ -119,6 +122,7 @@ fn emissions(c: &Combat, f: &Flight) -> Vec<(usize, DVec3, Level)> {
             .normalize_or_zero()
             .dot(offset.normalize_or_zero())
             < 60_f64.to_radians().cos()
+            || !guidance::terrain_visible(m.position, f.position)
         {
             continue;
         }

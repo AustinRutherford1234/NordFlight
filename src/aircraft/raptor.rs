@@ -43,8 +43,8 @@ pub fn belly_depth(z: f32) -> f32 {
     // Interpolate the aircraft-space keel, then convert to the section frame.
     // Interpolating depths alone preserved kinks from the section-centre line.
     const STATIONS: [(f32, f32); 15] = [
-        (-9.46, 0.010), (-8.7, 0.17), (-7.6, 0.36), (-6.5, 0.395),
-        (-5.4, 0.45), (-4.3, 0.505), (-3.3, 0.69), (-2.1, 0.94),
+        (-9.46, 0.010), (-8.7, 0.17), (-7.6, 0.36), (-6.5, 0.52),
+        (-5.4, 0.70), (-4.3, 0.81), (-3.3, 0.88), (-2.1, 0.94),
         (0., 1.08), (2., 1.03), (4., 0.99), (5.8, 0.83),
         (7., 0.45), (7.7, 0.37), (8.1, 0.32),
     ];
@@ -55,6 +55,9 @@ pub fn belly_depth(z: f32) -> f32 {
     let t = (z - pair[0].0) / (pair[1].0 - pair[0].0);
     // Monotone cubic slopes remove station kinks without overshooting the keel.
     let slope = |i: usize| {
+        // Preserve the existing weapon-bay keel and door fit aft of this
+        // boundary while reshaping only the forebody ahead of it.
+        if i==7 {let a=0.25f32/1.2;let b=0.14f32/2.1;return 2.*a*b/(a+b);}
         let secant = |j: usize| (STATIONS[j + 1].1 - STATIONS[j].1) / (STATIONS[j + 1].0 - STATIONS[j].0);
         if i == 0 { return secant(0); }
         if i == STATIONS.len() - 1 { return secant(i - 1); }
@@ -101,12 +104,12 @@ mod nose_contour_tests {
         for j in 0..100 {
             let z=-5.4+3.3*j as f32/100.;
             let slope=(keel(z+0.01)-keel(z))/0.01;
-            assert!((0.02..0.26).contains(&slope),"sudden inlet rise at {z}: {slope}");
-            if z< -4.4 {assert!(slope<0.085,"cockpit belly must remain a shallow slope");}
+            assert!((0.02..0.18).contains(&slope),"sudden inlet rise at {z}: {slope}");
         }
-        // Beneath the cockpit midpoint, substantially shallower than the first
-        // fuller-belly pass; the central weapon-bay depth remains unchanged.
-        assert!(belly_depth(-4.85)<0.515);
+        // A full lower forebody meets the lower inlet lip instead of leaving
+        // an intake pod hanging below the nose in side elevation.
+        assert!((0.74..0.80).contains(&belly_depth(-4.85)));
+        assert!((keel(-3.95)-0.80).abs()<0.06);
     }
 }
 pub fn wing(side: f32) -> [Vec3; 4] {

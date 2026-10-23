@@ -411,7 +411,8 @@ pub fn install(c: &mut Commands, root: Entity, missile: usize, assets: &VisualAs
     }
 }
 pub(super) fn local_control(m: &Missile) -> Vec3 {
-    let frame = super::facing(m.gnc.body.normalize_or(-DVec3::Z), m.position.normalize());
+    let frame = DQuat::from_rotation_arc(m.gnc.attitude * -DVec3::Z,
+        m.gnc.body.normalize_or(-DVec3::Z)) * m.gnc.attitude;
     let velocity = m.velocity.normalize_or_zero();
     let normal = m.gnc.fins - velocity * m.gnc.fins.dot(velocity);
     (frame.conjugate() * normal).as_vec3().clamp_length_max(1.)
@@ -517,7 +518,7 @@ pub fn write_smoke(
     p.clear();
     col.clear();
     uv.clear();
-    let tail = (m.gnc.thrust > 0.).then(|| m.position - m.velocity.normalize_or_zero() * 1.6);
+    let tail = (m.gnc.thrust > 0.).then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * 1.6);
     let point_count = m.trail.len() + usize::from(tail.is_some());
     let points = m.trail.iter().copied().chain(tail);
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {

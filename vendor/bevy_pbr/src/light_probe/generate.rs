@@ -1735,6 +1735,7 @@ impl Node for FilteringNode {
 
             // Radiance convolution pass
             // Process each mip at different roughness levels
+            let num_mips = bind_groups.radiance[selection].len();
             for (mip, bind_group) in bind_groups.radiance[selection].iter().enumerate() {
                 compute_pass.set_bind_group(0, bind_group, &[]);
 
@@ -1743,7 +1744,11 @@ impl Node for FilteringNode {
                 let workgroup_count = mip_size.div_ceil(8);
                 // Parallel kernel: eight texels per group, eight sample lanes
                 // per texel. Reference kernel: one lane per texel in an 8x8 tile.
-                let rows=if parallel_irradiance() {mip_size} else {workgroup_count};
+                // The mirror mip (roughness exactly 0, the same f32 as its
+                // uniform) takes no samples, so the parallel kernel also maps
+                // one lane per texel there instead of idling seven of eight.
+                let mirror = mip as f32 / (num_mips - 1) as f32 == 0.0;
+                let rows=if parallel_irradiance() && !mirror {mip_size} else {workgroup_count};
                 compute_pass.dispatch_workgroups(workgroup_count, rows, face_count);
             }
             pass_span.end(&mut compute_pass);

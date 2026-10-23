@@ -22,9 +22,9 @@ impl Default for Warp {
     fn default() -> Self {
         Self {
             rates: vec![
-                1.0, 2.0, 4.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 10000., 100000.,
+                0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 4.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 10000., 100000.,
             ],
-            selected: 0,
+            selected: 4,
             effective: 1.0,
             editing: false,
             open: false,
@@ -36,6 +36,7 @@ impl Default for Warp {
     }
 }
 impl Warp {
+    pub fn normal(&mut self) {self.selected=self.rates.iter().position(|r|*r==1.).unwrap_or(0);}
     fn path() -> std::path::PathBuf {
         let base = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
@@ -49,13 +50,13 @@ impl Warp {
             let value = part
                 .parse::<f64>()
                 .map_err(|_| "Use numbers separated by commas".to_string())?;
-            if !value.is_finite() || !(1.0..=100000.0).contains(&value) {
-                return Err("Rates must be between 1 and 100000".into());
+            if !value.is_finite() || !(0.1..=100000.0).contains(&value) {
+                return Err("Rates must be between 0.1 and 100000".into());
             }
             rates.push(value);
         }
-        if rates.len() > 17 {
-            return Err("Use at most 16 rates".into());
+        if rates.len() > 25 {
+            return Err("Use at most 24 rates".into());
         }
         rates.sort_by(f64::total_cmp);
         rates.dedup();
@@ -83,6 +84,10 @@ impl Warp {
                 }
                 out.rates.sort_by(f64::total_cmp);
             }
+            if value["slow_motion_version"].as_u64().unwrap_or(0)<1 {
+                for rate in [0.1,0.25,0.5,0.75] {if !out.rates.contains(&rate){out.rates.push(rate);}}
+                out.rates.sort_by(f64::total_cmp);
+            }
             if let Some(dt) = value["timestep"]
                 .as_f64()
                 .filter(|x| x.is_finite() && (0.001..=0.05).contains(x))
@@ -90,14 +95,14 @@ impl Warp {
                 out.timestep = dt;
             }
         }
-        out
+        out.normal();out
     }
     fn save(&mut self) {
         let path = Self::path();
         let result = std::fs::create_dir_all(path.parent().unwrap()).and_then(|_| {
             std::fs::write(
                 &path,
-                serde_json::json!({"warp_rates":self.rates,"timestep":self.timestep,"space_warp_version":1}).to_string(),
+                serde_json::json!({"warp_rates":self.rates,"timestep":self.timestep,"space_warp_version":1,"slow_motion_version":1}).to_string(),
             )
         });
         self.message = match result {
@@ -108,7 +113,7 @@ impl Warp {
     pub fn allowed(&self, f: &Flight) -> f64 {
         let requested = self.rates[self.selected.min(self.rates.len() - 1)];
         if f.crashed || f.landed || f.agl() < 100.0 {
-            return 1.0;
+            return requested.min(1.0);
         }
         let safe_alt = if f.space.body == crate::space::Body::Moon {
             22000.
@@ -259,7 +264,7 @@ pub fn controls(
             match action.0 {
                 0 => warp.selected = warp.selected.saturating_sub(1),
                 1 => warp.selected = (warp.selected + 1).min(warp.rates.len() - 1),
-                2 => warp.selected = 0,
+                2 => warp.normal(),
                 3 => {
                     warp.open = !warp.open;
                     warp.editing = false;
@@ -306,7 +311,7 @@ pub fn controls(
                 KeyCode::Enter => match Warp::parse(&warp.buffer) {
                     Ok(rates) => {
                         warp.rates = rates;
-                        warp.selected = 0;
+                        warp.normal();
                         warp.editing = false;
                         warp.save();
                     }
@@ -335,7 +340,7 @@ pub fn controls(
             warp.selected = (warp.selected + 1).min(warp.rates.len() - 1);
         }
         if keys.just_pressed(KeyCode::Slash) {
-            warp.selected = 0;
+            warp.normal();
         }
     }
 }
@@ -358,7 +363,7 @@ pub fn ui(
         }
         let updated = match tag.0 {
             0 => format!(
-                "WARP {:.0}× / REQUESTED {:.0}×{}",
+                "WARP {}× / REQUESTED {}×{}",
                 warp.effective,
                 warp.rates[warp.selected],
                 if f.paused {
@@ -398,6 +403,17 @@ pub fn ui(
 mod tests {
     use super::*;
     #[test]
+    fn comma_below_normal_time_and_reset_use_actual_one_times_index() {
+        let mut w=Warp::default();assert_eq!(w.rates[w.selected],1.);
+        w.selected=w.selected.saturating_sub(1);
+        assert_eq!(w.allowed(&Flight::runway()),0.75);
+        w.selected=0;assert_eq!(w.allowed(&Flight::runway()),0.1);
+        w.normal();assert_eq!(w.rates[w.selected],1.);
+        assert_eq!(w.timestep,1./60.);
+        assert_eq!(Warp::parse("0.1,0.5,2").unwrap(),vec![0.1,0.5,1.,2.]);
+        assert!(Warp::parse("0.01").is_err());
+    }
+    #[test]
     fn rates_are_bounded_sorted_and_include_normal_time() {
         assert_eq!(
             Warp::parse("1000, 10, 2, 10").unwrap(),
@@ -410,7 +426,7 @@ mod tests {
     #[test]
     fn warp_is_limited_near_ground_or_under_thrust() {
         let mut w = Warp::default();
-        w.selected = 7;
+        w.selected = w.rates.iter().position(|r|*r==1000.).unwrap();
         let mut f = Flight::spacecraft();
         assert_eq!(w.allowed(&f), 1000.0);
         f.throttle = 0.2;

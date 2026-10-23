@@ -382,7 +382,10 @@ pub(super) fn canopy_point(u: f32, t: f32) -> Vec3 {
     let base = skin_y(width, z, true) + 0.015;
     Vec3::new(width * t.cos(), base + 0.77 * shape.powf(0.78) * t.sin(), z)
 }
-fn skin_y(x: f32, z: f32, top: bool) -> f32 {
+pub(super) fn skin_y(x: f32, z: f32, top: bool) -> f32 {
+    if !top && (-5.4..=-2.1).contains(&z) {
+        return raptor_intake::body_height(x,z,false);
+    }
     let s = super::super::raptor::sections();
     let p = s
         .windows(2)
@@ -443,33 +446,13 @@ fn conformal_panel(outline: &[Vec3], origin: Vec3, offset: f32, thickness: f32) 
     mesh(v, ix)
 }
 
-pub(super) fn main_bay(c: &mut Commands, m: &mut Assets<Mesh>, root: Entity, skin: Handle<StandardMaterial>, interior: Handle<StandardMaterial>) {
-    for side in [-1., 1.] {
-        let hinge = Vec3::new(side * 0.95, skin_y(side * 0.95, 0., false), 0.);
-        let outline = [Vec3::new(0., 0., -1.75), Vec3::new(side * 0.95, 0., -1.75), Vec3::new(side * 0.95, 0., 1.75), Vec3::new(0., 0., 1.75)].map(|p| p - hinge);
-        let door = part(c, m, root, raptor_mesh::paint_at(conformal_panel(&outline, hinge, -0.008, 0.009), hinge), skin.clone(), Transform::from_translation(hinge));
-        c.entity(door).insert(WeaponDoor(Aircraft::F22, side, hinge));
-    }
-    let perimeter = [Vec3::new(-0.95, 0., -1.75), Vec3::new(0.95, 0., -1.75), Vec3::new(0.95, 0., 1.75), Vec3::new(-0.95, 0., 1.75)];
-    let mut v = Vec::new();
-    let mut ix = Vec::new();
-    for k in 0..4 {
-        for j in 0..16 {
-            let a = perimeter[k].lerp(perimeter[(k + 1) % 4], j as f32 / 16.);
-            let b = perimeter[k].lerp(perimeter[(k + 1) % 4], (j + 1) as f32 / 16.);
-            quad(&mut v, &mut ix, [Vec3::new(a.x, skin_y(a.x, a.z, false), a.z), Vec3::new(b.x, skin_y(b.x, b.z, false), b.z), Vec3::new(b.x, -0.28, b.z), Vec3::new(a.x, -0.28, a.z)]);
-        }
-    }
-    part(c, m, root, mesh(v, ix), interior, Transform::default());
-}
-
 /// Keep the main-wheel pockets outside the weapons bay, with the original
 /// wheel/strut locations and contact geometry unchanged.
 pub(super) fn well_layout(i: usize) -> (Vec3, f32) {
     let mut center = gear_mount(Aircraft::F22, i).as_vec3();
     if i == 0 { (center, 0.41) } else {
-        center.x += center.x.signum() * 0.13;
-        (center, 0.30)
+        center.x += center.x.signum() * 0.07;
+        (center, 0.22)
     }
 }
 pub(super) fn sill() -> Mesh {
@@ -1089,7 +1072,9 @@ fn tire(radius: f32, width: f32) -> Mesh {
 // extension this is exactly the existing contact/compression pose.
 fn detail_gear_pose(f: &Flight, i: usize) -> (DVec3, DVec3, bevy::math::DQuat) {
     let (a, b, q) = gear_pose(f, i, true);
-    let lift = DVec3::Y * ((if i == 0 { 0.31 } else { 0.20 }) * (1. - f.gear_extension).powi(2));
+    // The deeper forebody permits a lower folded nose-wheel pocket, keeping
+    // the wheel away from the cockpit partition. Deployed contact is unchanged.
+    let lift = DVec3::Y * (0.20 * (1. - f.gear_extension).powi(2));
     (a + lift, b + lift, q)
 }
 fn gear_visibility(f: &Flight, i: usize) -> Visibility {

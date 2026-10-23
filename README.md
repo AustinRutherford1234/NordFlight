@@ -185,7 +185,7 @@ See [the landscape guide](docs/LANDSCAPE.md) for location and limitations.
 | H or F1 | Toggle help |
 | C | Cycle locked, radial-up, fly-past, cockpit |
 | Home | Recenter cockpit/external look |
-| Comma / period / slash | Decrease warp / increase warp / return to 1× |
+| Comma / period / slash | Decrease speed (including slow motion below 1×) / increase speed / return to 1× |
 | Left or right mouse, hold and move | Rotate / orbit the camera (left drags starting on scenario buttons stay with the UI) |
 | Mouse wheel | Zoom |
 | J | Select locked camera |
@@ -200,7 +200,7 @@ See [the landscape guide](docs/LANDSCAPE.md) for location and limitations.
 
 There are exactly four flight cameras. Radial-up stays level with the planet independently of vehicle roll. Fly-past places a stationary observer ahead of the flight path and tracks the passing vehicle. The spacecraft map is separate: M preserves flight camera and warp. It shows a physical-scale 3D planet, current orbit, AP/PE and ship markers. Add a maneuver node, drag NODE along the orbit, and drag P/R/N handles to edit signed prograde/radial/normal delta-v. The orange orbit predicts an instantaneous planned impulse; nodes do not execute burns.
 
-WARP SETTINGS opens the editable rate list; click the list, type comma-separated rates, and press Enter to save locally. Delete clears the field; Escape cancels. Rates are bounded to 1–100,000× and stored in `~/.nord-flight/settings.json`. High warp is restricted to quiet spacecraft coasts; powered/attitude-controlled spacecraft are limited to 4×, aircraft to 2×, and near-ground/landed states to 1×. Full physics uses substeps no larger than 1/120 second; higher rates use universal-variable Kepler drift with bounded steps and SOI/entry/burn guards. Both simulation and environment clocks advance.
+WARP SETTINGS opens the editable rate list; click the list, type comma-separated rates, and press Enter to save locally. Delete clears the field; Escape cancels. Rates are bounded to 0.1–100,000× and stored in `~/.nord-flight/settings.json`. From 1×, comma selects 0.75×, then 0.5×, 0.25× and 0.1× with the default rates; period steps back up and slash returns to 1×. Slow motion also works near terrain and while landed. High warp is restricted to quiet spacecraft coasts; powered/attitude-controlled spacecraft are limited to 4×, aircraft to 2×, and near-ground/landed states to at most 1×. Full physics uses substeps no larger than 1/120 second; higher rates use universal-variable Kepler drift with bounded steps and SOI/entry/burn guards. Both simulation and environment clocks advance; slow motion does not change the configured timestep setting.
 
 Original Firefly-inspired atmospheric visuals include heating-driven reentry glow and streaming plasma, a transonic condensation cone, and load-driven wingtip vapor. They depend on density, air-relative speed, Mach and load factor, and disappear in vacuum. These are visual proxies rather than fluid/thermal simulation; the cone is condensation, not a permanently visible sonic boom. No Firefly assets or code are included.
 

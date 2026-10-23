@@ -480,7 +480,7 @@ pub fn draw(
                         .count()
                 )
             });
-        t.0 = format!(
+        let readout = format!(
             "TACTICAL / LIVE RADAR\n{}\nMAP: {}\nSpan {:.0} km / north up\n\nClick contact: designate\nEnter: single-target lock\nRight-drag: pan\nWheel: zoom\nM: return to flight\n\nScenario configuration is\nunder BVR SETUP.",
             radar,
             if menu.reveal {
@@ -490,6 +490,9 @@ pub fn draw(
             },
             menu.span / 1000.
         );
+        if t.0 != readout {
+            t.0 = readout;
+        }
     }
     for (mut t, mut n) in &mut status {
         n.display = if combat.bvr.is_some() && !tactical {

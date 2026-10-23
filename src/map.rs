@@ -749,9 +749,9 @@ mod tests {
         assert!(stop > f.elapsed && stop < f.elapsed + node.eta(&f).unwrap() - 15.0);
         f.paused = true;
         f.throttle = 1.0;
-        warp.selected = 0;
+        warp.normal();
         warp_to_maneuver(&mut planner, &mut f, &mut warp);
-        assert_eq!(warp.selected, 0);
+        assert_eq!(warp.rates[warp.selected],1.);
         assert!(f.paused);
         planner.node = None;
         warp_to_maneuver(&mut planner, &mut f, &mut warp);

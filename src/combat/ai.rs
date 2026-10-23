@@ -34,7 +34,7 @@ pub fn skill(d: Difficulty) -> f64 {
 }
 /// Detection quality is a game sensor approximation, not access to target identity.
 pub fn visible(t: &Target, contact: guidance::Contact, sun: DVec3) -> bool {
-    if !contact.alive || !guidance::terrain_visible(t.position, contact.position) {
+    if !contact.alive {
         return false;
     }
     let r = contact.position - t.position;
@@ -55,12 +55,18 @@ pub fn visible(t: &Target, contact: guidance::Contact, sun: DVec3) -> bool {
                 .dot(r.normalize_or_zero())
                 > 8_f64.to_radians().cos()
     });
-    let radar = (known || (az - sweep).abs() < 8.)
+    let radar_gate = (known || (az - sweep).abs() < 8.)
         && elevation.abs() < 45.
         && t.damage.radar > 0.25
         && t.damage.avionics > 0.25
         && range < 170000.
-        && cosine > 65_f64.to_radians().cos()
+        && cosine > 65_f64.to_radians().cos();
+    // Terrain line of sight is the expensive term and only ever ANDs with the
+    // rest, so it runs after the cheap geometric gates without changing results.
+    if !(visual || radar_gate) || !guidance::terrain_visible(t.position, contact.position) {
+        return false;
+    }
+    let radar = radar_gate
         && (if t.brain.long_range {
             bvr::radar_signal(t.position, contact)
         } else {
@@ -74,7 +80,7 @@ pub fn warning(t: &Target, m: &Missile, sun: DVec3) -> bool {
     }
     let r = m.position - t.position;
     let closing = (m.velocity - t.velocity).dot(-r.normalize_or_zero());
-    if closing <= 0. || !guidance::terrain_visible(t.position, m.position) {
+    if closing <= 0. {
         return false;
     }
     // RF warning from a radiating seeker; optical warning from a close, burning
@@ -87,7 +93,8 @@ pub fn warning(t: &Target, m: &Missile, sun: DVec3) -> bool {
         && m.age < m.kind.burn() + 0.18
         && (t.orientation * -DVec3::Z).dot(r.normalize_or_zero()) > -0.5
         && sun.dot(r.normalize_or_zero()) < 0.998;
-    rf || optical
+    // Cheap range and aspect gates first; line of sight only ANDs with them.
+    (rf || optical) && guidance::terrain_visible(t.position, m.position)
 }
 pub fn rf_bearing(t: &Target, f: &Flight, powered: bool) -> Option<DVec3> {
     let r = t.position - f.position;

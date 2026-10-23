@@ -72,7 +72,14 @@ fn generate_radiance_map(@builtin(global_invocation_id) global_id: vec3u) {
     let invSize = 1.0 / vec2f(size);
     
 #ifdef PARALLEL_RADIANCE
-    let coords = vec2u(global_id.x * 8u + lane / 8u, global_id.y);
+    // The CPU dispatches the mirror mip (roughness exactly 0) as dense 8x8
+    // tiles, one lane per texel; every other mip uses eight lanes per texel.
+    let dense = constants.roughness == 0.0;
+    let coords = select(
+        vec2u(global_id.x * 8u + lane / 8u, global_id.y),
+        global_id.xy * 8u + vec2u(lane % 8u, lane / 8u),
+        dense,
+    );
     let valid = all(coords < size);
 #else
     let coords = vec2u(global_id.xy);
@@ -96,21 +103,22 @@ fn generate_radiance_map(@builtin(global_invocation_id) global_id: vec3u) {
     let perceptual_roughness = constants.roughness;
     let roughness = lighting::perceptualRoughnessToRoughness(perceptual_roughness);
     
-    // Get blue noise offset for stratification
-    let vector_noise = sample_noise(coords);
-    
     var radiance = vec3f(0.0);
     var total_weight = 0.0;
     
     // Skip sampling for mirror reflection (roughness = 0)
     if (roughness < 0.01) {
 #ifdef PARALLEL_RADIANCE
-        if (!valid || sample_lane != 0u) { return; }
+        if (!valid || (!dense && sample_lane != 0u)) { return; }
 #endif
         radiance = sample_environment(normal, 0.0).rgb;
         textureStore(output_texture, coords, face, vec4f(radiance, 1.0));
         return;
     }
+    
+    // Blue noise offset for stratification. Fetched after the mirror branch,
+    // which never uses it.
+    let vector_noise = sample_noise(coords);
     
     // For higher roughness values, use importance sampling
     let sample_count = constants.sample_count;

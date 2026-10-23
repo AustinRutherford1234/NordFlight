@@ -68,7 +68,7 @@ impl Weapon {
     fn range(self) -> f64 {
         if self == Self::Heat { 6000.0 } else { 20000.0 }
     }
-    fn lock_time(self) -> f64 {
+    pub(crate) fn lock_time(self) -> f64 {
         if self == Self::Heat { 0.8 } else { 1.3 }
     }
     fn fuse(self) -> f64 {
@@ -164,6 +164,8 @@ pub struct Combat {
     contact_pairs: [bool; 66],
     old_poses: Vec<(DVec3, DQuat)>,
     last_launch: f64,
+    pending_side: Option<PendingSideLaunch>,
+    pending_main: Option<PendingMainLaunch>,
     impacts: Vec<Impact>,
     message: String,
     message_until: f64,
@@ -194,12 +196,18 @@ impl Default for Combat {
             contact_pairs: [false; 66],
             old_poses: Vec::with_capacity(MAX_AIRCRAFT),
             last_launch: -10.0,
+            pending_side: None,
+            pending_main: None,
             impacts: vec![],
             message: String::new(),
             message_until: 0.0,
         }
     }
 }
+#[derive(Clone, Copy)]
+struct PendingSideLaunch { side:usize, target:usize, generation:u64, requested_at:f64 }
+#[derive(Clone, Copy)]
+struct PendingMainLaunch { slot:usize, target:usize, generation:u64, requested_at:f64 }
 pub fn flight() -> Flight {
     let mut f = Flight::approach();
     f.position = surface_point(0.0, -1500.0, 2000.0);
@@ -250,7 +258,7 @@ impl Combat {
             .filter(move |p| p.age < dt * (1.0 - 1e-7))
             .map(|p| p.position)
     }
-    pub fn prepare_capture(&mut self, f: &Flight, mode: &str) {
+    pub fn prepare_capture(&mut self, f: &mut Flight, environment:&Environment, mode: &str) {
         for _ in 0..180 {
             self.advance(f, 1.0 / 120.0);
         }
@@ -270,6 +278,12 @@ impl Combat {
                 target.dynamics.position=target.position;
             }
             self.fire(f);
+            // Exercise the same sequencer as live flight; a closed side bay
+            // cannot be bypassed just because this is a native visual capture.
+            for _ in 0..240 {
+                if self.pending_side.is_none()&&self.pending_main.is_none(){break;}
+                crate::physics::simulate(f,environment,1./120.);self.tick(f,1./120.);
+            }
             let steps = match mode {
                 "combat-launch" | "combat-vector" => 48,
                 "combat-flight" | "combat-follow" => 150,
@@ -397,6 +411,75 @@ impl Combat {
         }
         self.lock = 0.0;
     }
+    fn internal_main_slot(&self,f:&Flight)->Option<usize> {
+        if f.aircraft!=crate::aircraft::Aircraft::F22 || self.weapon!=Weapon::Radar{return None;}
+        let slot=f.aircraft.spec().ammo[1].saturating_sub(self.ammo[1]) as usize;
+        (slot<6&&!(f.systems.external_stores&&slot>=4)).then_some(slot)
+    }
+    fn queue_main_launch(&mut self,f:&Flight)->Option<bool> {
+        let slot=self.internal_main_slot(f)?;
+        if self.pending_main.is_some(){return Some(true);}
+        if !f.systems.stores[slot+2]{self.notify("MAIN BAY ROUND UNAVAILABLE");return Some(false);}
+        if f.gear_extension>0.05{self.notify("RETRACT LANDING GEAR");return Some(false);}
+        if !crate::aircraft::main_bay::ready(&f.systems,slot) {
+            self.pending_main=Some(PendingMainLaunch{slot,target:self.selected,generation:self.generation,requested_at:self.clock});
+            self.notify("MAIN BAY OPENING / LAUNCH QUEUED");return Some(true);
+        }
+        None
+    }
+    fn service_main_launch(&mut self,f:&mut Flight) {
+        let Some(p)=self.pending_main else{f.systems.main_request=None;return;};
+        let invalid=!self.active||f.crashed||f.vehicle!=Vehicle::Gripen
+            ||self.internal_main_slot(f)!=Some(p.slot)||self.ammo[1]==0
+            ||self.generation!=p.generation||self.selected!=p.target
+            ||self.targets.get(p.target).is_none_or(|t|!t.alive)
+            ||!f.systems.stores[p.slot+2]||f.damage.hydraulics<=0.12
+            ||f.gear_extension>0.05||self.clock-p.requested_at>3.||self.cue(f).is_err();
+        if invalid {
+            self.pending_main=None;f.systems.main_request=None;
+            self.notify("MAIN BAY LAUNCH CANCELLED");return;
+        }
+        f.systems.main_request=Some(p.slot);
+        if crate::aircraft::main_bay::ready(&f.systems,p.slot)&&self.lock>=self.weapon.lock_time() {
+            self.pending_main=None;
+            if self.fire(f){f.systems.stores[p.slot+2]=false;}
+            f.systems.main_request=None;
+        }
+    }
+    fn queue_side_launch(&mut self,f:&Flight)->Option<bool> {
+        if f.aircraft!=crate::aircraft::Aircraft::F22 || self.weapon!=Weapon::Heat {return None;}
+        if self.pending_side.is_some() {return Some(true);}
+        let side=f.aircraft.spec().ammo[0].saturating_sub(self.ammo[0]) as usize;
+        if side>=2 || !f.systems.stores[side] {self.notify("SIDE BAY ROUND UNAVAILABLE");return Some(false);}
+        if !f.systems.side_bays[side].ready() {
+            self.pending_side=Some(PendingSideLaunch {side,target:self.selected,generation:self.generation,requested_at:self.clock});
+            self.notify("SIDE BAY OPENING / LAUNCH QUEUED");return Some(true);
+        }
+        None
+    }
+    fn service_side_launch(&mut self,f:&mut Flight) {
+        let Some(p)=self.pending_side else {f.systems.side_request=None;return;};
+        let invalid=!self.active || f.crashed || f.vehicle!=Vehicle::Gripen
+            || f.aircraft!=crate::aircraft::Aircraft::F22 || self.weapon!=Weapon::Heat
+            || self.generation!=p.generation || self.selected!=p.target
+            || self.targets.get(p.target).is_none_or(|t|!t.alive)
+            || self.ammo[0]==0 || self.clock-p.requested_at>3.
+            || f.aircraft.spec().ammo[0].saturating_sub(self.ammo[0]) as usize!=p.side
+            || !f.systems.stores[p.side]
+            || f.damage.hydraulics<=0.12 || f.gear_extension>0.05
+            || self.cue(f).is_err();
+        if invalid {
+            self.pending_side=None;f.systems.side_request=None;
+            self.notify("SIDE BAY LAUNCH CANCELLED");return;
+        }
+        f.systems.side_request=Some(p.side);
+        if f.systems.side_bays[p.side].ready() && self.lock>=self.weapon.lock_time() {
+            self.pending_side=None;
+            // fire() sees the same ready pose used by the attached missile.
+            if self.fire(f) {f.systems.stores[p.side]=false;}
+            f.systems.side_request=None;
+        }
+    }
     pub fn fire(&mut self, f: &Flight) -> bool {
         if self.bvr.is_some() {
             return bvr::fire(self, f);
@@ -408,6 +491,7 @@ impl Combat {
             self.notify("RESUME TO LAUNCH");
             return false;
         }
+        if f.crashed {self.notify("AIRFRAME LOST");return false;}
         if f.gear_extension > 0.05 {
             self.notify("RETRACT LANDING GEAR");
             return false;
@@ -427,17 +511,25 @@ impl Combat {
         if self.clock - self.last_launch < 0.6 {
             return false;
         }
+        if let Some(accepted)=self.queue_main_launch(f) {return accepted;}
+        if let Some(accepted)=self.queue_side_launch(f) {return accepted;}
         let station=if f.aircraft==crate::aircraft::Aircraft::Gripen {let slot=self.weapon.index()*2+(2-self.ammo[self.weapon.index()])as usize;STATIONS[slot]}else{crate::aircraft::launch_station(f,self.weapon,self.ammo)};
         let position = f.position + f.orientation * station;
+        let release_rotation=if f.aircraft==crate::aircraft::Aircraft::F22 && self.weapon==Weapon::Heat {
+            let i=f.aircraft.spec().ammo[0].saturating_sub(self.ammo[0]) as usize;
+            crate::aircraft::bays::missile_pose(i.min(1),f.systems.side_bays[i.min(1)].launcher).rotation.as_dquat()
+        }else{DQuat::IDENTITY};
+        let main=self.internal_main_slot(f).is_some();
+        let inherited=f.velocity+(f.orientation*f.rates).cross(f.orientation*station);
+        let launch_velocity=if main{inherited-f.orientation*DVec3::Y*8.}else{inherited+f.orientation*release_rotation*(-DVec3::Z*18.)};
+        let mut gnc=guidance::Gnc::launch(launch_velocity,guidance::target(&self.targets[self.selected]),
+            self.generation.wrapping_mul(997)+self.fired as u64+1).for_aircraft(f.aircraft,self.weapon);
+        gnc=gnc.inherit(f.orientation*release_rotation,f.orientation*f.rates);
         self.missiles.push(Missile {
-            gnc: guidance::Gnc::launch(
-                f.velocity + f.forward() * 18.0,
-                guidance::target(&self.targets[self.selected]),
-                self.generation.wrapping_mul(997) + self.fired as u64 + 1,
-            ).for_aircraft(f.aircraft, self.weapon),
+            gnc,
             decoy: None,
             position,
-            velocity: f.velocity + f.forward() * 18.0 - (f.orientation * DVec3::Y) * 4.0,
+            velocity: launch_velocity - (f.orientation * DVec3::Y) * if main||(self.weapon==Weapon::Heat && f.aircraft==crate::aircraft::Aircraft::F22) {0.}else{4.},
             kind: self.weapon,
             target: self.selected,
             age: 0.0,
@@ -1619,7 +1711,8 @@ pub fn render(
             } else {
                 m.velocity.normalize()
             };
-            desired.rotation = world::local_rot(facing(nose, m.position.normalize()), &f);
+            let attitude=DQuat::from_rotation_arc(m.gnc.attitude*-DVec3::Z,nose)*m.gnc.attitude;
+            desired.rotation = world::local_rot(attitude, &f);
             desired.scale = Vec3::ONE;
             transform.set_if_neq(desired);
         }
@@ -1728,7 +1821,9 @@ pub fn draw_telemetry(
         && f.vehicle == Vehicle::Gripen;
     for (mut text, mut node) in &mut texts {
         if let Some(m) = tracked.filter(|m| m.alive && active) {
-            node.display = Display::Flex;
+            if node.display != Display::Flex {
+                node.display = Display::Flex;
+            }
             let (_, _, _, sound) = atmosphere(m.position.length() - RADIUS);
             let r = m.gnc.estimate - m.position;
             let vc = (m.velocity - m.gnc.estimated_velocity).dot(r.normalize_or_zero());
@@ -1750,7 +1845,7 @@ pub fn draw_telemetry(
                 guidance::Mode::Decoy => "DECOY TRACK / COMPROMISED",
                 _ => m.gnc.reason,
             };
-            text.0 = format!(
+            let readout = format!(
                 "MISSILE / {} · SIGNAL {:.0}%\n{} · M {:.2} · {:.0} m/s\nTURN {:.1}/{:.1} G · FUEL {:.1} kg\n{}\n{}\n{}",
                 if m.kind == Weapon::Heat && m.gnc.mode == guidance::Mode::Supported {
                     "IR / RADAR DATALINK"
@@ -1776,9 +1871,17 @@ pub fn draw_telemetry(
                 eta,
                 instruction
             );
+            // Unchanged text assigned through Mut still forces a re-layout.
+            if text.0 != readout {
+                text.0 = readout;
+            }
         } else {
-            node.display = Display::None;
-            text.0.clear();
+            if node.display != Display::None {
+                node.display = Display::None;
+            }
+            if !text.0.is_empty() {
+                text.0.clear();
+            }
         }
     }
 }
@@ -1839,15 +1942,20 @@ pub fn draw(
     for (mut text, label, readout) in &mut texts {
         if let Some(label) = label {
             if label.0 == combat.selected && v.missile_follow.is_none() && v.index != 3 {
-                text.0.clear();
+                if !text.0.is_empty() {
+                    text.0.clear();
+                }
                 continue;
             }
             if let Some(t) = combat.targets.get(label.0) {
-                text.0 = format!(
+                let readout = format!(
                     "T{:02} / {:.2} km",
                     label.0 + 1,
                     t.position.distance(f.position) / 1000.0
                 );
+                if text.0 != readout {
+                    text.0 = readout;
+                }
             }
         } else if readout.is_some() && active {
             let range = combat
@@ -1875,7 +1983,7 @@ pub fn draw(
                     100.0 * combat.lock / combat.weapon.lock_time()
                 )
             };
-            text.0 = format!(
+            let readout = format!(
                 "{} / STRIKES {} · DOWN {}/{}\n{} / IR {} · RAD {}\nT{:02} / {:.2} km  · Vc {:+.0} m/s\nNOSE AZ {:+.0}° · EL {:+.0}°\n{}",
                 if combat.difficulty().is_some() {
                     "COMBAT"
@@ -1898,6 +2006,9 @@ pub fn draw(
                 elevation,
                 state
             );
+            if text.0 != readout {
+                text.0 = readout;
+            }
         }
     }
     if !active {
@@ -1988,7 +2099,7 @@ pub fn smoke(
             }
             let tail = state
                 .powered
-                .then(|| missile.position - missile.velocity.normalize() * 1.6);
+                .then(|| missile.position - missile.gnc.body.normalize_or(missile.velocity.normalize()) * 1.6);
             *bounds = write_smoke_mesh(asset, &missile.trail, tail, basis, origin);
             previous[tag.0] = Some(state);
         }
@@ -2195,6 +2306,7 @@ mod tests {
             let mut f = flight();
             crate::aircraft::select(&mut f, a);
             f.systems.bays = 1.0;
+            f.systems.side_bays=[crate::aircraft::bays::State{door:1.,launcher:1.};2];
             let mut c = Combat::default();
             c.start(&f, 1);
             c.lock = Weapon::Heat.lock_time();
@@ -2217,7 +2329,7 @@ mod tests {
     }
     #[test]
     fn fleet_inventory_launches_every_station_without_two_round_assumption(){
-        for a in crate::aircraft::Aircraft::ALL {let mut f=flight();crate::aircraft::select(&mut f,a);f.systems.bays=1.;let mut c=Combat::default();c.start(&f,1);
+        for a in crate::aircraft::Aircraft::ALL {let mut f=flight();crate::aircraft::select(&mut f,a);f.systems.bays=1.;f.systems.main_stroke=[1.;6];f.systems.side_bays=[crate::aircraft::bays::State{door:1.,launcher:1.};2];let mut c=Combat::default();c.start(&f,1);
             assert_eq!(c.ammo,a.spec().ammo);
             for kind in [Weapon::Heat,Weapon::Radar]{c.weapon=kind;let n=c.ammo[kind.index()];for _ in 0..n {c.lock=kind.lock_time();c.clock+=1.;assert!(c.fire(&f),"{a:?} {kind:?}: {}",c.message);let m=c.missiles.last().unwrap();assert!(m.position.distance(f.position)<a.spec().length);assert!(m.position.is_finite());let index=c.missiles.len()-1;assert!(std::ptr::eq(c.render_missile(index).expect("every launch must be visible"),m));}assert!(!c.fire(&f));}
             assert_eq!(c.ammo,[0,0]);assert_eq!(c.missiles.len(),(a.spec().ammo[0]+a.spec().ammo[1])as usize);assert!(c.targets.iter().all(|t|t.dynamics.aircraft==crate::aircraft::Aircraft::Gripen));
@@ -2236,6 +2348,9 @@ mod tests {
             assert_eq!(c.fight.as_ref().unwrap().gun, f.aircraft.spec().gun);
             c.targets[0].position = f.position + f.forward() * 3500.;
             for _ in 0..6 {
+                // This inventory/render test isolates a mechanism already at
+                // its release pose. The queue tests exercise the full sweep.
+                f.systems.bays=1.;f.systems.main_stroke=[1.;6];
                 c.lock = Weapon::Radar.lock_time();
                 c.clock += 1.;
                 assert!(c.fire(&f), "{}", c.message);
@@ -2743,3 +2858,6 @@ mod tests {
         assert!(combat.missiles.is_empty());
     }
 }
+
+#[cfg(test)]
+mod side_bay_tests;

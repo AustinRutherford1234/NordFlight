@@ -93,10 +93,19 @@ pub(super) fn smooth(mut mesh: Mesh) -> Mesh {
 pub(super) fn paint(mesh: Mesh) -> Mesh {
     paint_at(mesh, Vec3::ZERO)
 }
-pub(super) fn paint_at(mut mesh: Mesh, offset: Vec3) -> Mesh {
+pub(super) fn paint_at(mesh: Mesh, offset: Vec3) -> Mesh {
+    paint_detail(mesh,offset,true)
+}
+// Thin lip bevels already have sufficient samples around their rounded
+// corners. Subdividing them into 49 pieces makes valid faces smaller than
+// polygon_into's degeneracy threshold and perforates the coated surface.
+pub(super) fn paint_bevel(mesh: Mesh) -> Mesh {
+    paint_detail(mesh,Vec3::ZERO,false)
+}
+fn paint_detail(mut mesh: Mesh, offset: Vec3, subdivide: bool) -> Mesh {
     // Subdivide only the small planar panels so broad camouflage patches have
     // interior samples. Positions stay exactly on the original triangles.
-    if mesh.count_vertices() < 500 {
+    if subdivide && mesh.count_vertices() < 500 {
         if let (Some(bevy::mesh::VertexAttributeValues::Float32x3(points)), Some(indices)) =
             (mesh.attribute(Mesh::ATTRIBUTE_POSITION), mesh.indices())
         {
@@ -160,6 +169,7 @@ pub(super) fn details(
     c: &mut Commands,
     m: &mut Assets<Mesh>,
     mats: &mut Assets<StandardMaterial>,
+    detail: &raptor_finish::Detail,
     root: Entity,
     skin: Handle<StandardMaterial>,
     _edge: Handle<StandardMaterial>,
@@ -167,7 +177,7 @@ pub(super) fn details(
     _silver: Handle<StandardMaterial>,
 ) {
     let ram = material(mats, Color::srgb(0.45, 0.47, 0.47), 0.18);
-    raptor_intake::setup(c,m,mats,root,skin.clone(),ram.clone());
+    raptor_intake::setup(c,m,mats,detail,root,skin.clone(),ram.clone());
     for side in [-1., 1.] {
         // Low-visibility fin code, laid directly in the canted fin plane.
         let up = Vec3::new(side * 0.4848, 0.8746, 0.);

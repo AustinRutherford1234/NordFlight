@@ -386,6 +386,15 @@ impl Combat {
         flare || chaff
     }
     pub fn tick(&mut self, f: &mut Flight, dt: f64) {
+        if f.paused {return;}
+        self.tick_combat(f,dt);
+        // The rail pose belongs to the completed aircraft step. Release at
+        // that endpoint, after existing missiles advance, so a new round is
+        // not integrated through an interval preceding its actual release.
+        self.service_main_launch(f);
+        self.service_side_launch(f);
+    }
+    fn tick_combat(&mut self, f: &mut Flight, dt: f64) {
         let _measure = crate::performance::span(2);
         if f.paused {
             return;
@@ -504,9 +513,9 @@ impl Combat {
                         t.velocity + forward * 18.0,
                         super::guidance::player(f),
                         self.generation.wrapping_mul(997) + fight.launched as u64 + 101,
-                    ),
+                    ).inherit(t.orientation,t.orientation*t.dynamics.rates),
                     position,
-                    velocity: t.velocity + forward * 18.0 - t.position.normalize() * 4.0,
+                    velocity: t.velocity + (t.orientation*t.dynamics.rates).cross(position-t.position) + forward * 18.0 - t.position.normalize() * 4.0,
                     kind,
                     target: i,
                     age: 0.0,
@@ -1336,7 +1345,7 @@ pub fn draw(
         "NO INCOMING MISSILE".into()
     };
     for (mut text, mut color) in &mut readouts {
-        text.0 = format!(
+        let readout = format!(
             "DEFENSE / {} · THREATS {}\n{}\nFLARES {} · CHAFF {} · GUN {}\nENG {:.0}% · HYD {:.0}% · RAD {:.0}%\nAVIONICS {:.0}% · CTRL {:.0}% · HULL {:.0}%\nWINGS {:.0}/{:.0}% · FIRE {:.0}%",
             fight.difficulty.label(),
             count,
@@ -1354,11 +1363,15 @@ pub fn draw(
             f.damage.wings[1] * 100.0,
             f.damage.fire * 100.0
         );
-        color.0 = if count > 0 && (combat.clock * 3.0).fract() > 0.5 {
+        // Assigning unchanged text still marks it changed and forces a re-layout.
+        if text.0 != readout {
+            text.0 = readout;
+        }
+        color.set_if_neq(TextColor(if count > 0 && (combat.clock * 3.0).fract() > 0.5 {
             Color::srgb(1.0, 0.40, 0.20)
         } else {
             Color::srgb(0.80, 0.92, 0.90)
-        };
+        }));
     }
     for round in &fight.rounds {
         let tip = world::local(round.position, &f);

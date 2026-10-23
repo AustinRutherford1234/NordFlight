@@ -52,6 +52,7 @@ pub struct Gnc {
     pub mode: Mode,
     pub body: DVec3,
     pub body_rate: DVec3,
+    pub attitude: DQuat,
     pub gimbal: DVec3,
     pub confidence: f64,
     pub signal: f64,
@@ -86,6 +87,7 @@ impl Default for Gnc {
             mode: Mode::Separation,
             body: DVec3::ZERO,
             body_rate: DVec3::ZERO,
+            attitude: DQuat::IDENTITY,
             gimbal: DVec3::ZERO,
             confidence: 0.0,
             signal: 0.0,
@@ -114,12 +116,20 @@ impl Default for Gnc {
     }
 }
 impl Gnc {
+    pub fn inherit(mut self, attitude:DQuat, world_rate:DVec3)->Self {
+        self.attitude=attitude.normalize();
+        self.body=self.attitude*-DVec3::Z;
+        self.gimbal=self.body;
+        self.body_rate=world_rate;
+        self
+    }
     pub fn for_aircraft(mut self, aircraft: crate::aircraft::Aircraft, kind: Weapon) -> Self {
         self.aim9x = aircraft == crate::aircraft::Aircraft::F22 && kind == Weapon::Heat;
         self
     }
     pub fn launch(velocity: DVec3, target: Contact, seed: u64) -> Self {
         Self {
+            attitude:DQuat::from_rotation_arc(-DVec3::Z,velocity.normalize_or(-DVec3::Z)),
             body: velocity.normalize_or_zero(),
             gimbal: velocity.normalize_or_zero(),
             estimate: target.position,
@@ -504,6 +514,9 @@ fn fly_profile(
         m.gnc.body
     };
     m.gnc.gimbal = rotate_toward(m.gnc.gimbal, desired, gimbal_rate, dt);
+    let gimbal_blocked = m.gnc.body.dot(los) < gimbal_limit.cos()
+        || m.gnc.gimbal.dot(los) < 6.0_f64.to_radians().cos();
+    let out_of_range = range > (if m.gnc.aim9x { 12000.0 } else { m.kind.range() * 1.3 });
     let (mut signal, mut reason) = if supported {
         let score = if m.gnc.long_range {
             if support.available
@@ -527,17 +540,18 @@ fn fly_profile(
                 "DATALINK UPDATE"
             },
         )
+    } else if gimbal_blocked || out_of_range {
+        // Both overrides below zero the signal regardless, so skip the terrain
+        // line-of-sight query inside quality(); they also set the reason.
+        (0.0, "")
     } else {
         quality(m.kind, m.position, contact, sun)
     };
-    if !supported
-        && (m.gnc.body.dot(los) < gimbal_limit.cos()
-            || m.gnc.gimbal.dot(los) < 6.0_f64.to_radians().cos())
-    {
+    if !supported && gimbal_blocked {
         signal = 0.0;
         reason = "SEEKER GIMBAL LIMIT";
     }
-    if range > (if m.gnc.aim9x { 12000.0 } else { m.kind.range() * 1.3 }) && !supported {
+    if out_of_range && !supported {
         signal = 0.0;
         reason = "SEEKER RANGE";
     }
@@ -706,25 +720,33 @@ fn fly_profile(
         .clamp_length_max(1.0);
     let fin_step = ((desired_fin - m.gnc.fins) * (dt / 0.065).min(1.0)).clamp_length_max(4.0 * dt);
     m.gnc.fins = (m.gnc.fins + fin_step).clamp_length_max(1.0);
-    let normal = (m.gnc.fins - velocity_axis * m.gnc.fins.dot(velocity_axis)) * aero_limit;
+    // Normal force follows body incidence, not a direct sideways velocity
+    // command. The acceleration controller demands incidence via body torque.
+    let fin_normal=m.gnc.fins-velocity_axis*m.gnc.fins.dot(velocity_axis);
+    let max_alpha=20.0_f64.to_radians();
+    let demand=(velocity_axis+fin_normal*max_alpha.tan()).normalize_or(velocity_axis);
+    let angular_error=m.gnc.body.cross(demand);
+    let requested_rate=(velocity_axis.cross(m.gnc.measured_acceleration)/speed
+        +angular_error*12.).clamp_length_max(4.0);
+    m.gnc.body_rate+=(requested_rate-m.gnc.body_rate)*(1.-(-dt/0.08).exp());
+    if m.gnc.body_rate.length()>1e-8 {
+        let dq=DQuat::from_axis_angle(m.gnc.body_rate.normalize(),m.gnc.body_rate.length()*dt);
+        m.gnc.body=(dq*m.gnc.body).normalize();
+        m.gnc.attitude=(dq*m.gnc.attitude).normalize();
+    }
+    let incidence=m.gnc.body-velocity_axis*m.gnc.body.dot(velocity_axis);
+    let alpha=m.gnc.body.dot(velocity_axis).clamp(-1.,1.).acos();
+    let normal=incidence.normalize_or_zero()*aerodynamic_limit
+        *(alpha/max_alpha).min(1.) + fin_normal*vector_limit;
+    let normal=normal.clamp_length_max(aero_limit);
     m.gnc.measured_acceleration = normal;
     m.gnc.actual_g = normal.length() / 9.81;
-    // Body-rate lag makes the nose follow the trajectory rather than snapping.
-    let requested_rate = velocity_axis.cross(normal) / speed;
-    m.gnc.body_rate += (requested_rate - m.gnc.body_rate) * (dt / 0.08).min(1.0);
-    let rotated = if m.gnc.body_rate.length() > 1e-8 {
-        DQuat::from_axis_angle(m.gnc.body_rate.normalize(), m.gnc.body_rate.length() * dt)
-            * m.gnc.body
-    } else {
-        m.gnc.body
-    };
-    m.gnc.body = rotate_toward(rotated, velocity_axis, 30.0_f64.to_radians(), dt);
     let mach = speed / sound;
     let wave = 0.20 * (-((mach - 1.1) / 0.35).powi(2)).exp();
-    let vector_accel = if aero_limit > 0.0 { normal.length() * vector_limit / aero_limit } else { 0.0 };
+    let vector_accel = fin_normal.length()*vector_limit;
     let aerodynamic_accel = (normal.length() - vector_accel).max(0.0);
     let lift_coeff = aerodynamic_accel * m.gnc.mass / (q * area).max(1.0);
-    m.gnc.drag = q * area * (0.32 + wave + 0.012 * lift_coeff * lift_coeff);
+    m.gnc.drag = q * area * (0.32 + wave + 0.012 * lift_coeff * lift_coeff + 2.*alpha.sin().powi(2));
     let axial_thrust = (m.gnc.thrust.powi(2) - (vector_accel * m.gnc.mass).powi(2)).max(0.0).sqrt();
     m.velocity += (gravity + normal + m.gnc.body * (axial_thrust / m.gnc.mass)
         - velocity_axis * (m.gnc.drag / m.gnc.mass))
@@ -1140,6 +1162,22 @@ fn ir_evasion_trial_dt(seed: u64, flares: bool, turn: bool, dt: f64) -> (bool, u
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn release_preserves_attitude_rates_and_incidence_generates_load() {
+        let (mut m,c,s)=scene(Weapon::Heat,2000.);
+        let attitude=DQuat::from_rotation_arc(-DVec3::Z,m.velocity.normalize())*DQuat::from_rotation_x(0.12);
+        let rate=DVec3::new(0.2,-0.1,0.3);
+        m.gnc=m.gnc.inherit(attitude,rate);
+        assert!(m.gnc.body.distance(attitude*-DVec3::Z)<1e-12);
+        assert_eq!(m.gnc.body_rate,rate);
+        assert!(m.gnc.body.angle_between(m.velocity)>0.1);
+        let before=m.gnc.body;
+        fly(&mut m,c,s,-DVec3::Y,0.001);
+        assert!(m.gnc.body.angle_between(before)<0.002);
+        assert!(m.gnc.actual_g>0.01);
+        assert!(m.gnc.body.angle_between(m.velocity)>0.05);
+        assert!((m.gnc.attitude*-DVec3::Z).distance(m.gnc.body)<1e-10);
+    }
     use super::*;
     #[test]
     fn aim9x_is_exclusive_to_f22_infrared_loadout() {

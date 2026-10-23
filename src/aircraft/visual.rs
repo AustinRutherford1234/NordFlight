@@ -3,6 +3,9 @@ use super::*;
 use bevy::{asset::RenderAssetUsages, mesh::Indices, render::render_resource::PrimitiveTopology};
 mod raptor_mesh;
 mod raptor_intake;
+mod raptor_finish;
+pub mod raptor_bay;
+pub mod raptor_main_bay;
 pub mod raptor_detail;
 #[derive(Component)]
 pub struct Root(pub Aircraft);
@@ -86,8 +89,6 @@ pub(crate) struct Store(Aircraft, usize);
 pub(crate) struct WeaponDoor(Aircraft, f32, Vec3);
 #[derive(Component)]
 pub(crate) struct Gauge(Aircraft, u8);
-#[derive(Component)]
-pub(crate) struct SideBay(Aircraft, f32, Vec3);
 #[derive(Component)]
 pub(crate) struct FanSpin(Aircraft);
 #[derive(Component)]
@@ -319,20 +320,14 @@ fn solid(p: &[Vec3], thickness: Vec3) -> Mesh {
 fn hull_mesh(a: Aircraft, radome: bool) -> Mesh {
     let mut sec = sections(a);
     if a == Aircraft::F22 {
-        let last = *sec.last().unwrap();
-        sec = sec.windows(2).flat_map(|p| (0..4).map(move |j| {
-            let t = j as f64 / 4.;
-            (p[0].0 + (p[1].0 - p[0].0) * t, p[0].1 + (p[1].1 - p[0].1) * t,
-             p[0].2 + (p[1].2 - p[0].2) * t, p[0].3 + (p[1].3 - p[0].3) * t)
-        })).chain(std::iter::once(last)).collect();
+        sec=raptor_intake::body_sections();
     }
     let mut v = Vec::new();
     let mut idx = Vec::new();
     let point = |(z, w, h, y): (f64, f64, f64, f64), k: usize| {
         let t = k as f32 / 64. * std::f32::consts::TAU;
         if a==Aircraft::F22 {
-            let x=t.cos();let top=t.sin()>=0.;
-            return Vec3::new(w as f32*x,y as f32+if top{h as f32*raptor_mesh::upper(x)}else{super::raptor::lower_profile(x,z as f32)},z as f32);
+            return raptor_intake::body_point((z,w,h,y),k);
         }
         Vec3::new(
             w as f32
@@ -392,7 +387,7 @@ fn hull_mesh(a: Aircraft, radome: bool) -> Mesh {
             for polygon in cut_skin(a,cap.to_vec()){polygon_into(&mut v,&mut idx,&polygon);}
         }
     }
-    let m=mesh(v,idx);finish(a,if a==Aircraft::F22{raptor_mesh::smooth(m)}else{m})
+    let m=mesh(v,idx);finish(a,if a==Aircraft::F22{raptor_intake::seam_normals(raptor_mesh::smooth(m))}else{m})
 }
 fn finish(a:Aircraft,m:Mesh)->Mesh{if a==Aircraft::F22{raptor_mesh::paint(m)}else{m}}
 fn polygon_into(v: &mut Vec<Vec3>, indices: &mut Vec<u32>, p: &[Vec3]) {
@@ -409,6 +404,10 @@ fn polygon_into(v: &mut Vec<Vec3>, indices: &mut Vec<u32>, p: &[Vec3]) {
     }
 }
 fn cut_skin(a: Aircraft, points: Vec<Vec3>) -> Vec<Vec<Vec3>> {
+    let pieces=cut_skin_access(a,vec![points]);
+    if a==Aircraft::F22{raptor_intake::cut_openings(pieces)}else{pieces}
+}
+fn cut_skin_access(a:Aircraft, points:Vec<Vec<Vec3>>)->Vec<Vec<Vec3>> {
     let d = a.cabin_offset();
     let mut cuts = if a==Aircraft::F22{Vec::new()}else{vec![(
         Vec3::new(-0.55, 0.25, d.z - 4.05),
@@ -422,7 +421,7 @@ fn cut_skin(a: Aircraft, points: Vec<Vec3>) -> Vec<Vec<Vec3>> {
             Vec3::new(at.x + half_width, -0.22, at.z + 0.65),
         ));
     }
-    if matches!(a, Aircraft::F22 | Aircraft::F35B) {
+    if a == Aircraft::F35B {
         cuts.push((Vec3::new(-0.95, -4., -1.75), Vec3::new(0.95, -0.28, 1.75)));
     }
     if a == Aircraft::F35B {
@@ -432,18 +431,16 @@ fn cut_skin(a: Aircraft, points: Vec<Vec3>) -> Vec<Vec<Vec3>> {
     if a == Aircraft::F22 {
         // Open the inlet cores through the body loft. Intake-trunk walls close
         // their perimeter; retaining the original loft here occludes the duct.
-        cuts.push((Vec3::new(1.50, -0.75, -1.95), Vec3::new(4., -0.10, 0.75)));
-        cuts.push((Vec3::new(-4., -0.75, -1.95), Vec3::new(-1.50, -0.10, 0.75)));
         for side in [-1.,1.]{cuts.push((Vec3::new(side*0.93-0.69,-1.30,5.45),Vec3::new(side*0.93+0.69,0.55,10.)));}
     }
-    let mut pieces = if a==Aircraft::F22{raptor_detail::cut_cockpit(points)}else{vec![points]};
+    let mut pieces = if a==Aircraft::F22{points.into_iter().flat_map(raptor_detail::cut_cockpit).collect()}else{points};
     for (min, max) in cuts {
         pieces = pieces
             .into_iter()
             .flat_map(|p| crate::world::subtract_box(p, min, max))
             .collect();
     }
-    if a == Aircraft::F22 { pieces = raptor_intake::cut_openings(pieces); }
+    if a == Aircraft::F22 { pieces = raptor_main_bay::cut(raptor_bay::cut(pieces)); }
     pieces
 }
 fn side_point(a: Aircraft, side: f32, y: f32, z: f32) -> Vec3 {
@@ -463,69 +460,6 @@ fn side_point(a: Aircraft, side: f32, y: f32, z: f32) -> Vec3 {
     }
     let sin = (y / h).abs().clamp(0., 1.).powf(1. / 1.6);
     Vec3::new(side * w * (1. - sin * sin).max(0.).powf(0.3), y, z)
-}
-fn side_bay(a: Aircraft, side: f32, hinge: Vec3) -> Mesh {
-    let mut v = Vec::new();
-    let mut idx = Vec::new();
-    for j in 0..12 {
-        for k in 0..16 {
-            let point = |j: usize, k: usize| {
-                side_point(
-                    a,
-                    side,
-                    -0.75 + 0.65 * k as f32 / 16.,
-                    -1.95 + 2.7 * j as f32 / 12.,
-                ) + Vec3::X * side * 0.006 - hinge
-            };
-            let mut q = [
-                point(j, k),
-                point(j, k + 1),
-                point(j + 1, k + 1),
-                point(j + 1, k),
-            ];
-            if side < 0. {
-                q.reverse();
-            }
-            // Closed thin shell, including the inner face and perimeter edges.
-            let inner = q.map(|p| p - Vec3::X * side * 0.012);
-            quad(&mut v, &mut idx, q);
-            quad(&mut v, &mut idx, [inner[3], inner[2], inner[1], inner[0]]);
-            for edge in 0..4 {
-                let next=(edge+1)%4;
-                let same = |axis: usize, value: f32| (q[edge][axis]+hinge[axis]-value).abs()<1e-5 && (q[next][axis]+hinge[axis]-value).abs()<1e-5;
-                let boundary = same(2,-1.95)||same(2,0.75)||same(1,-0.75)||same(1,-0.10);
-                if boundary { let next=(edge+1)%4; quad(&mut v,&mut idx,[q[edge],inner[edge],inner[next],q[next]]); }
-            }
-        }
-    }
-    mesh(v, idx)
-}
-fn side_bay_hinge(side: f32) -> Vec3 {
-    // A straight hinge outside the entire curved panel, below the wing root.
-    let x=(0..=48).map(|j| side_point(Aircraft::F22,1.,-0.10,-1.95+2.7*j as f32/48.).x)
-        .fold(0_f32,f32::max)+0.008;
-    Vec3::new(side*x,-0.10,-0.6)
-}
-fn side_bay_pose(side: f32, hinge: Vec3, opening: f32) -> Transform {
-    let angle=opening.clamp(0.,1.)*1.35;
-    Transform::from_translation(hinge+Vec3::X*side*0.025*angle.sin())
-        .with_rotation(Quat::from_rotation_z(side*angle))
-}
-fn side_bay_lining(side: f32) -> Mesh {
-    let mut v=Vec::new();let mut ix=Vec::new();
-    for j in 0..24 {
-        for y in [-0.75,-0.10] {
-            let a=side_point(Aircraft::F22,side,y,-1.95+2.7*j as f32/24.);
-            let b=side_point(Aircraft::F22,side,y,-1.95+2.7*(j+1)as f32/24.);
-            quad(&mut v,&mut ix,[a,b,Vec3::new(side*1.5,y,b.z),Vec3::new(side*1.5,y,a.z)]);
-        }
-    }
-    for z in [-1.95,0.75] {for k in 0..16 {
-        let a=side_point(Aircraft::F22,side,-0.75+0.65*k as f32/16.,z);
-        let b=side_point(Aircraft::F22,side,-0.75+0.65*(k+1)as f32/16.,z);
-        quad(&mut v,&mut ix,[a,b,Vec3::new(side*1.5,b.y,z),Vec3::new(side*1.5,a.y,z)]);
-    }}
-    mesh(v,ix)
 }
 fn fan_skin(x: f32, z: f32, top: bool) -> Vec3 {
     let s = sections(Aircraft::F35B);
@@ -756,6 +690,8 @@ pub fn setup(
     mut mats: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    let f22_detail=raptor_finish::Detail::new(&mut images);
+    let captive_missile=material(&mut mats,Color::WHITE,0.15);
     for a in [
         Aircraft::Su27,
         Aircraft::F35B,
@@ -964,7 +900,7 @@ pub fn setup(
             );
             c.entity(e).insert(Scar(a, i));
         }
-        if a==Aircraft::F22 {raptor_mesh::details(&mut c,&mut meshes,&mut mats,root,skin.clone(),edge.clone(),black.clone(),silver.clone());raptor_detail::dorsal_details(&mut c,&mut meshes,&mut mats,root);}
+        if a==Aircraft::F22 {raptor_mesh::details(&mut c,&mut meshes,&mut mats,&f22_detail,root,skin.clone(),edge.clone(),black.clone(),silver.clone());raptor_detail::dorsal_details(&mut c,&mut meshes,&mut mats,root);}
         for (i, at) in a.engine_positions().iter().enumerate().take(spec.engines) {
             let at=if a==Aircraft::F22{raptor_detail::engine_origin(*at)}else{*at};
             if spec.engines == 2 && a!=Aircraft::F22 {
@@ -1048,7 +984,7 @@ pub fn setup(
         }
         for i in 0..(spec.ammo[0] + spec.ammo[1]) as usize {
             let pos = super::station(a, i).as_vec3();
-            let internal = matches!(a, Aircraft::F22 | Aircraft::F35B) && i >= 2;
+            let internal = a == Aircraft::F35B && i >= 2;
             let transform = Transform::from_translation(pos)
                 .with_scale(Vec3::new(
                     if internal { 0.7 } else { 1. },
@@ -1067,7 +1003,7 @@ pub fn setup(
                 if a == Aircraft::F22 && i < 2 { crate::combat::aim9x_mesh() }
                 else if i>=spec.ammo[0] as usize {crate::combat::radar_visual::body(false,true)}
                 else { crate::combat::missile_mesh() },
-                silver.clone(),
+                if a==Aircraft::F22 { captive_missile.clone() } else { silver.clone() },
                 transform,
             );
             c.entity(e).insert(Store(a, i));
@@ -1085,7 +1021,10 @@ pub fn setup(
         if a==Aircraft::F22 {
             for (i,side) in [-1.,1.].into_iter().enumerate(){let e=box_part(&mut c,&mut meshes,root,skin.clone(),Vec3::new(side*3.35,-0.34,0.85),Vec3::new(0.12,0.52,1.35));c.entity(e).insert(Store(a,16+i));}
         }
-        if matches!(a, Aircraft::F22 | Aircraft::F35B) {
+        if a == Aircraft::F22 {
+            raptor_main_bay::setup(&mut c,&mut meshes,&mut mats,&f22_detail,root,skin.clone());
+        }
+        if a == Aircraft::F35B {
             box_part(
                 &mut c,
                 &mut meshes,
@@ -1094,9 +1033,7 @@ pub fn setup(
                 Vec3::new(0., -0.28, 0.),
                 Vec3::new(1.85, 0.02, 3.5),
             );
-            if a == Aircraft::F22 {
-                raptor_detail::main_bay(&mut c, &mut meshes, root, skin.clone(), black.clone());
-            } else { for side in [-1., 1.] {
+            for side in [-1., 1.] {
                 let hinge = Vec3::new(side * 0.96, -0.54, 0.);
                 let e = box_part(
                     &mut c,
@@ -1107,31 +1044,10 @@ pub fn setup(
                     Vec3::new(0.95, 0.035, 3.5),
                 );
                 c.entity(e).insert(WeaponDoor(a, side, hinge));
-            } }
+            }
         }
         if a == Aircraft::F22 {
-            for side in [-1., 1.] {
-                let hinge = side_bay_hinge(side);
-                let e = part(
-                    &mut c,
-                    &mut meshes,
-                    root,
-                    side_bay(a, side, hinge),
-                    skin.clone(),
-                    Transform::from_translation(hinge),
-                );
-                c.entity(e).insert(SideBay(a, side, hinge));
-                part(&mut c,&mut meshes,root,side_bay_lining(side),black.clone(),Transform::default());
-                part(
-                    &mut c,
-                    &mut meshes,
-                    root,
-                    Rectangle::new(2.7, 0.65).into(),
-                    black.clone(),
-                    Transform::from_xyz(side * 1.50, -0.425, -0.6)
-                        .with_rotation(Quat::from_rotation_y(side * std::f32::consts::FRAC_PI_2)),
-                );
-            }
+            raptor_bay::setup(&mut c,&mut meshes,&mut mats,&f22_detail,root,skin.clone());
         }
         if a==Aircraft::F22 {raptor_detail::gear(&mut c,&mut meshes,&mut mats,root,skin.clone());}
         for i in 0..if a==Aircraft::F22{0}else{3} {
@@ -1439,7 +1355,6 @@ pub fn update(
             Option<&Scar>,
             Option<&Store>,
             Option<&WeaponDoor>,
-            Option<&SideBay>,
             &mut Transform,
             &mut Visibility,
         ),
@@ -1456,7 +1371,6 @@ pub fn update(
             With<Scar>,
             With<Store>,
             With<WeaponDoor>,
-            With<SideBay>,
         )>,
     >,
     mut lamps: Query<(&Lamp, &mut PointLight)>,
@@ -1474,7 +1388,6 @@ pub fn update(
         scar,
         store,
         bay_door,
-        side_bay,
         mut t,
         mut v,
     ) in &mut parts
@@ -1641,10 +1554,14 @@ pub fn update(
         if let Some(Store(a, i)) = store {
             if *a==Aircraft::F22 {
                 if *i>=16 {*v=if *a==f.aircraft&&f.systems.external_stores{Visibility::Inherited}else{Visibility::Hidden};continue;}
+                if *i<2 {
+                    t.set_if_neq(super::bays::missile_pose(*i,f.systems.side_bays[*i].launcher));
+                    v.set_if_neq(if *a==f.aircraft&&f.systems.stores[*i]{Visibility::Inherited}else{Visibility::Hidden});continue;
+                }
                 let external=f.systems.external_stores&&*i>=6;
-                t.translation=super::station_for(&f,*i).as_vec3();
-                t.scale=if external{Vec3::ONE}else{Vec3::new(0.7,0.7,1.)};
-                *v=if *a==f.aircraft&&f.systems.stores[*i]&&(external||f.systems.bays>0.65){Visibility::Inherited}else{Visibility::Hidden};continue;
+                t.translation=if external{super::station_for(&f,*i).as_vec3()}else{super::main_bay::store_position(*i-2,f.systems.main_stroke[*i-2]).as_vec3()};
+                t.scale=Vec3::ONE;
+                *v=if *a==f.aircraft&&f.systems.stores[*i]{Visibility::Inherited}else{Visibility::Hidden};continue;
             }
             *v = if *a == f.aircraft && f.systems.stores[*i] {
                 Visibility::Inherited
@@ -1659,12 +1576,6 @@ pub fn update(
             }
             t.rotation = Quat::from_rotation_z(*side * f.systems.bays as f32 * 1.5);
             t.translation = if *a == Aircraft::F22 { *hinge } else { *hinge + t.rotation * Vec3::new(-*side * 0.475, 0., 0.) };
-            continue;
-        }
-        if let Some(SideBay(a, side, hinge)) = side_bay {
-            if *a == f.aircraft {
-                *t = side_bay_pose(*side, *hinge, f.systems.bays as f32);
-            }
             continue;
         }
         if let Some(Scar(a, i)) = scar {
@@ -1730,28 +1641,6 @@ pub fn gauges(
 #[cfg(test)]
 mod plume_tests {
     use super::*;
-    #[test]
-    fn side_doors_clear_the_skin_wing_and_main_doors_through_their_sweep() {
-        for side in [-1.,1.] {
-            let hinge=side_bay_hinge(side);
-            let door=side_bay(Aircraft::F22,side,hinge);
-            let positions=door.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
-            for step in 0..=100 {
-                let pose=side_bay_pose(side,hinge,step as f32/100.);
-                for p in positions {
-                    let p=pose.transform_point(Vec3::from_array(*p));
-                    assert!(p.y<= -0.0999,"wing root: {p:?}");
-                    assert!(p.x.abs()>1.45,"main door: {p:?}");
-                    // In its own opening the inner skin may sit 6mm inward.
-                    // Away from the opening, the entire shell must be exterior.
-                    if p.y < -0.751 {
-                        let body=side_point(Aircraft::F22,side,p.y,p.z);
-                        assert!(p.x.abs()>=body.x.abs()-0.008,"skin at step {step}: {p:?} vs {body:?}");
-                    }
-                }
-            }
-        }
-    }
     #[test]
     fn raptor_plumes_move_independently_but_keep_their_recessed_origins() {
         let mut app = App::new();

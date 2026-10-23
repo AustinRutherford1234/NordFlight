@@ -297,7 +297,8 @@ pub fn systems(
     }
     if matches!(f.aircraft, Aircraft::F22 | Aircraft::F35B) {
         if c.active {
-            f.systems.bays_target = f.systems.manual_bays || c.lock > 0.15;
+            f.systems.bays_target = f.systems.manual_bays ||
+                (f.aircraft!=Aircraft::F22 && c.lock > 0.15);
         }
         if keys.just_pressed(KeyCode::KeyB)
             && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))

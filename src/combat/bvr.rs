@@ -350,7 +350,14 @@ fn launch(
         0.7,
     )};
     let position = p + q * station;
-    let velocity = v + q * (-DVec3::Z * 18. - DVec3::Y * 4.);
+    let rail=if launcher.is_none() && f.aircraft==crate::aircraft::Aircraft::F22 && kind==Weapon::Heat {
+        let i=f.aircraft.spec().ammo[0].saturating_sub(c.ammo[0]) as usize;
+        crate::aircraft::bays::missile_pose(i.min(1),f.systems.side_bays[i.min(1)].launcher).rotation.as_dquat()
+    }else{DQuat::IDENTITY};
+    let main=launcher.is_none()&&kind==Weapon::Radar&&c.internal_main_slot(f).is_some();
+    let rate=q*launcher.map_or(f.rates,|i|c.targets[i].dynamics.rates);
+    let inherited=v+rate.cross(q*station);
+    let velocity = if main{inherited-q*DVec3::Y*8.}else{inherited + q * (rail * -DVec3::Z * 18. - DVec3::Y * if launcher.is_none() && kind==Weapon::Heat && f.aircraft==crate::aircraft::Aircraft::F22 {0.}else{4.})};
     let mut gnc = guidance::Gnc::launch(
         velocity,
         contact,
@@ -358,6 +365,7 @@ fn launch(
     );
     gnc.long_range = kind == Weapon::Radar;
     if launcher.is_none() { gnc = gnc.for_aircraft(f.aircraft, kind); }
+    gnc=gnc.inherit(q*rail,rate);
     c.missiles.push(Missile {
         gnc,
         position,
@@ -405,6 +413,9 @@ pub fn fire(c: &mut Combat, f: &Flight) -> bool {
     if c.clock - c.last_launch < 0.6 || c.missiles.len() >= 64 {
         return false;
     }
+    if f.aircraft==crate::aircraft::Aircraft::F22 && c.weapon==Weapon::Heat && f.gear_extension>0.05 {c.notify("RETRACT LANDING GEAR");return false;}
+    if let Some(accepted)=c.queue_main_launch(f) {return accepted;}
+    if let Some(accepted)=c.queue_side_launch(f) {return accepted;}
     let mut b = c.bvr.take().unwrap();
     launch(c, &mut b, f, None, Some(c.selected), c.weapon);
     c.bvr = Some(b);
@@ -617,14 +628,15 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             .iter()
             .zip(&b.shots)
             .filter(|(m, s)| {
-                ai::warning(t, m, c.sun)
-                    && s.friendly != friend
+                // Cheap side and distance filters before the line-of-sight warning.
+                s.friendly != friend
                     && m.position.distance(t.position)
                         < if b.difficulty == Difficulty::Training {
                             12000.
                         } else {
                             26000.
                         }
+                    && ai::warning(t, m, c.sun)
             })
             .min_by(|a, z| {
                 a.0.position

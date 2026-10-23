@@ -489,18 +489,25 @@ pub fn update_stars(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let opacity = crate::earth::smoothstep(((f.altitude() - 45000.0) / 55000.0) as f32);
+    // Read before writing: get_mut marks the material modified and forces the
+    // render world to re-prepare it every frame, even while the stars are hidden.
+    let color = Color::srgba(1.0, 1.0, 1.0, opacity);
     for handle in &star_materials {
-        if let Some(mat) = materials.get_mut(&handle.0) {
+        let current = materials.get(&handle.0)
+            .map(|mat| (mat.alpha_mode == AlphaMode::Blend, mat.base_color == color));
+        if current.is_some_and(|state| state != (true, true))
+            && let Some(mat) = materials.get_mut(&handle.0)
+        {
             mat.alpha_mode = AlphaMode::Blend;
-            mat.base_color = Color::srgba(1.0, 1.0, 1.0, opacity);
+            mat.base_color = color;
         }
     }
     for (mut transform, mut visibility) in &mut stars {
-        *visibility = if opacity > 0.0 && view.index != 9 {
+        visibility.set_if_neq(if opacity > 0.0 && view.index != 9 {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         transform.translation = local(f.position, &f);
         transform.rotation = frame(&f).conjugate().as_quat();
     }

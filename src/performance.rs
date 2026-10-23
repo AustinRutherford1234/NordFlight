@@ -46,6 +46,21 @@ static TERRAIN_STAGE_BYTES: AtomicU64 = AtomicU64::new(0);
 static TERRAIN_STAGE_MESHES: AtomicU64 = AtomicU64::new(0);
 static TERRAIN_STAGE_MAX_BYTES: AtomicU64 = AtomicU64::new(0);
 static TERRAIN_STAGE_MAX_MESHES: AtomicU64 = AtomicU64::new(0);
+static MESH_SLAB_MAX_BYTES: AtomicU64 = AtomicU64::new(0);
+static MESH_SLAB_MAX_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Track whole-run peaks of the mesh allocator. Diagnostic averages hide the
+/// high-water mark that `MeshAllocatorSettings::min_slab_size` must be sized from.
+fn mesh_slab_peaks(diagnostics: Res<DiagnosticsStore>) {
+    let latest = |name: &'static str| diagnostics
+        .get(&bevy::diagnostic::DiagnosticPath::const_new(name))
+        .and_then(|d| d.value());
+    if let Some(bytes) = latest("mesh_allocator_slabs_size") {
+        MESH_SLAB_MAX_BYTES.fetch_max(bytes as u64, Relaxed);
+    }
+    if let Some(count) = latest("mesh_allocator_slabs") {
+        MESH_SLAB_MAX_COUNT.fetch_max(count as u64, Relaxed);
+    }
+}
 pub fn terrain_staged(bytes:usize,meshes:usize) {
     if enabled() && meshes>0 {
         TERRAIN_STAGE_FRAMES.fetch_add(1,Relaxed);
@@ -98,6 +113,7 @@ pub fn reset() {
         &FOREST_VIEW_VERTICES, &FOREST_SHADOW_VERTICES, &FOREST_SAMPLES,
         &TERRAIN_STAGE_FRAMES, &TERRAIN_STAGE_BYTES, &TERRAIN_STAGE_MESHES,
         &TERRAIN_STAGE_MAX_BYTES, &TERRAIN_STAGE_MAX_MESHES,
+        &MESH_SLAB_MAX_BYTES, &MESH_SLAB_MAX_COUNT,
     ]) {
         a.store(0, Relaxed);
     }
@@ -137,6 +153,8 @@ pub fn report(diagnostics: &DiagnosticsStore) -> serde_json::Value {
             "meshes":TERRAIN_STAGE_MESHES.load(Relaxed),
             "max_mesh_source_bytes_per_frame":TERRAIN_STAGE_MAX_BYTES.load(Relaxed),
             "max_meshes_per_frame":TERRAIN_STAGE_MAX_MESHES.load(Relaxed)},
+        "mesh_slab_peak":{"bytes":MESH_SLAB_MAX_BYTES.load(Relaxed),
+            "slabs":MESH_SLAB_MAX_COUNT.load(Relaxed)},
         "adapter":ADAPTER.get(),
         "gpu_timing_note":"Only positive GPU durations are retained. nord_scene measures the encoder envelope where timestamps are supported; unsupported per-pass timestamps are omitted. Validate with Metal System Trace.",
         "forest_vertices_in_visible_batches_mean":{
@@ -174,7 +192,7 @@ impl Plugin for PerformancePlugin {
                 bevy::render::diagnostic::RenderDiagnosticsPlugin,
                 bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin,
             ))
-            .add_systems(PostUpdate, asset_changes)
+            .add_systems(PostUpdate, (asset_changes, mesh_slab_peaks))
             .add_systems(PostUpdate, forest_visibility
                 .after(bevy::camera::visibility::VisibilitySystems::CheckVisibility)
                 .after(bevy::light::SimulationLightSystems::CheckLightVisibility));

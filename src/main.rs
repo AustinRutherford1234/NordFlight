@@ -798,7 +798,7 @@ fn main() {
             );
             combat.prepare_air_capture(&mut initial_flight, preview.as_deref().unwrap());
         } else {
-            combat.prepare_capture(&initial_flight, preview.as_deref().unwrap());
+            combat.prepare_capture(&mut initial_flight,&initial_environment, preview.as_deref().unwrap());
         }
         if preview.as_deref() == Some("combat-target") {
             initial_flight.position = combat.targets[0].position - initial_flight.forward() * 65.0
@@ -955,7 +955,7 @@ fn main() {
             let paused = initial_flight.paused;
             initial_flight.paused = false;
             combat.start(&initial_flight, initial_view.generation);
-            combat.prepare_capture(&initial_flight, mode);
+            combat.prepare_capture(&mut initial_flight,&initial_environment, mode);
             initial_flight.paused = paused;
         }
         if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
@@ -987,6 +987,49 @@ fn main() {
             if mode=="hover"{initial_flight.systems.conversion=1.;initial_flight.systems.conversion_target=true;initial_flight.systems.nozzle=[std::f64::consts::FRAC_PI_2;2];initial_flight.spool=1.;initial_flight.thrust=190000.;}
             if mode=="bays"{initial_flight.systems.bays=1.;}
             if mode=="bays-under"{initial_flight.systems.bays=1.;initial_view.yaw=2.3;initial_view.pitch=0.6;}
+            if matches!(mode.as_str(),"bays"|"bays-under"|"belly-bay-side"|"belly-open") {
+                initial_flight.systems.side_bays=[aircraft::bays::State{door:1.,launcher:1.};2];
+            }
+            if mode.starts_with("detail-") {
+                if mode.starts_with("detail-reference-") {
+                    initial_flight=Flight::runway();aircraft::select(&mut initial_flight,a);
+                    initial_flight.paused=true;initial_flight.flaps=0.;initial_flight.gear=true;
+                    initial_flight.gear_extension=1.;initial_flight.gear_door=0.;
+                }
+                initial_view.simple=true;initial_view.guide=false;initial_flight.engine=false;initial_flight.spool=0.;initial_flight.thrust=0.;
+                let fraction=|name|std::env::var(name).ok().and_then(|s|s.parse::<f64>().ok()).filter(|v|v.is_finite()).unwrap_or(1.).clamp(0.,1.);
+                let door=fraction("NORD_BAY_DOOR");let launcher=fraction("NORD_BAY_RAIL");
+                initial_flight.systems.side_bays=[aircraft::bays::State{door,launcher};2];
+                if mode.starts_with("detail-mainbay") {
+                    initial_flight.systems.bays=door;
+                    initial_flight.systems.side_bays=default();
+                    if std::env::var_os("NORD_BAY_RAIL").is_some(){initial_flight.systems.main_stroke[0]=launcher;}
+                }
+                if mode=="detail-plan-top" {initial_flight.systems.bays=0.;initial_flight.systems.side_bays=default();}
+                if mode.starts_with("detail-reference-") && !mode.ends_with("4") {
+                    initial_flight.systems.side_bays=default();
+                }
+                if std::env::var_os("NORD_BAY_INDEPENDENT").is_some(){initial_flight.systems.side_bays[0]=default();}
+                if std::env::var_os("NORD_BAY_EMPTY").is_some(){
+                    if mode.starts_with("detail-mainbay"){initial_flight.systems.stores=[false;10];}
+                    else{initial_flight.systems.stores[0]=false;initial_flight.systems.stores[1]=false;}
+                }
+                initial_view.high_quality=std::env::var_os("NORD_DETAIL_QUALITY").is_some();
+                if let Some(day)=std::env::var("NORD_DETAIL_DAY_PHASE").ok().and_then(|s|s.parse::<f64>().ok()).filter(|v|v.is_finite()) {initial_environment.day_phase=day;}
+                if let Some(seconds)=std::env::var("NORD_BAY_LAUNCH_TIME").ok().and_then(|s|s.parse::<f64>().ok()).filter(|v|v.is_finite()) {
+                    initial_flight.systems.side_bays=default();initial_flight.paused=false;
+                    initial_flight.systems.bays=0.;initial_flight.systems.main_stroke=[0.;6];
+                    combat.start(&initial_flight,initial_view.generation);
+                    combat.weapon=if mode.starts_with("detail-mainbay-launch"){combat::Weapon::Radar}else{combat::Weapon::Heat};
+                    combat.lock=combat.weapon.lock_time();
+                    combat.fire(&initial_flight);
+                    for _ in 0..(seconds.clamp(0.,3.)*240.).round()as usize {
+                        physics::simulate(&mut initial_flight,&initial_environment,1./240.);combat.tick(&mut initial_flight,1./240.);
+                    }
+                    println!("Native bay launch: time={seconds:.4}, fired={}, ammo={:?}, side={:?}, main={:.6}, stroke={:?}",combat.fired,combat.ammo,initial_flight.systems.side_bays,initial_flight.systems.bays,initial_flight.systems.main_stroke);
+                    initial_flight.paused=true;
+                }
+            }
             if mode=="gear"{initial_flight.gear_extension=0.5;initial_flight.gear_door=1.;initial_view.pitch=0.65;initial_view.yaw=1.25;}
             if mode.starts_with("gear-") {
                 initial_view.pitch=0.45;initial_view.yaw=1.25;initial_view.zoom=0.55;
@@ -1023,6 +1066,7 @@ fn main() {
         }
     }
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
+    let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
     App::new()
         .insert_resource(if render_benchmark.is_some() {
             bevy::winit::WinitSettings::continuous()
@@ -1050,7 +1094,7 @@ fn main() {
             tactical: preview.as_deref() == Some("bvr-cockpit-tactical"),
             ..default()
         })
-        .insert_resource(DirectionalLightShadowMap { size: 1024 })
+        .insert_resource(DirectionalLightShadowMap { size: initial_shadow_size })
         .insert_resource(ClearColor(Color::srgb(0.012, 0.018, 0.04)))
         .insert_resource(GlobalAmbientLight {
             color: Color::srgb(0.65, 0.75, 1.0),
@@ -1188,7 +1232,7 @@ fn main() {
                 )
                     .chain().in_set(FlightStage::Camera),
                 (
-                    (gear::update,aircraft::visual::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
+                    (gear::update,aircraft::visual::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
                     (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
@@ -1993,7 +2037,7 @@ fn step(
         };
         performance::advanced(advanced);
         if advanced < requested - 1e-6 {
-            warp.selected = 0;
+            warp.normal();
             warp.effective = 1.;
             warp.message = "Warp stopped / planned burn, encounter or entry".into();
         }
@@ -2164,6 +2208,43 @@ fn update_camera(
         p = center + look * (p - center) * v.zoom;
     }
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
+        if mode.starts_with("detail-") {
+            let s=if mode.contains("left"){-1.}else{1.};
+            let (at,offset)=if mode.starts_with("detail-reference-") {
+                match mode.as_str() {
+                    "detail-reference-1"=>(Vec3::new(0.,-0.05,-3.8),Vec3::new(0.,-0.10,-29.)),
+                    "detail-reference-2"=>(Vec3::new(0.,0.,-2.0),Vec3::new(-12.,9.,-17.)),
+                    "detail-reference-3"=>(Vec3::new(0.,0.,-5.1),Vec3::new(9.,0.4,-9.)),
+                    "detail-reference-5"=>(Vec3::new(0.,-0.15,-1.),Vec3::new(-30.,0.,0.)),
+                    _=>(Vec3::new(0.,-0.05,-4.3),Vec3::new(-13.,0.35,-2.8)),
+                }
+            }else if mode=="detail-plan-top" {
+                (Vec3::new(0.,0.,-0.2),Vec3::new(0.,32.,0.001))
+            }else if mode.starts_with("detail-mainbay") {
+                (Vec3::new(0.,-0.6,0.),if mode.contains("under"){Vec3::new(0.,-11.,0.001)}else{Vec3::new(s*5.,-6.,-3.5)})
+            }else if mode.contains("inlet") {
+                let at=Vec3::new(s*1.55,-0.04,-3.65);
+                let offset=if mode.contains("front"){Vec3::new(s*0.12,0.04,-3.5)}
+                    else if mode.contains("upper"){Vec3::new(s*2.2,1.7,-2.5)}
+                    else if mode.contains("under"){Vec3::new(s*1.8,-1.5,-2.3)}
+                    else if mode.contains("join"){Vec3::new(s*3.2,0.3,1.0)}
+                    else{Vec3::new(s*2.5,0.15,-2.7)};
+                (at,offset)
+            }else if mode.contains("launch") {
+                (Vec3::new(0.,-0.2,-3.0),Vec3::new(s*13.,-1.8,-7.0))
+            }else{
+                let at=Vec3::new(s*1.9,-0.45,-1.70);
+                let offset=if mode.contains("front"){Vec3::new(s*2.9,-0.9,-2.6)}
+                    else if mode.contains("rear"){Vec3::new(s*2.8,-0.8,2.9)}
+                    else if mode.contains("under"){Vec3::new(s*1.2,-3.5,0.1)}
+                    else if mode.contains("upper"){Vec3::new(s*2.9,1.2,0.7)}
+                    else{Vec3::new(s*4.5,-0.3,0.1)};
+                (at,offset)
+            };
+            target=pos+rot*at;p=target+rot*offset;up_view=rot*Vec3::Y;
+            if mode=="detail-plan-top" {up_view=rot*Vec3::X;}
+            if mode.starts_with("detail-mainbay")&&mode.contains("under"){up_view=rot*Vec3::NEG_Z;}
+        }
         if mode.starts_with("belly") {
             target=pos+rot*Vec3::new(0.,-0.35,-0.3);
             let offset=match mode.as_str(){
@@ -2305,7 +2386,8 @@ fn update_camera(
             commands.entity(entity).insert(sky.0.clone());
         }
         t.set_if_neq(Transform::from_translation(p).looking_at(target, up_view));
-        let fov = if index == 1 {
+        let reference_capture=std::env::var("NORD_FLEET_CAPTURE").ok().filter(|s|s.starts_with("detail-reference-")||s=="detail-plan-top"||s.starts_with("detail-mainbay"));
+        let fov = if let Some(mode)=reference_capture { if mode.ends_with("1"){14_f32.to_radians()}else{29_f32.to_radians()} }else if index == 1 {
             (75.0 * v.zoom).clamp(30.0, 85.0).to_radians()
         } else if index==3&&f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::F22 {
             (72.0*v.zoom).clamp(38.0,82.0).to_radians()
@@ -2759,6 +2841,18 @@ fn verify_flight() {
 mod lunar_warp_regression {
     use super::*;
     #[test]
+    fn slow_motion_advances_all_clocks_at_half_speed_without_changing_setting() {
+        let mut app=App::new();let mut w=warp::Warp::default();
+        w.selected=w.rates.iter().position(|r|*r==0.5).unwrap();
+        app.insert_resource(Flight::spacecraft()).insert_resource(w)
+            .init_resource::<Time>().init_resource::<Environment>()
+            .init_resource::<SimClock>().add_systems(Update,step);
+        for _ in 0..60{app.update();}
+        assert!((app.world().resource::<Flight>().elapsed-0.5).abs()<1e-8);
+        assert!((app.world().resource::<Environment>().time-0.5).abs()<1e-8);
+        assert_eq!(app.world().resource::<warp::Warp>().timestep,1./60.);
+    }
+    #[test]
     fn high_warp_stops_at_planned_burn_before_skipping_it() {
         let mut app = App::new();
         let mut f = Flight::spacecraft();
@@ -2773,7 +2867,8 @@ mod lunar_warp_regression {
             .add_systems(Update, step);
         app.update();
         assert!((app.world().resource::<Flight>().elapsed - 20.).abs() < 1e-6);
-        assert_eq!(app.world().resource::<warp::Warp>().selected, 0);
+        let w=app.world().resource::<warp::Warp>();
+        assert_eq!(w.rates[w.selected],1.);
         assert!((app.world().resource::<Environment>().time - 20.).abs() < 1e-6);
     }
 }

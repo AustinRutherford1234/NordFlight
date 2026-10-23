@@ -120,14 +120,23 @@ struct Tile {
     z: i32,
     size: i32,
 }
-fn leaves(tile: Tile, p: DVec3, agl: f64, out: &mut HashSet<Tile>) {
+/// `active` is the published layout, used for split/merge hysteresis: a tile
+/// that is currently split stays split until 0.95 of its size, so circling
+/// near a boundary does not rebuild the same tiles repeatedly. `coarser` is set
+/// once an ancestor is an active leaf. Decisions remain per quadtree node, so
+/// the result is always a complete, non-overlapping partition.
+type Active<'a> = Option<&'a dyn Fn(&Tile) -> bool>;
+fn leaves(tile: Tile, p: DVec3, agl: f64, active: Active, coarser: bool, out: &mut HashSet<Tile>) {
     let dx = (tile.x as f64 - p.x)
         .max(0.)
         .max(p.x - (tile.x + tile.size) as f64);
     let dz = (tile.z as f64 - p.z)
         .max(0.)
         .max(p.z - (tile.z + tile.size) as f64);
-    if tile.size > 512 && dx.hypot(dz) < tile.size as f64 * 0.85 && agl < tile.size as f64 * 2. {
+    let leaf = active.is_some_and(|has| has(&tile));
+    let split = active.is_some_and(|_| !coarser && !leaf);
+    let reach = if split { 0.95 } else { 0.85 };
+    if tile.size > 512 && dx.hypot(dz) < tile.size as f64 * reach && agl < tile.size as f64 * 2. {
         let half = tile.size / 2;
         for (x, z) in [
             (tile.x, tile.z),
@@ -135,13 +144,16 @@ fn leaves(tile: Tile, p: DVec3, agl: f64, out: &mut HashSet<Tile>) {
             (tile.x, tile.z + half),
             (tile.x + half, tile.z + half),
         ] {
-            leaves(Tile { x, z, size: half }, p, agl, out);
+            leaves(Tile { x, z, size: half }, p, agl, active, coarser || leaf, out);
         }
     } else {
         out.insert(tile);
     }
 }
 fn layout(p: DVec3, agl: f64) -> HashSet<Tile> {
+    layout_from(p, agl, None)
+}
+fn layout_from(p: DVec3, agl: f64, active: Active) -> HashSet<Tile> {
     let mut out = HashSet::new();
     for z in -8..4 {
         for x in -2..8 {
@@ -153,6 +165,8 @@ fn layout(p: DVec3, agl: f64) -> HashSet<Tile> {
                 },
                 p,
                 agl,
+                active,
+                false,
                 &mut out,
             );
         }
@@ -299,14 +313,14 @@ fn forest_mesh(tile: Tile, anchor: DVec3) -> Option<Mesh> {
     if p.is_empty() {
         return None;
     }
-    let n = p.len();
+    // No UV_0: the tree material is untextured, so a constant UV only cost
+    // 8 of 48 bytes per vertex and an interpolant.
     let mut m = Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
     );
     m.insert_attribute(Mesh::ATTRIBUTE_POSITION, p);
     m.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-    m.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0., 0.]; n]);
     m.insert_indices(Indices::U32(idx));
     m.compute_smooth_normals();
     Some(m)
@@ -321,11 +335,10 @@ fn forest_batches(mesh: Mesh, size: f32) -> Vec<Mesh> {
     let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else { return vec![mesh]; };
     let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL) else { return vec![mesh]; };
     let Some(VertexAttributeValues::Float32x4(colors)) = mesh.attribute(Mesh::ATTRIBUTE_COLOR) else { return vec![mesh]; };
-    let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else { return vec![mesh]; };
     let Some(Indices::U32(indices)) = mesh.indices() else { return vec![mesh]; };
     let origin=positions.iter().copied().map(Vec3::from)
         .fold(Vec3::splat(f32::INFINITY),Vec3::min);
-    type Batch = (Vec<[f32;3]>,Vec<[f32;3]>,Vec<[f32;4]>,Vec<[f32;2]>,Vec<u32>);
+    type Batch = (Vec<[f32;3]>,Vec<[f32;3]>,Vec<[f32;4]>,Vec<u32>);
     let mut batches = std::collections::BTreeMap::<(i32,i32),Batch>::new();
     for triangle in indices.chunks_exact(3) {
         let centre = triangle.iter().map(|i|Vec3::from(positions[*i as usize])).sum::<Vec3>() / 3.;
@@ -333,17 +346,16 @@ fn forest_batches(mesh: Mesh, size: f32) -> Vec<Mesh> {
         let batch = batches.entry(key).or_default();
         for index in triangle {
             let index = *index as usize;
-            batch.4.push(batch.0.len() as u32);
+            batch.3.push(batch.0.len() as u32);
             batch.0.push(positions[index]); batch.1.push(normals[index]);
-            batch.2.push(colors[index]); batch.3.push(uvs[index]);
+            batch.2.push(colors[index]);
         }
     }
-    batches.into_values().map(|(p,n,c,uv,indices)| {
+    batches.into_values().map(|(p,n,c,indices)| {
         Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::default())
             .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION,p)
             .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL,n)
             .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR,c)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0,uv)
             .with_inserted_indices(Indices::U32(indices))
     }).collect()
 }
@@ -381,21 +393,30 @@ fn spawn(c: &mut Commands, meshes: &mut Assets<Mesh>, state: &Landscape, built: 
     // Streaming commits can be deferred until after update_world has run. A
     // visible tile must never spend its first frame at the camera-local origin.
     let (entity,mesh)=spawn_piece(c,meshes,state,anchor,mesh,f,visible,false);
-    let trees=forest.into_iter().map(|m| {
-        let piece=spawn_piece(c,meshes,state,anchor,m,f,visible,true);
-        attach_forest(c,entity,piece.0);piece
-    }).collect();
+    let trees=forest.into_iter()
+        .map(|m| spawn_forest(c,meshes,state,anchor,m,f,visible,entity)).collect();
     (tile,Entry{anchor,entity,mesh,trees})
 }
 fn shared_transforms()->bool {
     static ENABLED:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
     *ENABLED.get_or_init(||std::env::var_os("NORD_TERRAIN_TRANSFORM_REFERENCE").is_none())
 }
-fn attach_forest(c:&mut Commands,root:Entity,child:Entity) {
-    if shared_transforms() {
-        c.entity(child).remove::<WorldObject>().insert(Transform::IDENTITY);
-        c.entity(root).add_child(child);
-    }
+/// Spawn a forest batch in its final archetype. With shared transforms the
+/// batch is born as an identity child of its tile root, instead of being
+/// spawned as a world object and then moved by remove/insert/add_child.
+fn spawn_forest(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:DVec3,
+    mesh:Mesh,f:&Flight,visible:bool,root:Entity)->(Entity,Handle<Mesh>) {
+    if !shared_transforms() {return spawn_piece(c,meshes,state,anchor,mesh,f,visible,true);}
+    let mesh=meshes.add(mesh);
+    let entity=c.spawn((
+        Mesh3d(mesh.clone()),
+        MeshMaterial3d(state.trees.clone()),
+        Transform::IDENTITY,
+        if visible {Visibility::Inherited} else {Visibility::Hidden},
+        ForestBatch,
+        ChildOf(root),
+    )).id();
+    (entity,mesh)
 }
 fn spawn_piece(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:DVec3,
     mesh:Mesh,f:&Flight,visible:bool,forest:bool)->(Entity,Handle<Mesh>) {
@@ -435,8 +456,8 @@ fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Prepar
             tile.entry=Some(Entry {anchor:tile.anchor,entity,mesh,trees:Vec::new()});
         } else {
             let mesh=tile.forest.pop_front().unwrap();
-            let piece=spawn_piece(c,meshes,state,tile.anchor,mesh,f,false,true);
-            attach_forest(c,tile.entry.as_ref().unwrap().entity,piece.0);
+            let root=tile.entry.as_ref().unwrap().entity;
+            let piece=spawn_forest(c,meshes,state,tile.anchor,mesh,f,false,root);
             tile.entry.as_mut().unwrap().trees.push(piece);
         }
     }
@@ -547,7 +568,7 @@ pub fn update(
         };
         let current=cell(&f);
         if !pending.coalesced && pending.cell!=current {
-            let wanted=layout(f.position,f.agl());
+            let wanted=layout_from(f.position,f.agl(),Some(&|t:&Tile| state.tiles.contains_key(t)));
             if wanted!=pending.wanted {
                 let active=state.tiles.keys().copied().collect();let target=wanted.clone();
                 let task=AsyncComputeTaskPool::get().spawn(async move {retarget_built(built,target,active)});
@@ -595,7 +616,7 @@ pub fn update(
     if next == state.cell {
         return;
     }
-    let wanted = layout(f.position, f.agl());
+    let wanted = layout_from(f.position, f.agl(), Some(&|t: &Tile| state.tiles.contains_key(t)));
     let mut missing: Vec<_> = wanted
         .iter()
         .filter(|t| !state.tiles.contains_key(t))
@@ -728,11 +749,10 @@ mod tests {
             let Some(VertexAttributeValues::Float32x3(p))=mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {panic!()};
             let Some(VertexAttributeValues::Float32x3(n))=mesh.attribute(Mesh::ATTRIBUTE_NORMAL) else {panic!()};
             let Some(VertexAttributeValues::Float32x4(c))=mesh.attribute(Mesh::ATTRIBUTE_COLOR) else {panic!()};
-            let Some(VertexAttributeValues::Float32x2(uv))=mesh.attribute(Mesh::ATTRIBUTE_UV_0) else {panic!()};
             let Some(Indices::U32(indices))=mesh.indices() else {panic!()};
             indices.chunks_exact(3).map(|triangle| triangle.iter().flat_map(|i| {
                 let i=*i as usize;
-                p[i].into_iter().chain(n[i]).chain(c[i]).chain(uv[i]).map(f32::to_bits)
+                p[i].into_iter().chain(n[i]).chain(c[i]).map(f32::to_bits)
             }).collect()).collect()
         }
         let tile=Tile{x:9728,z:0,size:512};
@@ -868,6 +888,34 @@ mod tests {
             }
         }
         assert!(count>=4);
+    }
+    #[test]
+    fn lod_hysteresis_keeps_detail_longer_and_stays_a_partition() {
+        let area = |tiles: &HashSet<Tile>| tiles.iter().map(|t| (t.size as i64).pow(2)).sum::<i64>();
+        let start = DVec3::new(-8000., RADIUS, -1000.);
+        let active = layout(start, 10.);
+        // A published layout is stable under its own hysteresis.
+        assert_eq!(layout_from(start, 10., Some(&|t: &Tile| active.contains(t))), active);
+        let mut kept = false;
+        for step in 1..40 {
+            let p = start + DVec3::X * (step as f64 * 97.);
+            let plain = layout(p, 10.);
+            let held = layout_from(p, 10., Some(&|t: &Tile| active.contains(t)));
+            assert_eq!(area(&held), area(&plain), "full coverage at step {step}");
+            for a in &held {
+                for b in &held {
+                    assert!(a == b || a.x + a.size <= b.x || b.x + b.size <= a.x
+                        || a.z + a.size <= b.z || b.z + b.size <= a.z);
+                }
+            }
+            // Hysteresis only adds splits: every held tile lies inside a plain tile.
+            for t in &held {
+                assert!(plain.iter().any(|q| q.x <= t.x && q.z <= t.z
+                    && t.x + t.size <= q.x + q.size && t.z + t.size <= q.z + q.size));
+            }
+            kept |= held.len() > plain.len();
+        }
+        assert!(kept, "some boundary should be held by hysteresis");
     }
     #[test]
     fn lod_has_no_overlapping_tiles_and_stays_bounded() {
