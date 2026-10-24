@@ -263,7 +263,11 @@ fn swap_groups(old:Vec<Tile>,new:Vec<(Tile,Entry)>,p:DVec3)->VecDeque<SwapGroup>
 }
 /// Entities whose visibility a publication frame may flip. A larger single
 /// group is still published whole, so coverage is never split.
-const PUBLISH_ENTITIES_PER_FRAME:usize=48;
+fn publish_budget()->usize {
+    static BUDGET:std::sync::OnceLock<usize>=std::sync::OnceLock::new();
+    *BUDGET.get_or_init(||std::env::var("NORD_TERRAIN_PUBLISH_BUDGET").ok()
+        .and_then(|s|s.parse().ok()).unwrap_or(48))
+}
 struct StagingTile {
     tile: Tile,
     anchor: DVec3,
@@ -574,6 +578,7 @@ fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Prepar
 }
 fn reclaim(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&mut Landscape)->StreamBudget {
     let mut budget=StreamBudget::default();
+    if !state.retiring.is_empty() {crate::performance::frame_event(crate::performance::EV_RECLAIM);}
     while let Some(entry)=state.retiring.front_mut() {
         let handle=entry.trees.last().map_or(&entry.mesh,|(_,m)|m);
         if !budget.accept(meshes.get(handle).map_or(0,mesh_bytes)) {break;}
@@ -673,6 +678,7 @@ pub fn update(
     // Keep memory bounded to the active layout and one retiring/preparing
     // replacement. Hidden old assets are reclaimed before starting another.
     if reclaimed.meshes>0 {return;}
+    if state.pending.is_some() {crate::performance::frame_event(crate::performance::EV_BUILDING);}
     if let Some(mut pending) = state.pending.take() {
         let Some(built) = block_on(poll_once(&mut pending.task)) else {
             state.pending = Some(pending);
@@ -697,6 +703,7 @@ pub fn update(
         // Bound individual mesh insertion by bytes and count, not entire tiles.
         // Existing coverage stays visible throughout CPU and GPU preparation.
         let budget=stage(&mut c,&mut meshes,&state,&mut preparing,&f);
+        if budget.meshes>0 {crate::performance::frame_event(crate::performance::EV_STAGE);}
         crate::performance::terrain_staged(budget.bytes,budget.meshes);
         if !preparing.remaining.is_empty() || preparing.current.is_some() {
             state.preparing=Some(preparing); return;
@@ -714,11 +721,12 @@ pub fn update(
         // Publish whole swap groups, nearest first, up to an entity budget per
         // frame instead of flipping the entire layout delta in one frame.
         let groups=preparing.publishing.as_mut().unwrap();
+        crate::performance::frame_event(crate::performance::EV_PUBLISH);
         let mut flipped=0;
         while let Some(group)=groups.front() {
             let cost=group.old.iter().filter_map(|t|state.tiles.get(t)).map(|e|1+e.trees.len())
                 .chain(group.new.iter().map(|(_,e)|1+e.trees.len())).sum::<usize>();
-            if flipped>0 && flipped+cost>PUBLISH_ENTITIES_PER_FRAME {break;}
+            if flipped>0 && flipped+cost>publish_budget() {break;}
             flipped+=cost;
             let group=groups.pop_front().unwrap();
             for tile in group.old {
@@ -765,6 +773,7 @@ pub fn update(
         return;
     }
     missing.sort_by_key(|t|(t.size,t.x,t.z));
+    crate::performance::frame_event(crate::performance::EV_JOB);
     let task =
         AsyncComputeTaskPool::get().spawn(async move { missing.into_iter().map(build).collect() });
     state.pending = Some(Pending {

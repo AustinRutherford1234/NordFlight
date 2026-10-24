@@ -911,3 +911,25 @@ Harnesses: `python3 tests/optimization8/validate.py {matrix|repeat|…}` and `py
   - `world` CPU span 0.42 → 0.27 ms per call;
   - display upload bytes 170 KB → 66 KB.
 - **FPS: inconclusive.** An installed Nord Flight.app was running at ~94% CPU throughout, and repeated A/B runs of the same binary varied by more than the differences between builds. Re-run `tests/optimization8/validate.py` style A/B runs on an idle machine.
+
+### Clean re-measurement and spike bisection (idle machine, AC power)
+
+The first idle-machine A/B suggested more external-view spikes in the new build. Bisection used new runtime switches: `NORD_ANCHOR_REFERENCE=1` restores the per-frame origin, and `NORD_TERRAIN_PUBLISH_BUDGET=<n>` sets the swap-group budget (a huge value means atomic publication). A per-frame spike log (`NORD_SPIKE_LOG=1`) tags each frame with staging, publication, reclaim, rebase and job events. It showed:
+
+- **Spikes are not caused by this round's code.**
+  - Slow frames come in bursts with no terrain, publication or rebase activity in the preceding frames (53 of 59 spikes in one run).
+  - The bursts appear at different times in baseline-equivalent and new configurations.
+- **Startup frames 2–5 take 0.4–0.7 s.** These fall in the warm-up and are excluded from the sample.
+
+Three interleaved rounds, fullscreen 2880×1800, no VSync, paused terrain-stream route:
+
+| Round | External FPS B→N | External p99 B→N | Cockpit FPS B→N | Cockpit p99 B→N |
+|---|---|---|---|---|
+| 1 | 58.8 → 59.4 | 25.9 → 20.8 | 38.3 → 39.2 | 31.7 → 30.7 |
+| 2 | 53.0 → 53.2 | 33.9 → 31.0 | 34.1 → 39.2 | 36.4 → 30.7 |
+| 3 | 56.9 → 57.6 | 32.4 → 21.9 | 38.1 → 37.4 | 32.0 → 59.4 (one burst of 14 slow frames) |
+
+**Result:**
+- The new build matches or slightly beats the baseline on mean FPS.
+- External p99 improved in every round.
+- The remaining long-frame bursts are unattributed and occur in both builds. The next diagnostic is per-frame GPU timing (Xcode GPU capture during a burst).

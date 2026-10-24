@@ -61,6 +61,30 @@ fn mesh_slab_peaks(diagnostics: Res<DiagnosticsStore>) {
         MESH_SLAB_MAX_COUNT.fetch_max(count as u64, Relaxed);
     }
 }
+/// Per-frame event bits for `NORD_SPIKE_LOG`: which streaming/anchor work ran
+/// in the frame, printed next to any frame over 25 ms.
+pub static FRAME_EVENTS: AtomicU64 = AtomicU64::new(0);
+pub const EV_STAGE: u64 = 1;
+pub const EV_PUBLISH: u64 = 2;
+pub const EV_RECLAIM: u64 = 4;
+pub const EV_REBASE: u64 = 8;
+pub const EV_JOB: u64 = 16;
+pub const EV_BUILDING: u64 = 32;
+pub fn frame_event(bit: u64) {
+    FRAME_EVENTS.fetch_or(bit, Relaxed);
+}
+fn spike_log(time: Res<Time<Real>>, mut frame: Local<u64>, mut history: Local<Vec<(u64, u64)>>) {
+    *frame += 1;
+    let events = FRAME_EVENTS.swap(0, Relaxed);
+    history.push((*frame, events));
+    if history.len() > 4 { history.remove(0); }
+    let ms = time.delta_secs_f64() * 1000.;
+    if ms > 25. {
+        // The slow frame's delta is measured at the start of the next frame,
+        // so print the preceding frames' events as well.
+        eprintln!("SPIKE frame {} {:.1} ms events {:?}", *frame, ms, *history);
+    }
+}
 pub fn terrain_staged(bytes:usize,meshes:usize) {
     if enabled() && meshes>0 {
         TERRAIN_STAGE_FRAMES.fetch_add(1,Relaxed);
@@ -177,6 +201,9 @@ impl Plugin for PerformancePlugin {
             || std::env::var_os("NORD_PROFILE").is_some())
             && std::env::var_os("NORD_BENCH_FPS_ONLY").is_none();
         ENABLED.store(active, Relaxed);
+        if std::env::var_os("NORD_SPIKE_LOG").is_some() {
+            app.add_systems(First, spike_log);
+        }
         if active && let Some(folder) = std::env::var_os("NORD_CAPTURE_SEQUENCE") {
             let folder = std::path::PathBuf::from(folder);
             std::fs::create_dir_all(&folder).expect("create native sequence folder");

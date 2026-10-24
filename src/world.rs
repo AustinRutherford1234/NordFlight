@@ -119,6 +119,11 @@ fn render_reference(f: &Flight) -> (DQuat, DVec3) {
             // to the GPU. The aircraft sits at most ~1.8 km from the anchor
             // (f32 resolution ~0.1 mm) and local up tilts at most ~0.016 deg.
             let up = anchor_up(f.up());
+            static LAST: std::sync::Mutex<Option<DVec3>> = std::sync::Mutex::new(None);
+            if let Ok(mut last) = LAST.lock() && *last != Some(up) {
+                *last = Some(up);
+                crate::performance::frame_event(crate::performance::EV_REBASE);
+            }
             (frame_for_up(up), up * RADIUS)
         };
         cache.set(Some((key, f.vehicle, rotation, origin)));
@@ -128,6 +133,10 @@ fn render_reference(f: &Flight) -> (DQuat, DVec3) {
 /// Render-anchor cell size in metres.
 const ANCHOR_CELL: f64 = 2048.;
 fn anchor_up(up: DVec3) -> DVec3 {
+    static FOLLOW: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *FOLLOW.get_or_init(|| std::env::var_os("NORD_ANCHOR_REFERENCE").is_some()) {
+        return up;
+    }
     let cell = ANCHOR_CELL / RADIUS;
     ((up / cell).round() * cell).normalize()
 }
