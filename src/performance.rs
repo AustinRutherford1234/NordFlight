@@ -70,11 +70,28 @@ pub const EV_RECLAIM: u64 = 4;
 pub const EV_REBASE: u64 = 8;
 pub const EV_JOB: u64 = 16;
 pub const EV_BUILDING: u64 = 32;
+pub const EV_ENV_SOURCE: u64 = 64;
+pub const EV_ENV_PUBLISH: u64 = 128;
+pub const EV_PIPELINE: u64 = 256;
+/// Render world: any pipeline queued or compiling, or a new pipeline added.
+fn pipeline_activity(cache: Res<bevy::render::render_resource::PipelineCache>, mut count: Local<usize>) {
+    let total = cache.pipelines().count();
+    if total != *count || cache.waiting_pipelines().next().is_some() {
+        frame_event(EV_PIPELINE);
+    }
+    *count = total;
+}
 pub fn frame_event(bit: u64) {
     FRAME_EVENTS.fetch_or(bit, Relaxed);
 }
-fn spike_log(time: Res<Time<Real>>, mut frame: Local<u64>, mut history: Local<Vec<(u64, u64)>>) {
+fn spike_log(time: Res<Time<Real>>, mut frame: Local<u64>, mut history: Local<Vec<(u64, u64)>>,
+    mut env: Local<([u64; 4], [u64; 4])>) {
     *frame += 1;
+    let (filter, slices) = (bevy::pbr::generate::environment_filter_cache_counts(),
+        bevy::pbr::generate::environment_slice_counts());
+    if filter[2] != env.0[2] { frame_event(EV_ENV_SOURCE); }
+    if slices[1] != env.1[1] { frame_event(EV_ENV_PUBLISH); }
+    *env = (filter, slices);
     let events = FRAME_EVENTS.swap(0, Relaxed);
     history.push((*frame, events));
     if history.len() > 4 { history.remove(0); }
@@ -84,6 +101,28 @@ fn spike_log(time: Res<Time<Real>>, mut frame: Local<u64>, mut history: Local<Ve
         // so print the preceding frames' events as well.
         eprintln!("SPIKE frame {} {:.1} ms events {:?}", *frame, ms, *history);
     }
+}
+/// Terrain tiles build on the single async worker. Left at default QoS it
+/// shares the four M1 performance cores with the main, render and compute
+/// threads, and frames whose submission it delays arrive late. Utility QoS
+/// lets macOS prefer the efficiency cores for it. Opt-in with
+/// `NORD_WORKER_QOS=1`: three idle-machine A/B rounds were inconclusive.
+pub fn background_worker_qos() -> Option<std::sync::Arc<dyn Fn() + Send + Sync + 'static>> {
+    #[cfg(target_os = "macos")]
+    {
+        if std::env::var_os("NORD_WORKER_QOS").is_none() {
+            return None;
+        }
+        unsafe extern "C" {
+            fn pthread_set_qos_class_self_np(qos_class: u32, relative_priority: i32) -> i32;
+        }
+        const QOS_CLASS_UTILITY: u32 = 0x11;
+        Some(std::sync::Arc::new(|| unsafe {
+            pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+        }))
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
 }
 pub fn terrain_staged(bytes:usize,meshes:usize) {
     if enabled() && meshes>0 {
@@ -203,6 +242,10 @@ impl Plugin for PerformancePlugin {
         ENABLED.store(active, Relaxed);
         if std::env::var_os("NORD_SPIKE_LOG").is_some() {
             app.add_systems(First, spike_log);
+            if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
+                render.add_systems(bevy::render::Render, pipeline_activity
+                    .after(bevy::render::RenderSystems::Prepare));
+            }
         }
         if active && let Some(folder) = std::env::var_os("NORD_CAPTURE_SEQUENCE") {
             let folder = std::path::PathBuf::from(folder);

@@ -1124,7 +1124,7 @@ fn main() {
                             min_threads: 1,
                             max_threads: 1,
                             percent: 0.0,
-                            on_thread_spawn: None,
+                            on_thread_spawn: performance::background_worker_qos(),
                             on_thread_destroy: None,
                         },
                         ..default()

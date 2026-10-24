@@ -933,3 +933,29 @@ Three interleaved rounds, fullscreen 2880×1800, no VSync, paused terrain-stream
 - The new build matches or slightly beats the baseline on mean FPS.
 - External p99 improved in every round.
 - The remaining long-frame bursts are unattributed and occur in both builds. The next diagnostic is per-frame GPU timing (Xcode GPU capture during a burst).
+
+### What causes the remaining long frames (Metal System Trace + Time Profiler)
+
+**Spike-log additions.** `NORD_SPIKE_LOG` now also tags environment-probe source writes and publications, and render-world pipeline creation.
+- Probe updates precede spikes only at their normal one-in-six-frame rate.
+- No pipeline creation was seen in the sample.
+
+**Metal System Trace** (20 s, external view, fullscreen, no VSync):
+- **Normal frames are GPU-bound:** 21.2 ms frame, 21.0 ms GPU busy.
+- **Long frames are not extra GPU work:** 46.4 ms on average with only 24.0 ms GPU busy, so the GPU idles for about 22 ms waiting for work.
+- **The worst long frame (158 ms) was a 152 ms drawable wait,** i.e. the macOS compositor/WindowServer, outside the game.
+- **Device state:** thermal state was "Fair" and the GPU performance state "Medium (induced by device conditions)" for most of the run. The Air was already clock-limited.
+- **Shader compilation:** no compiler activity.
+
+**Time Profiler + present timing** (20 s):
+- **Main thread:** about 8% busy in both long and normal frames, and it stays on P-cores.
+- **Terrain worker:** about 5× more active during long frames (`terrain_height`, `forest_mesh`, `terrain_mesh`). That suggests P-core contention delays frame submission.
+- **QoS test:** moving the worker to utility QoS (`NORD_WORKER_QOS=1`, efficiency cores) did not give a consistent improvement over three A/B rounds, so it stays opt-in.
+
+**Conclusion.** The remaining long frames have two sources:
+1. **Occasional compositor drawable stalls**, outside the app.
+2. **Late CPU submission while a terrain build is running.** It correlates with the build, but moving the builder to efficiency cores didn't fix it.
+
+**Next steps:**
+- Split terrain builds into smaller per-tile tasks (T5).
+- Reduce GPU frame time so frames have headroom: steady-state external frames are GPU-bound at about 21 ms on a thermally limited Air.
