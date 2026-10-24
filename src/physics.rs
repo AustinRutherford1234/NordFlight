@@ -578,6 +578,22 @@ pub fn rotation() -> DVec3 {
     )
 }
 pub fn terrain_height(x: f64, z: f64) -> f64 {
+    // Flight, collision, AI and vegetation each ask for the height under the
+    // same aircraft within one substep. A one-entry exact-bits memo per thread
+    // returns the identical value without re-evaluating the noise.
+    thread_local! {
+        static LAST: std::cell::Cell<(u64, u64, f64)> = const { std::cell::Cell::new((u64::MAX, u64::MAX, 0.0)) };
+    }
+    let key = (x.to_bits(), z.to_bits());
+    let (lx, lz, h) = LAST.get();
+    if (lx, lz) == key {
+        return h;
+    }
+    let h = terrain_height_uncached(x, z);
+    LAST.set((key.0, key.1, h));
+    h
+}
+fn terrain_height_uncached(x: f64, z: f64) -> f64 {
     if in_lake(x, z) {
         return -2.0;
     }

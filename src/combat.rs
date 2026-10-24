@@ -1311,7 +1311,7 @@ pub fn setup(
         });
         c.spawn((
             FlashVisual(i),
-            Mesh3d(meshes.add(Sphere::new(1.0).mesh().uv(32, 20))),
+            Mesh3d(meshes.add(flash_mesh())),
             MeshMaterial3d(material),
             Transform::default(),
             Visibility::Hidden,
@@ -1610,7 +1610,6 @@ pub fn render(
     aim9x_assets: Res<aim9x::VisualAssets>,
     radar_assets: Res<radar_visual::Assets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
     cameras: Query<&GlobalTransform, With<FlightCamera>>,
     mut decorations: Query<(&GenericMissileDecoration, &mut Visibility), (
         Without<TargetVisual>, Without<MissileVisual>, Without<MotorVisual>,
@@ -1657,7 +1656,6 @@ pub fn render(
             &mut Transform,
             &mut Visibility,
             &MeshMaterial3d<StandardMaterial>,
-            &Mesh3d,
         ),
         (
             Without<TargetVisual>,
@@ -1760,7 +1758,7 @@ pub fn render(
             Visibility::Hidden
         });
     }
-    for (tag, mut transform, mut visibility, handle, mesh_handle) in &mut flashes {
+    for (tag, mut transform, mut visibility, handle) in &mut flashes {
         let impact = combat.impacts.get(tag.0).filter(|_| combat.active);
         visibility.set_if_neq(if impact.is_some() {
             Visibility::Inherited
@@ -1773,20 +1771,7 @@ pub fn render(
             let toward_eye = cameras.iter().next().map_or(Vec3::Z, |camera| {
                 (camera.translation() - transform.translation).normalize_or_zero()
             });
-            if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
-                if let Some(bevy::mesh::VertexAttributeValues::Float32x3(normals)) =
-                    mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
-                {
-                    let colors: Vec<_> = normals
-                        .iter()
-                        .map(|normal| {
-                            let glow = Vec3::from(*normal).dot(toward_eye).max(0.0);
-                            [1.0, 0.45 + 0.55 * glow, 0.20 + 0.65 * glow, glow.powf(1.6)]
-                        })
-                        .collect();
-                    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-                }
-            }
+            transform.rotation = Quat::from_rotation_arc(Vec3::Z, toward_eye);
             if let Some(mat) = materials.get_mut(&handle.0) {
                 let fade = (1.0 - i.age / 4.0).max(0.0) as f32;
                 let heat = (1.0 - i.age / 0.9).max(0.0) as f32;
@@ -1801,6 +1786,27 @@ pub fn render(
             }
         }
     }
+}
+
+/// Impact flash sphere with its eye-facing glow baked for an eye along +Z.
+/// The flash is rotated to face the camera instead of rewriting and
+/// re-uploading every vertex colour each frame; the material is unlit, so only
+/// the colour pattern depends on orientation.
+fn flash_mesh() -> Mesh {
+    let mut mesh = Sphere::new(1.0).mesh().uv(32, 20);
+    if let Some(bevy::mesh::VertexAttributeValues::Float32x3(normals)) =
+        mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+    {
+        let colors: Vec<_> = normals
+            .iter()
+            .map(|normal| {
+                let glow = Vec3::from(*normal).dot(Vec3::Z).max(0.0);
+                [1.0, 0.45 + 0.55 * glow, 0.20 + 0.65 * glow, glow.powf(1.6)]
+            })
+            .collect();
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+    }
+    mesh
 }
 
 pub fn draw_telemetry(
@@ -2050,14 +2056,14 @@ pub fn smoke(
     missile_meshes: Res<MissileMeshes>,
     cameras: Query<&Transform, With<FlightCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut smoke: Query<(&SmokeVisual, &Mesh3d, &mut MeshMaterial3d<StandardMaterial>, &mut Visibility, &mut Aabb)>,
+    mut smoke: Query<(&SmokeVisual, &Mesh3d, &mut MeshMaterial3d<StandardMaterial>, &mut Visibility, &mut Aabb, &mut Transform), Without<FlightCamera>>,
     mut previous: Local<Vec<Option<TrailState>>>,
 ) {
     previous.resize(RENDER_MISSILES, None);
     let basis = world::frame(&f).conjugate();
     let origin = world::render_origin(&f);
     let camera=cameras.iter().next().copied().unwrap_or_default();
-    for (tag, handle, mut material, mut visibility, mut bounds) in &mut smoke {
+    for (tag, handle, mut material, mut visibility, mut bounds, mut transform) in &mut smoke {
         let missile = combat.render_missile(tag.0).filter(|m| {
             combat.active
                 && m.alive
@@ -2077,12 +2083,30 @@ pub fn smoke(
         let detailed=missile.gnc.aim9x||missile.kind==Weapon::Radar;
         let mat=if detailed{&aim9x_assets.smoke}else{&missile_meshes.smoke};
         if material.0!=*mat{material.0=mat.clone();}
+        // Generic trails are built relative to their first point in world
+        // axes and placed by Transform, so a coasting trail keeps its vertex
+        // buffer while the render origin follows the aircraft. Camera-facing
+        // detailed trails stay in camera-local space.
+        let anchor = missile.trail[0];
+        let placed = if detailed {
+            Transform::default()
+        } else {
+            Transform::from_translation((basis * (anchor - origin)).as_vec3())
+                .with_rotation(basis.as_quat())
+        };
+        if *transform != placed {
+            *transform = placed;
+        }
         let state = TrailState {
-            basis,
-            origin,
-            age: missile.age,
-            position: missile.position,
-            velocity: missile.velocity,
+            basis: if detailed { basis } else { DQuat::IDENTITY },
+            origin: if detailed { origin } else { anchor },
+            // A generic trail's vertices depend only on its points and, while
+            // powered, the nozzle tail; the detailed cards also track the missile.
+            age: if detailed { missile.age } else { 0. },
+            position: if detailed || missile.gnc.thrust > 0. { missile.position }
+                else { *missile.trail.last().unwrap() },
+            velocity: if detailed { missile.velocity }
+                else if missile.gnc.thrust > 0. { missile.gnc.body } else { DVec3::ZERO },
             powered: missile.gnc.thrust > 0.,
             points: missile.trail.len(),
             generation: combat.generation,
@@ -2100,7 +2124,7 @@ pub fn smoke(
             let tail = state
                 .powered
                 .then(|| missile.position - missile.gnc.body.normalize_or(missile.velocity.normalize()) * 1.6);
-            *bounds = write_smoke_mesh(asset, &missile.trail, tail, basis, origin);
+            *bounds = write_smoke_mesh(asset, &missile.trail, tail, DQuat::IDENTITY, anchor);
             previous[tag.0] = Some(state);
         }
     }

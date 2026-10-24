@@ -84,10 +84,23 @@ fn convert(
         return;
     }
     let nordic = crate::earth::region::texture(&mut images);
+    // Globe patches share one base material and must share one Earth
+    // material too, or every patch would be updated separately.
+    let mut shared = std::collections::HashMap::new();
     for (entity, mesh, material, haze, cloud, region) in &layers {
         let Some(base) = materials.get(&material.0) else {
             continue;
         };
+        if let Some(existing) = shared.get(&material.0.id()) {
+            let m = meshes.get_mut(&mesh.0).unwrap();
+            let colors: Vec<_> = (0..m.count_vertices())
+                .map(|i| [1., 1., 1., region.map_or(1., |r| r.0[i])])
+                .collect();
+            m.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+            commands.entity(entity).remove::<MeshMaterial3d<StandardMaterial>>()
+                .insert(MeshMaterial3d::<EarthMaterial>(Handle::clone(existing)));
+            continue;
+        }
         let mut base = base.clone();
         base.unlit = true;
         let m = meshes.get_mut(&mesh.0).unwrap();
@@ -114,10 +127,14 @@ fn convert(
         commands
             .entity(entity)
             .remove::<MeshMaterial3d<StandardMaterial>>()
-            .insert(MeshMaterial3d(extended.add(EarthMaterial {
-                base,
-                extension: EarthExtension { parameters, nordic: Some(nordic.clone()) },
-            })));
+            .insert(MeshMaterial3d({
+                let handle = extended.add(EarthMaterial {
+                    base,
+                    extension: EarthExtension { parameters, nordic: Some(nordic.clone()) },
+                });
+                shared.insert(material.0.id(), handle.clone());
+                handle
+            }));
     }
 }
 

@@ -110,18 +110,31 @@ fn render_reference(f: &Flight) -> (DQuat, DVec3) {
         {
             return (rotation, origin);
         }
-        let rotation = frame_uncached(f);
-        let origin = if f.vehicle == Vehicle::Spacecraft && f.altitude() > 100000. {
-            f.position
+        let (rotation, origin) = if f.vehicle == Vehicle::Spacecraft && f.altitude() > 100000. {
+            (frame_uncached(f), f.position)
         } else {
-            f.up() * RADIUS
+            // Snap the surface anchor to a 2 km grid instead of following the
+            // aircraft. Between snaps every terrain, forest and world-object
+            // transform is unchanged, so nothing is propagated or re-extracted
+            // to the GPU. The aircraft sits at most ~1.8 km from the anchor
+            // (f32 resolution ~0.1 mm) and local up tilts at most ~0.016 deg.
+            let up = anchor_up(f.up());
+            (frame_for_up(up), up * RADIUS)
         };
         cache.set(Some((key, f.vehicle, rotation, origin)));
         (rotation, origin)
     })
 }
+/// Render-anchor cell size in metres.
+const ANCHOR_CELL: f64 = 2048.;
+fn anchor_up(up: DVec3) -> DVec3 {
+    let cell = ANCHOR_CELL / RADIUS;
+    ((up / cell).round() * cell).normalize()
+}
 fn frame_uncached(f: &Flight) -> DQuat {
-    let up = f.up();
+    frame_for_up(f.up())
+}
+fn frame_for_up(up: DVec3) -> DQuat {
     let (north, east) = geographic_axes(up);
     let runway = 184.59_f64.to_radians();
     let right = east * runway.cos() - north * runway.sin();
@@ -226,18 +239,22 @@ pub fn setup_world(
         reflectance: 0.0,
         ..default()
     });
-    c.spawn((
-        Mesh3d(meshes.add(globe_mesh(768, 384))),
-        MeshMaterial3d(globe_mat),
-        Transform::default(),
-        WorldObject {
-            position: DVec3::ZERO,
-            rotation: DQuat::IDENTITY,
-        },
-        Globe,
-        crate::earth::Surface,
-        bevy::light::NotShadowCaster,
-    ));
+    // The same 768x384 grid as one mesh, split into 16x8 patches with their
+    // own bounds so frustum culling drops the parts below the horizon.
+    for (pj, pi) in (0..8).flat_map(|j| (0..16).map(move |i| (j, i))) {
+        c.spawn((
+            Mesh3d(meshes.add(globe_patch(768, 384, pi * 48..(pi + 1) * 48, pj * 48..(pj + 1) * 48))),
+            MeshMaterial3d(globe_mat.clone()),
+            Transform::default(),
+            WorldObject {
+                position: DVec3::ZERO,
+                rotation: DQuat::IDENTITY,
+            },
+            Globe,
+            crate::earth::Surface,
+            bevy::light::NotShadowCaster,
+        ));
+    }
     crate::earth::setup(&mut c, &mut meshes, &mut materials, &mut images);
     // The shipping renderer samples Nordic detail on this same globe surface.
     // Keep the old overlay only for the developer CPU-reference renderer.
@@ -628,13 +645,19 @@ fn terrain_water_mesh(size: f64, n: usize) -> Mesh {
     m
 }
 pub(crate) fn globe_mesh(nx: usize, ny: usize) -> Mesh {
+    globe_patch(nx, ny, 0..nx, 0..ny)
+}
+/// Cells `cols` x `rows` of the `nx` x `ny` globe grid, with vertices computed
+/// exactly as for the whole globe.
+pub(crate) fn globe_patch(nx: usize, ny: usize, cols: std::ops::Range<usize>, rows: std::ops::Range<usize>) -> Mesh {
     let mut p = Vec::new();
     let mut normal = Vec::new();
     let mut uv = Vec::new();
     let mut idx = Vec::new();
-    for j in 0..=ny {
+    let width = cols.len() + 1;
+    for j in rows.start..=rows.end {
         let lat = 90.0 - j as f64 / ny as f64 * 180.0;
-        for i in 0..=nx {
+        for i in cols.start..=cols.end {
             let lon = i as f64 / nx as f64 * 360.0 - 180.0;
             let v = geo_to_local(lon, lat, -80.0);
             p.push(v.as_vec3().to_array());
@@ -642,10 +665,10 @@ pub(crate) fn globe_mesh(nx: usize, ny: usize) -> Mesh {
             uv.push([i as f32 / nx as f32, j as f32 / ny as f32]);
         }
     }
-    for j in 0..ny {
-        for i in 0..nx {
-            let a = (j * (nx + 1) + i) as u32;
-            let d = a + (nx + 1) as u32;
+    for j in 0..rows.len() {
+        for i in 0..cols.len() {
+            let a = (j * width + i) as u32;
+            let d = a + width as u32;
             idx.extend([a, d, a + 1, a + 1, d, d + 1]);
         }
     }
@@ -2072,6 +2095,24 @@ mod visual_contract_tests {
         }
     }
     #[test]
+    fn render_anchor_holds_between_cells_and_stays_near_the_aircraft() {
+        let mut f = Flight::runway();
+        let start = f.position;
+        let first = render_origin(&f);
+        let mut rebases = 0;
+        let mut last = first;
+        for step in 1..400 {
+            f.position = start + DVec3::new(step as f64 * 25., 0., step as f64 * 9.);
+            let origin = render_origin(&f);
+            assert!((f.up() * RADIUS).distance(origin) < 1.8 * ANCHOR_CELL);
+            if origin != last { rebases += 1; last = origin; }
+        }
+        // ~10.6 km travelled across 2 km cells: a handful of rebases, not 399.
+        assert!((2..=12).contains(&rebases), "{rebases}");
+        f.position = start;
+        assert_eq!(render_origin(&f), first);
+    }
+    #[test]
     fn cached_render_frame_preserves_exact_positions_and_vehicle_origin_changes() {
         for position in [
             surface_point(0., 0., 55.),
@@ -2085,11 +2126,11 @@ mod visual_contract_tests {
                 f.vehicle = vehicle;
                 for dx in [0., 0.001, -0.001] {
                     f.position = position + DVec3::X * dx;
-                    let expected = frame_uncached(&f);
-                    let origin = if vehicle == Vehicle::Spacecraft && f.altitude() > 100000. {
-                        f.position
+                    let (expected, origin) = if vehicle == Vehicle::Spacecraft && f.altitude() > 100000. {
+                        (frame_uncached(&f), f.position)
                     } else {
-                        f.up() * RADIUS
+                        let up = anchor_up(f.up());
+                        (frame_for_up(up), up * RADIUS)
                     };
                     assert_eq!(
                         frame(&f).to_array().map(f64::to_bits),

@@ -886,3 +886,28 @@ Harnesses: `python3 tests/optimization8/validate.py {matrix|repeat|…}` and `py
 **Not yet verified:**
 - Pixel equality of the radiance mirror mip.
 - Any FPS effect of these changes.
+
+## 13. Second implementation round (2026-10-23)
+
+| Item | Status | Where |
+|---|---|---|
+| R7 globe patches | Done: the 768×384 globe is 16×8 patches with their own bounds, so near-ground frustum culling drops most of them. Vertices are identical. The Earth GPU material is shared per base material so the patches don't multiply material updates | `src/world.rs` `globe_patch`, `src/earth_gpu.rs` |
+| P1 terrain height memo | Done: one-entry, exact-bits, thread-local memo in `terrain_height` | `src/physics.rs` |
+| C2 particles | Done: stable particle→entity slots (presentation `id`, simulation order unchanged); material written only when its value changes, with fade on a 1/128 grid (alpha error < 0.004) | `src/combat/effects.rs` |
+| C4 impact flashes | Done: glow baked once for an eye on +Z and the unlit flash rotated to face the camera, instead of rebuilding and re-uploading ~700 vertex colours per flash per frame. `combat::render` no longer takes `ResMut<Assets<Mesh>>` | `src/combat.rs` `flash_mesh` |
+| C5 smoke | Done for generic trails: built relative to the first trail point and placed by `Transform`, rebuilt only when trail points change or while powered. Camera-facing AIM-9X/radar cards unchanged | `src/combat.rs` `smoke` |
+| T2 swap groups | Done: a GPU-ready layout publishes connected old/new overlap groups (identical area) nearest first, at most 48 flipped entities per frame (one larger group still goes whole). Reclaim pauses during publication. Coverage test added | `src/terrain.rs` `swap_groups` |
+| T1 render anchor | Done: surface render anchor and basis snap to a 2 km grid instead of following the aircraft, so world-object transforms are static between rebases. Spacecraft above 100 km and the Moon are unchanged | `src/world.rs` `anchor_up` |
+| R3 shadow proxies | Implemented, **opt-in** (`NORD_SHADOW_PROXIES=1`). Position-only shared-vertex forest proxies on a sun-only `RenderLayers` layer. With per-frame transforms they gave pixel-identical frames to the baseline, and a negative control proved they cast. With the static T1 anchor, Bevy 0.18 stops drawing these light-only meshes between rebases and forest shadows vanish. Enabling them by default needs a fix in the vendored renderer's light-only visibility | `src/terrain.rs` `shadow_proxy` |
+| R1 fused post | **Not implemented.** FXAA samples bilinearly at fractional offsets (edge search and sub-pixel blend). An exact tonemap+dither+FXAA fusion must tonemap all four texels of every tap, up to about 60 taps per pixel. That ALU cost likely exceeds the one full-resolution read/write the fusion saves on an M1. A cheaper non-exact fusion would change the anti-aliased output, which the brief disallows | — |
+
+**Verification for round two:**
+- `cargo test --release`: 443 passed, including new tests for swap-group coverage, render-anchor holding, and the updated staging test.
+- Release runs of terrain-forest, cockpit, BVR missiles and effects showed no panics.
+- **Image checks:**
+  - Anchor build vs baseline: under 0.2% of pixels differ by more than 16 levels, consistent with the ≤0.016° tilt of local up.
+  - Proxies without the anchor: pixel-identical to the baseline.
+- **Instrumented fullscreen route:**
+  - `world` CPU span 0.42 → 0.27 ms per call;
+  - display upload bytes 170 KB → 66 KB.
+- **FPS: inconclusive.** An installed Nord Flight.app was running at ~94% CPU throughout, and repeated A/B runs of the same binary varied by more than the differences between builds. Re-run `tests/optimization8/validate.py` style A/B runs on an idle machine.

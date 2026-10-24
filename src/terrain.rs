@@ -183,7 +183,8 @@ struct Built {
     tile: Tile,
     anchor: DVec3,
     mesh: Mesh,
-    forest: Vec<Mesh>,
+    /// Visible forest batch and its position-only shadow proxy.
+    forest: Vec<(Mesh, Mesh)>,
 }
 struct Pending {
     cell: (i32, i32, i32),
@@ -209,12 +210,65 @@ struct Preparing {
     current: Option<StagingTile>,
     ready: Vec<(Tile,Entry)>,
     requested: bool,
+    /// Swap groups still to publish once the whole layout is GPU-ready.
+    publishing: Option<VecDeque<SwapGroup>>,
 }
+/// Old and new tiles covering exactly the same area: a connected component of
+/// overlap between the retiring and the replacing quadtree nodes. Swapping one
+/// group alone never leaves a hole or an overlap.
+struct SwapGroup {
+    old: Vec<Tile>,
+    new: Vec<(Tile,Entry)>,
+}
+fn overlaps(a:&Tile,b:&Tile)->bool {
+    a.x<b.x+b.size && b.x<a.x+a.size && a.z<b.z+b.size && b.z<a.z+a.size
+}
+fn swap_groups(old:Vec<Tile>,new:Vec<(Tile,Entry)>,p:DVec3)->VecDeque<SwapGroup> {
+    // Union-find over old ++ new by area overlap.
+    let n=old.len()+new.len();
+    let mut parent:Vec<usize>=(0..n).collect();
+    fn root(parent:&mut [usize],mut i:usize)->usize {
+        while parent[i]!=i {parent[i]=parent[parent[i]];i=parent[i];}
+        i
+    }
+    for (i,a) in old.iter().enumerate() {
+        for (j,(b,_)) in new.iter().enumerate() {
+            if overlaps(a,b) {
+                let (x,y)=(root(&mut parent,i),root(&mut parent,old.len()+j));
+                parent[x]=y;
+            }
+        }
+    }
+    let mut groups=HashMap::<usize,SwapGroup>::new();
+    let roots:Vec<usize>=(0..n).map(|i|root(&mut parent,i)).collect();
+    for (i,tile) in old.into_iter().enumerate() {
+        groups.entry(roots[i]).or_insert_with(||SwapGroup{old:vec![],new:vec![]}).old.push(tile);
+    }
+    let offset=roots.len()-new.len();
+    for (j,item) in new.into_iter().enumerate() {
+        groups.entry(roots[offset+j]).or_insert_with(||SwapGroup{old:vec![],new:vec![]}).new.push(item);
+    }
+    let distance=|g:&SwapGroup| g.new.iter().map(|(t,_)|t).chain(&g.old).map(|t| {
+        let dx=(t.x as f64-p.x).max(0.).max(p.x-(t.x+t.size) as f64);
+        let dz=(t.z as f64-p.z).max(0.).max(p.z-(t.z+t.size) as f64);
+        dx.hypot(dz)
+    }).fold(f64::INFINITY,f64::min);
+    let mut groups:Vec<_>=groups.into_values().collect();
+    // Nearest first; the tile key breaks ties so the order is deterministic.
+    groups.sort_by(|a,b| distance(a).total_cmp(&distance(b)).then_with(|| {
+        let key=|g:&SwapGroup| g.new.iter().map(|(t,_)|(t.size,t.x,t.z)).chain(g.old.iter().map(|t|(t.size,t.x,t.z))).min();
+        key(a).cmp(&key(b))
+    }));
+    groups.into()
+}
+/// Entities whose visibility a publication frame may flip. A larger single
+/// group is still published whole, so coverage is never split.
+const PUBLISH_ENTITIES_PER_FRAME:usize=48;
 struct StagingTile {
     tile: Tile,
     anchor: DVec3,
     ground: Option<Mesh>,
-    forest: VecDeque<Mesh>,
+    forest: VecDeque<(Mesh, Mesh)>,
     entry: Option<Entry>,
 }
 impl From<Built> for StagingTile {
@@ -232,6 +286,29 @@ impl StreamBudget {
         // An oversized developer/reference mesh must still make progress.
         self.bytes+=bytes;self.meshes+=1;true
     }
+}
+/// The same triangles as a forest batch, position-only and with bit-identical
+/// vertices shared, for the shadow cascades. Depth is a function of position
+/// alone, so the shadow maps are unchanged while each tree casts from about a
+/// third of the vertices at a quarter of the stride.
+fn shadow_proxy(mesh:&Mesh)->Mesh {
+    use bevy::mesh::VertexAttributeValues;
+    let Some(VertexAttributeValues::Float32x3(positions))=mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {
+        return mesh.clone();
+    };
+    let mut unique=Vec::<[f32;3]>::new();
+    let mut index=HashMap::<[u32;3],u32>::new();
+    let mut remap=|p:&[f32;3]| *index.entry(p.map(f32::to_bits)).or_insert_with(|| {
+        unique.push(*p);(unique.len()-1) as u32
+    });
+    let indices:Vec<u32>=match mesh.indices() {
+        Some(Indices::U32(v))=>v.iter().map(|i|remap(&positions[*i as usize])).collect(),
+        Some(Indices::U16(v))=>v.iter().map(|i|remap(&positions[*i as usize])).collect(),
+        None=>positions.iter().map(&mut remap).collect(),
+    };
+    Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION,unique)
+        .with_inserted_indices(Indices::U32(indices))
 }
 fn mesh_bytes(mesh:&Mesh)->usize {
     mesh.attributes().map(|(_,v)|v.get_bytes().len()).sum::<usize>()+
@@ -380,7 +457,11 @@ fn build(tile: Tile) -> Built {
                     .unwrap_or(512.).clamp(128.,2048.);
                 forest_batches(mesh,size)
             }
-        }).unwrap_or_default(),
+        }).unwrap_or_default().into_iter().map(|m| {
+            let s=if shadow_proxies() {shadow_proxy(&m)}
+                else {Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::default())};
+            (m,s)
+        }).collect(),
     }
 }
 fn spawn(c: &mut Commands, meshes: &mut Assets<Mesh>, state: &Landscape, built: Built, f: &Flight, visible: bool) -> (Tile,Entry) {
@@ -405,9 +486,10 @@ fn shared_transforms()->bool {
 /// batch is born as an identity child of its tile root, instead of being
 /// spawned as a world object and then moved by remove/insert/add_child.
 fn spawn_forest(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:DVec3,
-    mesh:Mesh,f:&Flight,visible:bool,root:Entity)->(Entity,Handle<Mesh>) {
+    (mesh,shadow):(Mesh,Mesh),f:&Flight,visible:bool,root:Entity)->(Entity,Handle<Mesh>) {
     if !shared_transforms() {return spawn_piece(c,meshes,state,anchor,mesh,f,visible,true);}
     let mesh=meshes.add(mesh);
+    let proxies=shadow_proxies();
     let entity=c.spawn((
         Mesh3d(mesh.clone()),
         MeshMaterial3d(state.trees.clone()),
@@ -416,7 +498,33 @@ fn spawn_forest(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor
         ForestBatch,
         ChildOf(root),
     )).id();
+    if proxies {
+        // The visible batch stops casting; its child proxy casts the same
+        // triangles on the light-only layer, inheriting visibility, transform
+        // and despawn from the batch.
+        c.entity(entity).insert(bevy::light::NotShadowCaster);
+        c.spawn((
+            Mesh3d(meshes.add(shadow)),
+            MeshMaterial3d(state.trees.clone()),
+            Transform::IDENTITY,
+            Visibility::Inherited,
+            bevy::camera::visibility::RenderLayers::layer(SHADOW_LAYER),
+            bevy::light::NotShadowReceiver,
+            ChildOf(entity),
+        ));
+    }
     (entity,mesh)
+}
+/// Render layer seen only by the sun: shadow-only forest proxies.
+pub const SHADOW_LAYER: usize = 1;
+/// Opt-in (`NORD_SHADOW_PROXIES=1`). Proxies reproduce the shadow maps
+/// exactly while transforms change every frame, but with the static render
+/// anchor (world.rs) Bevy 0.18 stops drawing these light-only meshes into the
+/// cascades between rebases, so forest shadows vanish. Keep them off until
+/// light-only visibility is handled in the vendored renderer.
+pub fn shadow_proxies()->bool {
+    static ENABLED:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
+    *ENABLED.get_or_init(||std::env::var_os("NORD_SHADOW_PROXIES").is_some())
 }
 fn spawn_piece(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:DVec3,
     mesh:Mesh,f:&Flight,visible:bool,forest:bool)->(Entity,Handle<Mesh>) {
@@ -443,9 +551,10 @@ fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Prepar
     loop {
         if p.current.is_none() {p.current=p.remaining.pop_front().map(Into::into);}
         let Some(tile)=p.current.as_mut() else {break;};
-        let next=tile.ground.as_ref().or_else(||tile.forest.front());
+        let next=tile.ground.as_ref().map(mesh_bytes)
+            .or_else(||tile.forest.front().map(|(m,s)|mesh_bytes(m)+mesh_bytes(s)));
         if let Some(next)=next {
-            if !budget.accept(mesh_bytes(next)) {break;}
+            if !budget.accept(next) {break;}
         } else {
             let tile=p.current.take().unwrap();
             p.ready.push((tile.tile,tile.entry.expect("ground precedes forest")));
@@ -557,7 +666,10 @@ pub fn update(
     if f.vehicle == Vehicle::Spacecraft {
         return;
     }
-    let reclaimed=reclaim(&mut c,&mut meshes,&mut state);
+    // Retired tiles wait while a layout is being published group by group, so
+    // reclaim work never shares those frames.
+    let publishing=state.preparing.as_ref().is_some_and(|p|p.publishing.is_some());
+    let reclaimed=if publishing {StreamBudget::default()} else {reclaim(&mut c,&mut meshes,&mut state)};
     // Keep memory bounded to the active layout and one retiring/preparing
     // replacement. Hidden old assets are reclaimed before starting another.
     if reclaimed.meshes>0 {return;}
@@ -579,7 +691,7 @@ pub fn update(
             }
             pending.cell=current;
         }
-        state.preparing=Some(Preparing {cell:pending.cell,wanted:pending.wanted,remaining:built.into(),current:None,ready:vec![],requested:false});
+        state.preparing=Some(Preparing {cell:pending.cell,wanted:pending.wanted,remaining:built.into(),current:None,ready:vec![],requested:false,publishing:None});
     }
     if let Some(mut preparing)=state.preparing.take() {
         // Bound individual mesh insertion by bytes and count, not entire tiles.
@@ -594,17 +706,41 @@ pub fn update(
             readiness.request(ids); preparing.requested=true;
             state.preparing=Some(preparing); return;
         }
-        if !readiness.ready() {state.preparing=Some(preparing);return;}
-        retire(&mut c,&mut meshes,&mut state,&preparing.wanted);
-        for (tile,entry) in preparing.ready {
-            let transform=Transform::from_translation(world::local(entry.anchor,&f)).with_rotation(world::local_rot(DQuat::IDENTITY,&f));
-            c.entity(entry.entity).insert((Visibility::Inherited,transform));
-            for (entity,_) in &entry.trees {
-                c.entity(*entity).insert(Visibility::Inherited);
-                if !shared_transforms() {c.entity(*entity).insert(transform);}
-            }
-            state.tiles.insert(tile,entry);
+        if preparing.publishing.is_none() {
+            if !readiness.ready() {state.preparing=Some(preparing);return;}
+            let old=state.tiles.keys().filter(|t|!preparing.wanted.contains(t)).copied().collect();
+            preparing.publishing=Some(swap_groups(old,std::mem::take(&mut preparing.ready),f.position));
         }
+        // Publish whole swap groups, nearest first, up to an entity budget per
+        // frame instead of flipping the entire layout delta in one frame.
+        let groups=preparing.publishing.as_mut().unwrap();
+        let mut flipped=0;
+        while let Some(group)=groups.front() {
+            let cost=group.old.iter().filter_map(|t|state.tiles.get(t)).map(|e|1+e.trees.len())
+                .chain(group.new.iter().map(|(_,e)|1+e.trees.len())).sum::<usize>();
+            if flipped>0 && flipped+cost>PUBLISH_ENTITIES_PER_FRAME {break;}
+            flipped+=cost;
+            let group=groups.pop_front().unwrap();
+            for tile in group.old {
+                if let Some(entry)=state.tiles.remove(&tile) {
+                    c.entity(entry.entity).insert(Visibility::Hidden);
+                    for (entity,_) in &entry.trees {c.entity(*entity).insert(Visibility::Hidden);}
+                    state.retiring.push_back(entry);
+                }
+            }
+            for (tile,entry) in group.new {
+                let transform=Transform::from_translation(world::local(entry.anchor,&f)).with_rotation(world::local_rot(DQuat::IDENTITY,&f));
+                c.entity(entry.entity).insert((Visibility::Inherited,transform));
+                for (entity,_) in &entry.trees {
+                    c.entity(*entity).insert(Visibility::Inherited);
+                    if !shared_transforms() {c.entity(*entity).insert(transform);}
+                }
+                state.tiles.insert(tile,entry);
+            }
+        }
+        if !groups.is_empty() {state.preparing=Some(preparing);return;}
+        // Anything outside the new layout that no group covered.
+        retire(&mut c,&mut meshes,&mut state,&preparing.wanted);
         readiness.clear();
         state.cell=preparing.cell;
         let reclaimed=reclaim(&mut c,&mut meshes,&mut state);
@@ -719,25 +855,28 @@ mod tests {
         })]),material:material.clone(),trees:material,cell:cell(&f),pending:None,retiring:VecDeque::new(),
             preparing:Some(Preparing {cell:(cell(&f).0-1,cell(&f).1,cell(&f).2),wanted:HashSet::from([tile]),remaining:VecDeque::from([Built {
                 tile,anchor:f.position,mesh:Mesh::from(Cuboid::default()),
-                forest:(0..20).map(|_|Mesh::from(Cuboid::default())).collect(),
-            }]),current:None,ready:vec![],requested:false})});
+                forest:(0..20).map(|_|(Mesh::from(Cuboid::default()),Mesh::from(Cuboid::default()))).collect(),
+            }]),current:None,ready:vec![],requested:false,publishing:None})});
+        // Ground plus 20 forest pieces; each forest piece also owns a shadow proxy.
+        let per=if shadow_proxies() {2} else {1};
+        let staged=|pieces:usize| if pieces==0 {0} else {1+per*(pieces-1)};
         for i in 0..6 {
             app.update();
-            assert_eq!(app.world().resource::<Assets<Mesh>>().len(),old_tree_count+1+((i+1)*4).min(21));
+            assert_eq!(app.world().resource::<Assets<Mesh>>().len(),old_tree_count+1+staged(((i+1)*4).min(21)));
             assert_eq!(*app.world().get::<Visibility>(old).unwrap(),Visibility::Inherited);
             assert_eq!(app.world().resource::<Landscape>().tiles.len(),1);
         }
         app.world().resource::<crate::terrain_ready::TerrainReady>().poll(|_|true);
         app.update();
         assert!(app.world().resource::<Landscape>().tiles.contains_key(&tile));
-        assert_eq!(app.world().resource::<Assets<Mesh>>().len(),21+(old_tree_count+1).saturating_sub(4));
+        assert_eq!(app.world().resource::<Assets<Mesh>>().len(),staged(21)+(old_tree_count+1).saturating_sub(4));
         assert!(app.world().resource::<Landscape>().pending.is_none(),"cleanup must finish the update even if the completed cell is stale");
         for entity in &old_entities {
             if let Some(v)=app.world().get::<Visibility>(*entity) {assert_eq!(*v,Visibility::Hidden);}
         }
         for _ in 0..(old_tree_count+1).saturating_sub(4).div_ceil(4) {app.update();}
         assert!(old_entities.iter().all(|e|app.world().get_entity(*e).is_err()));
-        assert_eq!(app.world().resource::<Assets<Mesh>>().len(),21);
+        assert_eq!(app.world().resource::<Assets<Mesh>>().len(),staged(21));
         assert!(app.world().resource::<Landscape>().retiring.is_empty());
         assert!(app.world().resource::<Landscape>().pending.is_none());
         }
@@ -888,6 +1027,28 @@ mod tests {
             }
         }
         assert!(count>=4);
+    }
+    #[test]
+    fn swap_groups_cover_identical_area_for_real_layout_changes() {
+        let area=|t:&Tile|(t.size as i64).pow(2);
+        let mut p=DVec3::new(-8000.,RADIUS,-1000.);
+        let mut active=layout(p,10.);
+        for _ in 0..30 {
+            p+=DVec3::new(311.,0.,173.);
+            let wanted=layout_from(p,10.,Some(&|t:&Tile|active.contains(t)));
+            let old:Vec<_>=active.iter().filter(|t|!wanted.contains(t)).copied().collect();
+            let new:Vec<_>=wanted.iter().filter(|t|!active.contains(t)).map(|t|(*t,Entry{
+                anchor:DVec3::ZERO,entity:Entity::PLACEHOLDER,mesh:Handle::default(),trees:vec![]})).collect();
+            let (old_count,new_count)=(old.len(),new.len());
+            let groups=swap_groups(old,new,p);
+            assert_eq!(groups.iter().map(|g|g.old.len()).sum::<usize>(),old_count);
+            assert_eq!(groups.iter().map(|g|g.new.len()).sum::<usize>(),new_count);
+            for g in &groups {
+                assert!(!g.old.is_empty() && !g.new.is_empty());
+                assert_eq!(g.old.iter().map(area).sum::<i64>(),g.new.iter().map(|(t,_)|area(t)).sum::<i64>());
+            }
+            active=wanted;
+        }
     }
     #[test]
     fn lod_hysteresis_keeps_detail_longer_and_stays_a_partition() {

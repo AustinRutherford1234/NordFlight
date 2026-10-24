@@ -1412,6 +1412,8 @@ fn setup_view(
         .build(),
         Transform::default(),
         Sun,
+        // Also sees the shadow-only forest proxies; cameras stay on layer 0.
+        bevy::camera::visibility::RenderLayers::from_layers(&[0, terrain::SHADOW_LAYER]),
     ));
     let sun = mats.add(StandardMaterial {
         base_color: Color::BLACK,

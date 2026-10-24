@@ -26,10 +26,14 @@ pub struct Particle {
     pub life: f64,
     pub size: Vec3,
     pub kind: Kind,
+    /// Presentation identity only: lets the renderer keep a particle on the
+    /// same entity while the simulation vector shifts underneath it.
+    pub id: u64,
 }
 #[derive(Default)]
 pub struct State {
     pub particles: Vec<Particle>,
+    next_id: u64,
     seen: [[bool; crate::aircraft::SURFACES]; 12],
     dead: [bool; 12],
     clock: f64,
@@ -40,7 +44,9 @@ impl State {
         if self.particles.len() >= 256 {
             self.particles.remove(0);
         }
+        self.next_id += 1;
         self.particles.push(Particle {
+            id: self.next_id,
             position: p,
             velocity: v,
             kind,
@@ -826,6 +832,7 @@ pub fn render(
     geometry: Res<Geometry>,
     cameras: Query<&GlobalTransform, With<crate::FlightCamera>>,
     mut previous: Local<Option<u64>>,
+    mut slots: Local<Vec<u64>>,
 ) {
     for mut node in &mut diagrams {
         node.display = if v.map || f.vehicle != Vehicle::Gripen {
@@ -875,8 +882,26 @@ pub fn render(
             }
         }
     }
+    // Stable particle -> entity slots. Index binding shifted every live
+    // particle onto a neighbouring entity whenever one expired, which swapped
+    // meshes and rewrote every material.
+    slots.resize(256, 0);
+    let live: std::collections::HashMap<u64, &Particle> =
+        combat.fx.particles.iter().map(|p| (p.id, p)).collect();
+    for slot in slots.iter_mut() {
+        if !live.contains_key(slot) {
+            *slot = 0;
+        }
+    }
+    for p in &combat.fx.particles {
+        if !slots.contains(&p.id)
+            && let Some(free) = slots.iter_mut().find(|s| **s == 0)
+        {
+            *free = p.id;
+        }
+    }
     for (tag, mut mesh, material, mut t, mut visibility) in &mut visuals {
-        let particle = combat.fx.particles.get(tag.0);
+        let particle = slots.get(tag.0).and_then(|id| live.get(id)).copied();
         visibility.set_if_neq(if particle.is_some() {
             Visibility::Inherited
         } else {
@@ -895,6 +920,9 @@ pub fn render(
         }
         t.translation = world::local(p.position, &f);
         let fade = (1.0 - p.age / p.life).max(0.0) as f32;
+        // Material colour on a 1/128 fade grid: alpha error is below 0.004
+        // while unchanged particles no longer re-prepare their material.
+        let tint = (fade * 128.0).round() / 128.0;
         t.scale = p.size
             * match p.kind {
                 Kind::Smoke => 1.0 + p.age as f32 * 1.5,
@@ -909,30 +937,37 @@ pub fn render(
                 t.rotation = camera.rotation();
             }
         }
-        if let Some(m) = mats.get_mut(&material.0) {
-            m.unlit = matches!(p.kind, Kind::Smoke);
-            m.base_color = match p.kind {
-                Kind::Fragment => Color::srgba(0.85, 0.85, 0.85, fade),
-                Kind::Smoke => {
-                    let ash = (p.age as f32 * 0.035).min(0.12);
-                    Color::srgba(0.055 + ash, 0.06 + ash, 0.065 + ash, fade * 0.65)
-                }
-                Kind::Flame => Color::srgba(1.0, 0.35, 0.05, fade),
-                Kind::Flash => Color::srgba(1.0, 0.8, 0.4, fade),
-                Kind::Spark => Color::srgba(1.0, 0.7, 0.18, fade),
-            };
-            let emission = match p.kind {
-                Kind::Flame => 650.0,
-                Kind::Flash => 4000.0 * fade.powi(2),
-                Kind::Spark => 3200.0 * fade,
-                _ => 0.0,
-            };
-            m.emissive = LinearRgba::new(
-                emission * fade,
-                emission * 0.25 * fade,
-                emission * 0.02 * fade,
-                1.0,
-            );
+        let fade = tint;
+        let unlit = matches!(p.kind, Kind::Smoke);
+        let base_color = match p.kind {
+            Kind::Fragment => Color::srgba(0.85, 0.85, 0.85, fade),
+            Kind::Smoke => {
+                let ash = ((p.age as f32 * 0.035).min(0.12) * 256.0).round() / 256.0;
+                Color::srgba(0.055 + ash, 0.06 + ash, 0.065 + ash, fade * 0.65)
+            }
+            Kind::Flame => Color::srgba(1.0, 0.35, 0.05, fade),
+            Kind::Flash => Color::srgba(1.0, 0.8, 0.4, fade),
+            Kind::Spark => Color::srgba(1.0, 0.7, 0.18, fade),
+        };
+        let emission = match p.kind {
+            Kind::Flame => 650.0,
+            Kind::Flash => 4000.0 * fade.powi(2),
+            Kind::Spark => 3200.0 * fade,
+            _ => 0.0,
+        };
+        let emissive = LinearRgba::new(
+            emission * fade,
+            emission * 0.25 * fade,
+            emission * 0.02 * fade,
+            1.0,
+        );
+        if mats.get(&material.0).is_some_and(|m| m.unlit != unlit
+            || m.base_color != base_color || m.emissive != emissive)
+            && let Some(m) = mats.get_mut(&material.0)
+        {
+            m.unlit = unlit;
+            m.base_color = base_color;
+            m.emissive = emissive;
         }
     }
 }
