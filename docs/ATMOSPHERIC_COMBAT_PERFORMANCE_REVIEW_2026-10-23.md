@@ -959,3 +959,37 @@ Three interleaved rounds, fullscreen 2880×1800, no VSync, paused terrain-stream
 **Next steps:**
 - Split terrain builds into smaller per-tile tasks (T5).
 - Reduce GPU frame time so frames have headroom: steady-state external frames are GPU-bound at about 21 ms on a thermally limited Air.
+
+### T5 per-tile builds and GPU cost (2026-10-24)
+
+**T5 per-tile builds: implemented.**
+- New layouts build one tile per async task, near-first (`Build` in `src/terrain.rs`).
+- The next tile starts only after a frame under 18 ms, or after 8 held frames. Coalesced retargets stay one batch.
+- 443 tests pass.
+- A/B was mixed: external p99 went 23.0 → 33.3 ms in round 1 and 26.7 → 21.8 ms in round 2; cockpit was flat. So T5 is neutral on frame time.
+- Under sustained GPU-bound frames, tiles start roughly every 8 frames, so LOD refinement is slower at high ground speed.
+
+**GPU time per frame by pass** (20 s external Metal trace; channels overlap, so do not add them):
+
+| Pass | ms/frame |
+|---|---|
+| Opaque fragment | 8.80 |
+| Cascade 1 shadow vertex | 2.65 |
+| Radiance filter | 2.51 |
+| Sky | 1.86 |
+| Irradiance | 1.76 |
+| Tonemapping | 1.48 |
+| Upscaling | 1.38 |
+| Cascade 0 vertex | 1.27 |
+| Opaque vertex | 1.05 |
+| Bloom final | 1.02 |
+| `no_camera_clear_pass` | 0.87 |
+
+**Shadow proxies: tried as the GPU fix, kept off.** I tested them together with the per-frame origin. Over two rounds they were slower or equal (cockpit 38.9 → 32.5 FPS in round 1), so they stay opt-in.
+
+**Remaining GPU levers:**
+- Opaque fragment shading at 5.2 Mpx.
+- The R1 post chain.
+- The `no_camera_clear_pass` full-screen clear: find which target has no camera.
+- R2b probe cadence.
+- An optional render-scale preset.

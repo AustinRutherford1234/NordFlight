@@ -189,8 +189,53 @@ struct Built {
 struct Pending {
     cell: (i32, i32, i32),
     wanted: HashSet<Tile>,
-    task: Task<Vec<Built>>,
+    task: Build,
     coalesced: bool,
+}
+/// A layout's CPU build. New layouts build one tile per async task, ordered
+/// near-first as before, and the next tile starts only on a frame with
+/// headroom: a busy multi-tile build no longer occupies a performance core
+/// through a run of frames. Coalesced retargets remain one batch task.
+struct Build {
+    batch: Option<Task<Vec<Built>>>,
+    queue: VecDeque<Tile>,
+    running: Option<Task<Built>>,
+    done: Vec<Built>,
+    waited: u32,
+}
+impl From<Task<Vec<Built>>> for Build {
+    fn from(task: Task<Vec<Built>>) -> Self {
+        Build {batch:Some(task),queue:VecDeque::new(),running:None,done:vec![],waited:0}
+    }
+}
+/// Frames a queued tile may be held back for lack of headroom before it is
+/// started anyway, so sustained load cannot starve streaming.
+const BUILD_MAX_WAIT: u32 = 8;
+impl Build {
+    fn tiles(missing: Vec<Tile>) -> Self {
+        Build {batch:None,queue:missing.into(),running:None,done:vec![],waited:0}
+    }
+    fn poll(&mut self, headroom: bool) -> Option<Vec<Built>> {
+        if let Some(task)=self.batch.as_mut() {
+            return block_on(poll_once(task));
+        }
+        if let Some(task)=self.running.as_mut() {
+            let built=block_on(poll_once(task))?;
+            self.done.push(built);
+            self.running=None;
+        }
+        if self.queue.is_empty() {
+            return Some(std::mem::take(&mut self.done));
+        }
+        if headroom || self.waited >= BUILD_MAX_WAIT {
+            let tile=self.queue.pop_front().unwrap();
+            self.running=Some(AsyncComputeTaskPool::get().spawn(async move {build(tile)}));
+            self.waited=0;
+        } else {
+            self.waited+=1;
+        }
+        None
+    }
 }
 fn retarget_built(mut built:Vec<Built>,wanted:HashSet<Tile>,active:HashSet<Tile>)->Vec<Built> {
     // Run on the worker: obsolete CPU meshes can be large to destroy. Retain
@@ -657,7 +702,10 @@ pub fn update(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     readiness: Res<crate::terrain_ready::TerrainReady>,
+    time: Option<Res<Time<Real>>>,
 ) {
+    // Start another tile build only after a frame inside the 60 Hz budget.
+    let headroom = time.is_none_or(|t| t.delta_secs() < 0.018);
     let opacity = crate::earth::terrain_opacity(f.altitude());
     let _measure = crate::performance::span(4);
     for handle in [&state.material, &state.trees] {
@@ -680,7 +728,7 @@ pub fn update(
     if reclaimed.meshes>0 {return;}
     if state.pending.is_some() {crate::performance::frame_event(crate::performance::EV_BUILDING);}
     if let Some(mut pending) = state.pending.take() {
-        let Some(built) = block_on(poll_once(&mut pending.task)) else {
+        let Some(built) = pending.task.poll(headroom) else {
             state.pending = Some(pending);
             return;
         };
@@ -692,7 +740,7 @@ pub fn update(
                 let task=AsyncComputeTaskPool::get().spawn(async move {retarget_built(built,target,active)});
                 // Coalesce once, then complete that valid coverage. Requiring
                 // perfect cell currency every poll would starve moving flight.
-                state.pending=Some(Pending {cell:current,wanted,task,coalesced:true});
+                state.pending=Some(Pending {cell:current,wanted,task:task.into(),coalesced:true});
                 return;
             }
             pending.cell=current;
@@ -774,12 +822,10 @@ pub fn update(
     }
     missing.sort_by_key(|t|(t.size,t.x,t.z));
     crate::performance::frame_event(crate::performance::EV_JOB);
-    let task =
-        AsyncComputeTaskPool::get().spawn(async move { missing.into_iter().map(build).collect() });
     state.pending = Some(Pending {
         cell: next,
         wanted,
-        task,
+        task: Build::tiles(missing),
         coalesced: false,
     });
 }
@@ -979,7 +1025,7 @@ mod tests {
             pending: Some(Pending {
                 cell: next,
                 wanted: wanted.clone(),
-                task,
+                task: task.into(),
                 coalesced:false,
             }),
             preparing: None,
