@@ -1,5 +1,6 @@
 //! Code-native cockpit interiors and low-cost live instrument textures.
 pub(crate) mod coverage;
+pub(crate) mod hornet_hud;
 pub(crate) mod raptor_interior;
 use crate::{orbit::Orbit, physics::*};
 use bevy::{
@@ -554,8 +555,8 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
     if aircraft==crate::aircraft::Aircraft::F22{c.entity(combiner).insert(InternalDisplay);}
     let image = images.add(Image::new_fill(
         Extent3d {
-            width: 256,
-            height: 192,
+            width: if aircraft==crate::aircraft::Aircraft::Hornet {hornet_hud::WIDTH as u32}else{256},
+            height: if aircraft==crate::aircraft::Aircraft::Hornet {hornet_hud::HEIGHT as u32}else{192},
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
@@ -564,6 +565,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         RenderAssetUsages::default(),
     ));
     let hud = materials.add(StandardMaterial {
+        base_color: if aircraft==crate::aircraft::Aircraft::Hornet {Color::BLACK}else{Color::WHITE},
         base_color_texture: Some(image.clone()),
         emissive_texture: Some(image.clone()),
         emissive: LinearRgba::new(6.0, 6.0, 6.0, 1.0),
@@ -1171,11 +1173,11 @@ pub fn update(
         return;
     }
     let _measure = crate::performance::span(5);
-    if !last.due(time.elapsed_secs(), 0.10, &view) {
+    if !last.due(time.elapsed_secs(), if f.aircraft==crate::aircraft::Aircraft::Hornet{1./30.}else{0.10}, &view) {
         return;
     }
     rwr.update(&combat, &f);
-    let signature = f.elapsed.to_bits()
+    let signature = (f.hornet.hud.mode as u64).rotate_left(3) ^ (f.hornet.hud.reject as u64).rotate_left(5) ^ (f.hornet.hud.caged as u64).rotate_left(9) ^ (f.hornet.hud.radar_alt as u64).rotate_left(10) ^ (f.hornet.hud.brightness.to_bits() as u64).rotate_left(13) ^ f.elapsed.to_bits()
         ^ rwr.fingerprint().rotate_left(31)
         ^ f.throttle.to_bits().rotate_left(7)
         ^ f.gear_extension.to_bits().rotate_left(19)
@@ -1214,7 +1216,7 @@ pub fn update(
         }
         let daylight =
             ((environment.sun_direction().dot(f.up()) as f32 + 0.06) / 0.18).clamp(0.0, 1.0);
-        let intensity = (if screen.kind == 3 { 6.0 } else { 2.0 }) * (0.055 + 0.945 * daylight);
+        let intensity = (if screen.kind == 3 {6.0} else {2.0}) * (0.055 + 0.945 * daylight);
         let emissive = LinearRgba::new(intensity, intensity, intensity, 1.0);
         if materials
             .get(&screen.material)
@@ -1241,6 +1243,9 @@ pub fn update(
         }
         if screen.kind == 3 {
             clear_display(data, true, true);
+            if f.aircraft==crate::aircraft::Aircraft::Hornet {
+                hornet_hud::draw(data,&f,&combat);
+            }else{
             hud_layout(
                 data,
                 &f,
@@ -1248,6 +1253,7 @@ pub fn update(
             );
             combat_combiner(data, &f, &combat, view.simple);
             crate::combat::bvr::cockpit_radar::draw_hud(data, &combat, &f, view.simple);
+            }
             for (instrument,mut panel,mut transform,mut visibility) in &mut coverage {
                 if instrument.image==screen.image {coverage::apply(&mut panel,&mut transform,&mut visibility,&mut materials,&screen.material,data);}
             }

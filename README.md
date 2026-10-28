@@ -196,6 +196,9 @@ See [the landscape guide](docs/LANDSCAPE.md) for location and limitations.
 | F8 | Deliberate hangar-impact test scenario |
 | F9 | Toggle faster / higher-quality graphics |
 | F7, spacecraft | Cycle SAS target; enables SAS |
+| F7, F/A-18F | HUD NAV / A/A / A/G |
+| Alt + F7 / End / Delete, F/A-18F | HUD declutter / cage / BALT-RALT |
+| Alt + Page Up / Down, F/A-18F | HUD brightness |
 | L | Step daylight |
 | [ / ], hold | Rewind / advance daylight |
 | M | Open / close aircraft tactical map or spacecraft orbit map |
@@ -271,7 +274,7 @@ All 75 unit and regression tests passed in `tests/door-hud-light-tests.log`, inc
 
 ## Collision and performance update
 
-The HUD uses m/s for speed and meters for altitude. Z increases thrust and X decreases thrust; Y operates the airbrake. J selects the aircraft-locked chase camera, which follows the aircraft orientation. Hold either mouse button to rotate the camera, including around the aircraft in locked chase; use the wheel to zoom. Left drags that start on UI buttons stay with the UI.
+The generic HUD uses m/s for speed and meters for altitude. The F/A-18F has a dedicated [NAV/A/A/A/G cockpit HUD](docs/hornet/HUD.md) using knots, feet and nautical miles. Z increases thrust and X decreases thrust; Y operates the airbrake. J selects the aircraft-locked chase camera, which follows the aircraft orientation. Hold either mouse button to rotate the camera, including around the aircraft in locked chase; use the wheel to zoom. Left drags that start on UI buttons stay with the UI.
 
 Aircraft collision checks use a compound convex skin around the tapered fuselage, nose, canopy, intakes, wings, canards, elevons, airbrakes, fin, rudder and nozzle. Moving panels follow their rendered hinges. Continuous separating-axis sweeps and attitude interpolation detect aircraft structure/terrain strikes. The lunar lander uses four terrain-normal spring contacts, slope/impact limits and a separate approximate body-clearance check; the capsule supports low-speed recovery. F11 shows aircraft hulls or spacecraft clearance/foot contacts. These are collision approximations rather than triangle-exact structural models. F8 provides an aircraft impact demonstration.
 

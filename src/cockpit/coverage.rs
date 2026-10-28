@@ -16,12 +16,14 @@ fn bounds(data:&[u8],width:usize,height:usize)->Option<[usize;4]> {
 }
 pub(super) fn apply(panel:&mut Panel,transform:&mut Transform,visibility:&mut Visibility,
     materials:&mut Assets<StandardMaterial>,handle:&Handle<StandardMaterial>,data:&[u8]) {
-    let Some([left,top,right,bottom])=bounds(data,256,192) else {
+    let width=if data.len()==1024*768*4 {1024}else{256};
+    let height=width*3/4;
+    let Some([left,top,right,bottom])=bounds(data,width,height) else {
         panel.empty=true;*visibility=Visibility::Hidden;return;
     };
     panel.empty=false;*visibility=Visibility::Inherited;
-    let min=Vec2::new(left as f32/256.,top as f32/192.);
-    let max=Vec2::new(right as f32/256.,bottom as f32/192.);
+    let min=Vec2::new(left as f32/width as f32,top as f32/height as f32);
+    let max=Vec2::new(right as f32/width as f32,bottom as f32/height as f32);
     let span=max-min;let centre=(min+max)*0.5;
     let crop=Transform::from_translation(Vec3::new((centre.x-0.5)*panel.size.x,(0.5-centre.y)*panel.size.y,0.))
         .with_scale(Vec3::new(span.x,span.y,1.));
@@ -39,6 +41,15 @@ mod tests {
         assert_eq!(bounds(&data,256,192),Some([31,68,183,102]));
         data[3]=1;data[(192*256-1)*4+3]=1;
         assert_eq!(bounds(&data,256,192),Some([0,0,256,192]));
+    }
+    #[test]
+    fn high_resolution_hud_retains_uv_alignment() {
+        let mut panel=Panel{rest:Transform::IDENTITY,size:Vec2::new(0.3,0.18),empty:true};let mut transform=panel.rest;let mut visibility=Visibility::Hidden;
+        let mut materials=Assets::<StandardMaterial>::default();let handle=materials.add(StandardMaterial::default());let mut data=vec![0;1024*768*4];
+        data[(280*1024+132)*4+3]=255;
+        apply(&mut panel,&mut transform,&mut visibility,&mut materials,&handle,&data);assert!(!panel.empty);
+        let mapped=materials.get(&handle).unwrap().uv_transform.transform_point2(Vec2::splat(0.5));
+        assert!((mapped.x-132.5/1024.).abs()<1e-6);assert!((mapped.y-280.5/768.).abs()<1e-6);
     }
     #[test]
     fn cropped_plane_uvs_match_full_plane_and_empty_recovers() {

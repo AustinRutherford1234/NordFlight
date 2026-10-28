@@ -34,6 +34,7 @@ pub struct Diagnostics {
 #[derive(Clone, Debug)]
 pub struct Dynamics {
     pub fbw:fbw::State,
+    pub hud:crate::cockpit::hornet_hud::State,
     pub nose_steering: f64,
     pub skin_temperature: f64,
     pub structural_loads: structure::Channels,
@@ -57,6 +58,7 @@ impl Default for Dynamics {
     fn default() -> Self {
         Self {
             fbw:Default::default(),
+            hud:Default::default(),
             nose_steering: 0.,
             skin_temperature: 288.15,
             structural_loads: Default::default(),

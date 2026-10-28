@@ -46,7 +46,7 @@ in the header rather than covering the runway readout.
 | Su-27SM | Long blended forebody, widely separated twin nacelles, twin tails, blue finish, conventional stabilators, dorsal brake, teal cockpit with two digital displays and working analog gauges |
 | F-35B | Broader body/chines, forward cockpit, single engine, rotating aft nozzle, animated lift fan, fitted intake and outlet doors, wide segmented cockpit display, side stick, gun pod and main weapon bays |
 | F-22A | Broad diamond wing, canted twin tails, twin rectangular vectoring nozzles, main and side weapon bays, side-stick cockpit and additional flight/system readout |
-| F/A-18F | Tandem-seat Super Hornet exterior, folding wingtips, functional arresting hook, two engines and external stores; dedicated estimated physics and moving-carrier loads; existing cockpit/HUD retained |
+| F/A-18F | Tandem-seat Super Hornet exterior, folding wingtips, functional arresting hook, two engines and external stores; dedicated estimated physics and moving-carrier loads; dedicated NAV/A/A/A/G cockpit HUD with live flight, carrier and existing weapon cues |
 
 All use the existing double-precision six-degree-of-freedom integration and
 configured timestep. The selected aircraft supplies wing area, dimensions, mass,
@@ -171,3 +171,5 @@ The previous `fa18e` identifier remains an alias for the F/A-18F.
 The dedicated Hornet physics, parameter provenance, numerical evidence and remaining flight-review requirements are described in [Hornet validation](hornet/VALIDATION.md) and the [parameter register](hornet/PARAMETERS.md).
 
 The Hornet now has [representative FBW](hornet/FBW.md) with four computer/sensor lanes, normal/degraded/direct/failed modes, automatic pitch trim and reconfigurable surface allocation. Flaps and launch rotation remain manual, and approaches remain pilot-flown. The normal control laws do not command throttle, altitude or flight path.
+
+The F/A-18F HUD uses F7 for mode selection; see [HUD controls and fidelity limits](hornet/HUD.md).

@@ -34,6 +34,10 @@ enum Action {
     Dump,
     EngineL,
     EngineR,
+    HudMode,
+    HudReject,
+    HudCage,
+    HudAltitude,
 }
 #[derive(Component)]
 pub struct Key {
@@ -216,7 +220,12 @@ pub fn setup(
             toggle: false,
         });
     let mut specs: Vec<_> = front.chain(side_layout()).collect();
-    if aircraft==crate::aircraft::Aircraft::Hornet {specs.retain(|s|s.action!=Action::Autopilot);}
+    if aircraft==crate::aircraft::Aircraft::Hornet {
+        for spec in &mut specs {if spec.action==Action::Autopilot {spec.action=Action::HudMode;spec.label="HUD MODE";spec.toggle=false;}}
+        for (i,(action,label)) in [(Action::HudReject,"HUD REJ"),(Action::HudCage,"CAGE"),(Action::HudAltitude,"B/R ALT")].into_iter().enumerate(){
+            specs.push(Spec{action,label,position:Vec3::new(0.425,0.59-i as f32*0.045,-3.42),size:Vec3::new(0.080,0.030,0.012),rotation:Quat::IDENTITY,toggle:false});
+        }
+    }
     if aircraft!=crate::aircraft::Aircraft::Gripen {
         let mut extra=vec![(Action::EngineL,"ENG L"),(Action::Dump,"JETT")];
         if aircraft.spec().engines==2{extra.push((Action::EngineR,"ENG R"));}
@@ -344,6 +353,10 @@ fn active(a: Action, f: &Flight, v: &ViewState) -> bool {
 fn apply(a: Action, f: &mut Flight, v: &mut ViewState, c: &mut Combat) -> &'static str {
     use Action::*;
     match a {
+        HudMode=>{f.hornet.hud.mode=f.hornet.hud.mode.next();"HUD MASTER MODE"},
+        HudReject=>{f.hornet.hud.reject=(f.hornet.hud.reject+1)%3;"HUD DECLUTTER"},
+        HudCage=>{f.hornet.hud.caged=!f.hornet.hud.caged;"HUD CAGE / UNCAGE"},
+        HudAltitude=>{f.hornet.hud.radar_alt=!f.hornet.hud.radar_alt;"HUD BARO / RADAR ALTITUDE"},
         Stovl=>{if f.airspeed>150.||f.damage.lift_fan<0.15{return "STOVL INHIBITED / SPEED OR LIFT FAN";}f.systems.conversion_target=!f.systems.conversion_target;"STOVL CONVERSION"},
         Bays=>{f.systems.manual_bays=!f.systems.manual_bays;f.systems.bays_target=f.systems.manual_bays;"WEAPON BAY DOORS"},
         Dump=>{f.systems.stores=[false;10];c.ammo=[0;2];"STORES JETTISONED"},
@@ -564,11 +577,21 @@ fn description(a: Action) -> &'static str {
         Action::Dump=>"JETTISON EXTERNAL STORES",
         Action::EngineL=>"LEFT ENGINE FUEL VALVE",
         Action::EngineR=>"RIGHT ENGINE FUEL VALVE",
+        Action::HudMode=>"HUD NAV / AIR / GROUND (F7)",
+        Action::HudReject=>"HUD DECLUTTER (ALT F7)",
+        Action::HudCage=>"HUD CAGE (ALT END)",
+        Action::HudAltitude=>"HUD BARO / RADAR (ALT DELETE)",
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hornet_hud_cockpit_buttons_match_keyboard_actions(){
+        let mut f=Flight::approach();f.aircraft=crate::aircraft::Aircraft::Hornet;let mut view=ViewState::default();let mut combat=Combat::default();
+        for action in [Action::HudMode,Action::HudReject,Action::HudCage,Action::HudAltitude]{apply(action,&mut f,&mut view,&mut combat);}
+        assert_eq!(f.hornet.hud.mode,crate::cockpit::hornet_hud::MasterMode::Air);assert_eq!(f.hornet.hud.reject,1);assert!(f.hornet.hud.caged&&f.hornet.hud.radar_alt);
+    }
     #[test]
     fn hornet_cannot_enable_autopilot_but_other_aircraft_retain_it(){let mut f=Flight::approach();f.aircraft=crate::aircraft::Aircraft::Hornet;let mut view=ViewState::default();let mut combat=Combat::default();apply(Action::Autopilot,&mut f,&mut view,&mut combat);assert!(!f.autopilot);f.aircraft=crate::aircraft::Aircraft::Gripen;apply(Action::Autopilot,&mut f,&mut view,&mut combat);assert!(f.autopilot);}
     #[test]

@@ -29,7 +29,7 @@ const MAX_AIRCRAFT: usize = 11;
 // input, simulation, camera, or damage ordering.
 pub type MechanismFilter = (Without<TargetVisual>,Without<MissileVisual>,Without<MotorVisual>,Without<FlashVisual>,Without<StoreVisual>,Without<GenericMissileDecoration>);
 /// Gameplay muzzle velocity relative to the firing aircraft (m/s).
-const CANNON_MUZZLE_SPEED: f64 = 4250.0;
+pub(crate) const CANNON_MUZZLE_SPEED: f64 = 4250.0;
 // Reserve stable player slots for the largest aircraft loadout. Enemy slots
 // must not overlap later player launches or change as missiles are fired.
 pub(super) const MISSILE_COUNT: usize = 10;
@@ -55,7 +55,7 @@ impl Weapon {
             if f.aircraft == crate::aircraft::Aircraft::F22 { 60.0 } else { 16.0 }
         } else { 35.0 }
     }
-    fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         if self == Self::Heat { 0 } else { 1 }
     }
     fn label(self) -> &'static str {
@@ -354,7 +354,7 @@ impl Combat {
             self.targets.push(target);
         }
     }
-    fn cue(&self, f: &Flight) -> Result<(), &'static str> {
+    pub(crate) fn cue(&self, f: &Flight) -> Result<(), &'static str> {
         if let Some(b) = &self.bvr {
             return b.cue(self, f);
         }
