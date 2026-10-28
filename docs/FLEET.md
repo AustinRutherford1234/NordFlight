@@ -21,8 +21,8 @@ hangar while in a spacecraft starts the runway scenario.
 | Control | Function |
 |---|---|
 | F6 | Aircraft hangar |
-| Alt+F6 | Existing approach assistance |
-| T | Fly-by-wire on/off; direct controls permit departures and post-stall flight |
+| Alt+F6 | Existing approach assistance for aircraft other than the F/A-18F; Hornet autopilot removed |
+| T | Normal/direct FBW selection on the Hornet; assistance on/off elsewhere. Direct control permits departures and post-stall flight |
 | Y, F-35B | Toggle STOVL conversion below 150 m/s |
 | Alt+Y, F-35B | Airbrake; Y remains the airbrake in other aircraft |
 | Alt+B | Manual weapon-bay control on F-22/F-35B |
@@ -169,3 +169,5 @@ timing. Final measured results and artifact identity are recorded in
 The previous `fa18e` identifier remains an alias for the F/A-18F.
 
 The dedicated Hornet physics, parameter provenance, numerical evidence and remaining flight-review requirements are described in [Hornet validation](hornet/VALIDATION.md) and the [parameter register](hornet/PARAMETERS.md).
+
+The Hornet now has [representative FBW](hornet/FBW.md) with four computer/sensor lanes, normal/degraded/direct/failed modes, automatic pitch trim and reconfigurable surface allocation. Flaps and launch rotation remain manual, and approaches remain pilot-flown. The normal control laws do not command throttle, altitude or flight path.

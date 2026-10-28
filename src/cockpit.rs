@@ -1276,6 +1276,7 @@ pub fn update(
         }
         let mut lines = match screen.kind {
             4 if f.aircraft==crate::aircraft::Aircraft::F22=>vec!["FLIGHT / SYSTEMS".into(),format!("AOA {:+.1} / G {:+.1}",f.alpha.to_degrees(),f.g_load),format!("FBW {}  HYD {:.0}%",if f.assist{"ON"}else{"DIRECT"},f.damage.hydraulics*100.),format!("ENG L {:.0} R {:.0}",f.systems.engines[0]*100.,f.systems.engines[1]*100.),format!("TVC L {:+.0} R {:+.0}",f.systems.nozzle[0].to_degrees(),f.systems.nozzle[1].to_degrees()),format!("FUEL {:.0} KG",f.fuel),format!("BAYS {:.0}% / GEAR {:.0}%",f.systems.bays*100.,f.gear_extension*100.)],
+            4 if f.aircraft==crate::aircraft::Aircraft::Hornet=>vec!["HORNET FLIGHT CONTROLS".into(),crate::aircraft::hornet::fbw::summary(&f),format!("HYD {:.0}% / TRIM {:+.1}",f.hornet.hydraulic_pressure*f.damage.hydraulics*100.,f.hornet.trim.to_degrees()),format!("AOA {:+.1} / G {:+.1}",f.alpha.to_degrees(),f.g_load),format!("MANUAL FLAPS {:.0}%",f.flaps*100.),"T NORMAL / DIRECT".into(),"PILOT ROTATION / NO AP".into()],
             4=>vec![f.aircraft.name().into(),format!("SPD {:.0} / M {:.2}",f.airspeed,f.mach),format!("ALT {:.0} / G {:.1}",f.altitude(),f.g_load),format!("FBW {}",if f.assist{"ON"}else{"DIRECT"}),format!("ENG L {:.0} R {:.0}",f.systems.engines[0]*100.,f.systems.engines[1]*100.),format!("LIFT {:.0}% BAY {:.0}%",f.systems.conversion*100.,f.systems.bays*100.),format!("FUEL {:.0} KG",f.fuel),"Y STOVL / ALT+B BAYS".into()],
             3 => vec![
                 format!("HDG {:03.0}", f.heading()),
@@ -1329,7 +1330,7 @@ pub fn update(
                         format!("CROSS {:.0} M", f.position.x),
                         format!("AOA {:+.1}", f.alpha.to_degrees()),
                         format!("FLAP {:.0}%", f.flaps * 100.0),
-                        format!("FBW {}", if f.assist { "ON" } else { "OFF" }),
+                        format!("FBW {}", if f.aircraft==crate::aircraft::Aircraft::Hornet{crate::aircraft::hornet::fbw::label(&f)}else if f.assist { "ON" } else { "OFF" }),
                     ]
                 }
             }

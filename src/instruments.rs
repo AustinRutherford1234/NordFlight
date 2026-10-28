@@ -276,7 +276,7 @@ pub fn update(
                     f.aero_coeff.lift / f.aero_coeff.drag.max(0.001),
                     f.alpha.to_degrees(),
                     f.flow.attached * 100.0,
-                    if f.assist { "ON" } else { "OFF" }
+                    if f.aircraft==crate::aircraft::Aircraft::Hornet{crate::aircraft::hornet::fbw::label(&f)}else if f.assist { "ON" } else { "OFF" }
                 )
             } else {
                 format!(

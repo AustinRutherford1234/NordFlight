@@ -1106,6 +1106,16 @@ fn main() {
                 }else{aircraft::raptor::roll_trial(if mode.ends_with("left"){-0.6}else{0.6},true,false).0};
                 initial_flight.paused=true;
             }
+            if a==aircraft::Aircraft::Hornet&&mode.starts_with("fbw-") {
+                initial_flight.paused=false;
+                if mode.contains("degraded"){initial_flight.hornet.fbw.computers[2].enabled=false;initial_flight.hornet.fbw.computers[3].enabled=false;}
+                if mode.contains("direct"){initial_flight.assist=false;}
+                if mode.contains("failed"){initial_flight.battery=false;initial_flight.apu=false;initial_flight.engine=false;}
+                for _ in 0..60 {simulate(&mut initial_flight,&initial_environment,1./240.);}
+                println!("FBW capture {mode}: {} trim={:.3} flaps={} autopilot={}",aircraft::hornet::fbw::summary(&initial_flight),initial_flight.hornet.trim,initial_flight.flaps,initial_flight.autopilot);
+                initial_flight.paused=true;
+                if mode.ends_with("cockpit"){initial_view.index=3;initial_view.yaw=0.;initial_view.pitch=-0.13;initial_view.zoom=1.;}
+            }
             if mode=="ground"{initial_flight=Flight::runway();aircraft::select(&mut initial_flight,a);initial_flight.paused=true;}
             if mode=="damage"{initial_flight.damage.surface_state[0]=combat::damage::SurfaceState::Jammed(0.4);initial_flight.damage.surface_state[6]=combat::damage::SurfaceState::Detached;initial_flight.damage.surfaces[6]=0.;initial_flight.damage.fire=0.6;let mut fx=std::mem::take(&mut combat.fx);let mut pose=initial_flight.clone();pose.velocity=DVec3::ZERO;for _ in 0..7{fx.advance(&combat,&pose,1./60.);}combat.fx=fx;}
         }
@@ -2027,7 +2037,7 @@ fn input(
         f.assist = !f.assist;
     }
     if keys.just_pressed(KeyCode::F6) && (keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) {
-        f.autopilot = !f.autopilot;
+        if f.aircraft==aircraft::Aircraft::Hornet {f.autopilot=false;}else{f.autopilot = !f.autopilot;}
     }
     if keys.just_pressed(KeyCode::Digit1) {
         f.battery = !f.battery;
@@ -2851,7 +2861,7 @@ fn update_hud(
                 },
                 f.flaps * 100.0,
                 if f.airbrake { "ON" } else { "OFF" },
-                if f.assist { "ON" } else { "OFF" },
+                if f.aircraft==aircraft::Aircraft::Hornet{aircraft::hornet::fbw::label(&f)}else if f.assist { "ON" } else { "OFF" },
                 f.alpha.to_degrees(),
                 f.beta.to_degrees(),
                 f.integrity * 100.0
@@ -2938,6 +2948,7 @@ fn update_hud(
                 }
             }
         };
+        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually");}text}else{updated};
         let updated = if tag.0 == 9 && v.help && v.scenario >= 4 && f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet {
             let mut text = updated.replace("HELP   H", "HELP   Shift+H");
             text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");
@@ -3357,6 +3368,19 @@ mod camera_input_tests {
         assert!(view.map);
         assert_eq!(view.index, 0);
         assert!(!app.world().resource::<Flight>().paused);
+    }
+    #[test]
+    fn hornet_keyboard_pitch_and_direct_override_and_removed_ap() {
+        let mut app=scene(false);app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::Hornet;
+        for (key,sign) in [(KeyCode::KeyS,1.),(KeyCode::KeyW,-1.)] {
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);app.update();
+            assert_eq!(app.world().resource::<Flight>().controls.x,sign);
+        }
+        {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::AltLeft);keys.press(KeyCode::F6);}
+        app.update();assert!(!app.world().resource::<Flight>().autopilot);
+        {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::KeyT);}
+        app.update();assert!(!app.world().resource::<Flight>().assist);
     }
     #[test]
     fn hornet_shift_alone_sets_full_throttle_on_both_shift_keys() {

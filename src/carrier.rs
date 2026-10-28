@@ -145,7 +145,7 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
   let force=DVec3::new((-100000.*(p.x-10.)-20000.*v.x).clamp(-250000.,250000.),-required*schedule*0.38,-required*schedule);
   loads.add(to_body(force),LAUNCH_POINT-cg);
   f.carrier.deck_position.z=p.z;
-  if stroke>105.||forward>82.||age>6.||!f.engine||f.throttle<0.5 {f.carrier.launch=None;f.status="CATAPULT RELEASE / W ROTATE / G GEAR UP".into();}
+  if stroke>105.||forward>82.||age>6.||!f.engine||f.throttle<0.5 {f.carrier.launch=None;f.status="CATAPULT RELEASE / S ROTATE / G GEAR UP".into();}
  }
  if f.carrier.arrested {
   let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);

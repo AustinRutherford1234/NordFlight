@@ -33,11 +33,10 @@ pub(super) fn targets(f: &Flight, raw: DVec3) -> [f64; 16] {
     ]
 }
 pub fn advance_actuators(f: &mut Flight, q: f64, dt: f64) {
-    let raw = super::assistance::command(f, q);
-    let commands = targets(f, raw);
+    let commands = super::fbw::commands(f,q,dt);
     for (i, target) in commands.into_iter().enumerate() {
         let health = f.damage.surfaces[i].clamp(0., 1.);
-        let authority = f.damage.hydraulics.clamp(0., 1.) * f.hornet.hydraulic_pressure * health;
+        let authority = f.damage.hydraulics.clamp(0., 1.) * f.hornet.hydraulic_pressure * health * super::fbw::actuator_power(f);
         let target = crate::control_surfaces::effective_angle(&f.damage, i, target);
         if matches!(
             f.damage.surface_state[i],
@@ -53,7 +52,6 @@ pub fn advance_actuators(f: &mut Flight, q: f64, dt: f64) {
         f.hornet.angles[i] =
             (f.hornet.angles[i] + f.hornet.actuator_rates[i] * dt).clamp(-0.55, 0.55);
     }
-    f.surface = raw;
 }
 /// Distributed neutral and moving-surface forces; no generic polar is added.
 pub fn evaluate(f: &mut Flight, dt: f64) -> Loads {

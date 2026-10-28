@@ -1,7 +1,7 @@
 //! Dedicated Super Hornet plant: forces in N, moments in N m, body +X right,
 //! +Y up, +Z aft. No control law applies angular velocity or attitude directly.
 pub mod aero;
-mod assistance;
+pub mod fbw;
 pub mod config;
 pub mod engine;
 pub mod mass;
@@ -33,6 +33,7 @@ pub struct Diagnostics {
 }
 #[derive(Clone, Debug)]
 pub struct Dynamics {
+    pub fbw:fbw::State,
     pub nose_steering: f64,
     pub skin_temperature: f64,
     pub structural_loads: structure::Channels,
@@ -55,6 +56,7 @@ pub struct Dynamics {
 impl Default for Dynamics {
     fn default() -> Self {
         Self {
+            fbw:Default::default(),
             nose_steering: 0.,
             skin_temperature: 288.15,
             structural_loads: Default::default(),
@@ -162,6 +164,7 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
         crate::collision::destroy(f, "F/A-18F STRUCTURAL FAILURE", f.up());
         return;
     }
+    f.autopilot=false;
     let before = f.position;
     let previous_orientation = f.orientation;
     f.elapsed += dt;
@@ -186,6 +189,7 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     f.beta = (air.x / f.airspeed.max(0.1)).clamp(-1., 1.).asin();
     let (cg, inertia) = mass::properties(f);
     let engine = engine::advance(f, dt);
+    f.hornet.diagnostic.engine=engine;
     let aero = aero::evaluate(f, dt);
     let contact = contacts(f, dt);
     let attachment = crate::carrier::physics_loads(f, dt);

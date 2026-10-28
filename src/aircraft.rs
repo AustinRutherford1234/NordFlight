@@ -454,6 +454,7 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
     f.systems = Systems::default();
     f.structure = Default::default();
     f.hornet = Default::default();
+    if aircraft==Aircraft::Hornet {f.autopilot=false;}
     if f.vehicle == Vehicle::Spacecraft {
         return;
     }

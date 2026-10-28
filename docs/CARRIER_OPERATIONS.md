@@ -10,7 +10,7 @@ The carrier runs a constant straight course at 25 knots in a sea corridor around
 - **G**: landing gear. Both starts use gear down.
 - **Alt+G**: toggle the optional approach gates and lineup/glidepath readout.
 - **Shift**: full throttle; **Z/X** adjust power; **Ctrl** cuts power.
-- **W/S**: pitch. Apply a gentle nose-up input after catapult release, then relax it to hold the climb. Automatic launch rotation is deferred with the new FBW work.
+- **W/S**: pitch. S commands nose-up and W nose-down. Apply a gentle nose-up input after catapult release, then relax it. Launch rotation remains pilot-commanded with the Hornet FBW.
 - **Enter**: fire the catapult when attached, engine running, fuel available, gear down and throttle above 85%.
 - **Alt+C**: while stopped on the deck, move to the catapult and attach. This is a convenience reset for this first version, not a taxi/tow animation.
 - **R**: restart the selected carrier start.
@@ -23,3 +23,5 @@ Approach guidance follows an estimated 3.5-degree angled lane and displays deck-
 No pitch/roll sea motion, taxi director, launch-bar mesh animation, detailed hydraulic catapult, deck crew, weapons servicing, ship combat or damage model is included. Arrest, catapult and tyre/caster parameters are engineering estimates registered in `docs/hornet/PARAMETERS.md`. Only this mode spawns the carrier visual; other flight scenarios retain their own behavior.
 
 Tests cover moving-frame transforms, deck boundaries, parked transport, catapult release, hook-dependent arrest, integrated touchdown/bolter behavior and scenario reset. Existing physics and collision regression tests also pass. `NORD_CARRIER_CAPTURE=deck-close` or `approach`, together with `--visual-check dry`, provides reproducible app-render captures without advancing flight. Additional presets `launch-release`, `arrested` and `relaunch` simulate the physical sequence first, then render the resulting state. Launch inspection presets include an explicit pilot pitch input after release. These are inspection presets, not normal controls.
+
+The [Hornet FBW](hornet/FBW.md) provides basic stabilization and trim with manual flaps. It does not fly the approach or manage throttle. T selects normal/direct control; failed hardware can remove available control authority in either selection.

@@ -216,6 +216,7 @@ pub fn setup(
             toggle: false,
         });
     let mut specs: Vec<_> = front.chain(side_layout()).collect();
+    if aircraft==crate::aircraft::Aircraft::Hornet {specs.retain(|s|s.action!=Action::Autopilot);}
     if aircraft!=crate::aircraft::Aircraft::Gripen {
         let mut extra=vec![(Action::EngineL,"ENG L"),(Action::Dump,"JETT")];
         if aircraft.spec().engines==2{extra.push((Action::EngineR,"ENG R"));}
@@ -417,6 +418,7 @@ fn apply(a: Action, f: &mut Flight, v: &mut ViewState, c: &mut Combat) -> &'stat
             "SIMPLIFIED VIEW"
         }
         Autopilot => {
+            if f.aircraft==crate::aircraft::Aircraft::Hornet {f.autopilot=false;return "AUTOPILOT NOT INSTALLED";}
             f.autopilot = !f.autopilot;
             "APPROACH AUTOPILOT"
         }
@@ -567,6 +569,8 @@ fn description(a: Action) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hornet_cannot_enable_autopilot_but_other_aircraft_retain_it(){let mut f=Flight::approach();f.aircraft=crate::aircraft::Aircraft::Hornet;let mut view=ViewState::default();let mut combat=Combat::default();apply(Action::Autopilot,&mut f,&mut view,&mut combat);assert!(!f.autopilot);f.aircraft=crate::aircraft::Aircraft::Gripen;apply(Action::Autopilot,&mut f,&mut view,&mut combat);assert!(f.autopilot);}
     #[test]
     fn side_console_rays_use_the_horizontal_face_and_reject_gaps() {
         let eye = crate::cockpit::eye(Vehicle::Gripen).as_dvec3();

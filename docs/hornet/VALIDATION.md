@@ -1,5 +1,7 @@
 # F/A-18F physics implementation and evidence
 
+The later [FBW milestone](FBW.md) supersedes this report’s temporary assistance adapter and FBW deferral. The measurements below document the preceding physics baseline; current FBW regression results are recorded separately.
+
 2026-10-28. Current status: automated physics/regression checks pass; the rebuilt application still requires the user's flight review. This document separates numerical checks, engineering estimates, broad specification checks and interactive acceptance. None of the automated results constitute real-aircraft flight-test validation.
 
 ## Architecture and conventions
