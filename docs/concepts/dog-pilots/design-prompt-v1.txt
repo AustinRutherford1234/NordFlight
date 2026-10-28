@@ -1,0 +1,16 @@
+Use case: stylized-concept.
+Asset type: a single character-design comparison sheet for a flight simulation game. This is concept exploration, not a finished sprite sheet.
+Primary request: Show TEN DISTINCT original DOG PILOT character looks, numbered 01–10, that can appear as animated bottom-right crew portraits and as small 3D pilots visible through an aircraft canopy. Charming, funny, readable canine faces, expressive ears, brows, cheeks and mouths, lovable amateur-test-pilot energy. Original designs, no existing game characters.
+Layout: high-resolution portrait comparison board, TWO COLUMNS by FIVE ROWS, exactly ten equally sized cards. Each card contains THREE bust portraits of the SAME dog in the SAME costume and SAME art style: left CALM, center HIGH G (straining, compressed cheeks, squinting, ears pulled down), right BOOM (surprised wide eyes, comic open mouth, ears up, a tiny orange reflected flash, unharmed). Keep all three expressive faces large and legible. Each card has a bold clear option number and short breed name above, and short expression labels below. Matte dark blue-gray board, warm soft studio light, clean uncluttered presentation, no actual game screenshot.
+Character options in reading order:
+01 BEAGLE: round head, tricolor patches, enormous floppy ears, white muzzle, olive flight suit and open-face jet helmet.
+02 SHIBA: compact orange-and-cream face, pointed ears, mischievous brows, navy flight suit, small aviation headset.
+03 HUSKY: silver and white face mask, ice-blue eyes, fluffy cheek tufts, gray flight suit, open-face jet helmet.
+04 CORGI: huge ears, short muzzle, orange and cream, eager smile, teal flight suit, compact aviation headset.
+05 LABRADOR: golden yellow, soft floppy ears, broad rounded muzzle, friendly trusting eyes, olive flight suit, open-face jet helmet.
+06 SHEPHERD: tan and dark face mask, tall expressive ears, longer muzzle, serious veteran face that becomes comically alarmed, charcoal flight suit, aviation headset.
+07 TERRIER: scruffy white face, one dark eye patch, uneven ears, scruffy eyebrows, small compact silhouette, sage flight suit and headset.
+08 DACHSHUND: chocolate brown, very long rounded snout, long floppy ears, huge small-dog courage, orange flight suit, fitted open-face helmet.
+09 BULLDOG: stocky gray-and-white square face, jowls and tiny ears, grumpy resting face, olive flight suit, broad open-face helmet.
+10 MUTT: distinct original russet shaggy mixed-breed dog, cream muzzle, one ear up and one ear floppy, asymmetrical forehead blaze, playful broad brows, navy flight suit, aviation headset.
+Style: polished stylized 3D game character concept renders with simple sculptable geometry, oversized heads, short necks, compact clothed shoulders, short stylized fur rather than individual photoreal hairs, subtle material texture. Keep a coherent visual family but genuinely distinct breed silhouettes. All unmistakably DOGS, paws/body need not be shown. Helmet face openings must expose eyes, eyebrows, muzzle; expressive ears remain visible. No opaque visors or oxygen masks. No gore, injury, text clutter, duplicate options, watermark, weapons, or real logos.

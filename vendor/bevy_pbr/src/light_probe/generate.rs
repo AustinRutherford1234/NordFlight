@@ -93,6 +93,13 @@ pub struct EnvironmentMapScene {
     pub source: u64,
     pub enabled: bool,
 }
+/// A camera that only renders local content and must not submit the global
+/// environment-map downsampling/filtering nodes. This keeps independent UI
+/// portraits from invalidating the single-producer encoder/cache contract.
+/// The view may still sample completed environment maps normally.
+#[derive(Component, Clone, Copy, Debug, Default, ExtractComponent)]
+pub struct SkipEnvironmentMapGeneration;
+
 /// Opt-in diagnostic counts: hits, misses, actual source writes, and bypasses.
 pub fn environment_filter_cache_counts() -> [u64; 4] {
     [
@@ -240,6 +247,7 @@ impl Plugin for EnvironmentMapGenerationPlugin {
 
         app.add_plugins(SyncComponentPlugin::<GeneratedEnvironmentMapLight>::default())
             .add_plugins(ExtractComponentPlugin::<EnvironmentMapScene>::default())
+            .add_plugins(ExtractComponentPlugin::<SkipEnvironmentMapGeneration>::default())
             .add_systems(Update, generate_environment_map_light);
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -640,7 +648,10 @@ fn compute_mip_count(size: u32) -> u32 {
 }
 
 /// Prepares textures needed for single pass downsampling
-type EncodingViewFilter = (With<Camera3d>, With<bevy_render::camera::ExtractedCamera>);
+type EncodingViewFilter = (
+    With<Camera3d>, With<bevy_render::camera::ExtractedCamera>,
+    Without<SkipEnvironmentMapGeneration>,
+);
 pub fn prepare_generated_environment_map_intermediate_textures(
     light_probes: Query<(Entity, &RenderEnvironmentMap, Option<&IntermediateTextures>)>,
     render_device: Res<RenderDevice>,
@@ -652,7 +663,10 @@ pub fn prepare_generated_environment_map_intermediate_textures(
     // Multiple view encoders may be submitted in a different order from their
     // CPU recording. Reuse is restricted to a single 3D view; other scenes keep
     // the original dispatch behavior. Inactive menu cameras keep Camera3d but
-    // have no ExtractedCamera and submit no view encoder. IDs own no textures.
+    // have no ExtractedCamera and submit no view encoder. Explicitly opted-out
+    // portrait views skip both generator nodes and cannot submit a competing
+    // filter encoder. Genuine additional encoders still retain the fallback.
+    // IDs own no textures.
     writes.single_view.store(views.iter().count() == 1, Relaxed);
     writes
         .revisions
@@ -930,10 +944,14 @@ mod binding_cache_tests {
         assert_eq!(count(&mut w),0);
         let flight=w.spawn((Camera3d::default(),camera())).id();
         assert_eq!(count(&mut w),1);
+        let portrait=w.spawn((Camera3d::default(),camera(),SkipEnvironmentMapGeneration)).id();
+        assert_eq!(count(&mut w),1); // Opted-out views skip both filter nodes.
         let second=w.spawn((Camera3d::default(),camera())).id();
         assert_eq!(count(&mut w),2); // Genuine multiple encoders keep the fallback.
         w.entity_mut(flight).remove::<ExtractedCamera>();assert_eq!(count(&mut w),1);
         w.despawn(second);assert_eq!(count(&mut w),0);
+        w.entity_mut(portrait).remove::<SkipEnvironmentMapGeneration>();
+        assert_eq!(count(&mut w),1); // Removing the contract restores ordinary behavior.
     }
     #[test]
     fn slices_publish_only_complete_maps_and_cuts_cancel_pending_faces() {
@@ -1474,10 +1492,13 @@ impl Node for DownsamplingNode {
 
     fn run(
         &self,
-        _graph: &mut RenderGraphContext,
+        graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), NodeRunError> {
+        if graph.get_view_entity().is_some_and(|view| world.get::<SkipEnvironmentMapGeneration>(view).is_some()) {
+            return Ok(());
+        }
         let pipeline_cache = world.resource::<PipelineCache>();
         let pipelines = world.resource::<GeneratorPipelines>();
 
@@ -1646,10 +1667,13 @@ impl Node for FilteringNode {
 
     fn run(
         &self,
-        _graph: &mut RenderGraphContext,
+        graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), NodeRunError> {
+        if graph.get_view_entity().is_some_and(|view| world.get::<SkipEnvironmentMapGeneration>(view).is_some()) {
+            return Ok(());
+        }
         let pipeline_cache = world.resource::<PipelineCache>();
         let pipelines = world.resource::<GeneratorPipelines>();
 

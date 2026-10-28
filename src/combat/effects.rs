@@ -35,6 +35,7 @@ pub struct State {
     pub particles: Vec<Particle>,
     next_id: u64,
     seen: [[bool; crate::aircraft::SURFACES]; 12],
+    seen_wings: [[bool; 2]; 12],
     dead: [bool; 12],
     clock: f64,
     emission: f64,
@@ -65,6 +66,15 @@ impl State {
         dead: bool,
         emit: bool,
     ) {
+        for side in 0..2 {
+            if d.wing_broken[side] && !self.seen_wings[id][side] {
+                let sign = if side == 0 { -1. } else { 1. };
+                self.emit(p + q * DVec3::new(sign * 4.2, 0., 0.8),
+                    v + q * DVec3::new(sign * 3., 0., 1.), Kind::Fragment,
+                    Vec3::new(3.0, 0.12, 2.0), 20.);
+            }
+            self.seen_wings[id][side] = d.wing_broken[side];
+        }
         for i in 0..crate::aircraft::count(d.aircraft) {
             let detached = d.surface_state[i] == SurfaceState::Detached;
             if detached && !self.seen[id][i] {
@@ -191,7 +201,7 @@ impl State {
     }
 }
 pub fn advance(c: &mut Combat, f: &Flight, dt: f64) {
-    if !c.active || f.paused || dt <= 0.0 {
+    if f.paused || dt <= 0.0 || (!c.active && !f.damage.wing_broken.iter().any(|&broken| broken) && c.fx.particles.is_empty()) {
         return;
     }
     let mut state = std::mem::take(&mut c.fx);
@@ -227,6 +237,20 @@ pub fn controls(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn broken_wing_emits_once_in_noncombat_flight() {
+        let mut f = Flight::approach();
+        crate::aircraft::select(&mut f, crate::aircraft::Aircraft::F22);
+        f.paused = false;
+        let mut c = Combat::default();
+        assert!(!c.active);
+        f.damage.wing_broken[0] = true;
+        advance(&mut c, &f, 0.01);
+        let count = c.fx.particles.len();
+        assert_eq!(count, 1);
+        advance(&mut c, &f, 0.01);
+        assert_eq!(c.fx.particles.len(), count);
+    }
     #[test]
     fn fleet_damage_silhouettes_fit_the_texture_and_include_engine_and_vector_failures(){
         let mut images=std::collections::HashSet::new();

@@ -1,0 +1,217 @@
+{
+  "blender_bounds_min": [
+    183.78285217285156,
+    -203.26568603515625,
+    -6.177221298217773
+  ],
+  "blender_bounds_max": [
+    260.47198486328125,
+    100.57658386230469,
+    59.02974319458008
+  ],
+  "dimensions": [
+    76.68913269042969,
+    303.84228515625,
+    65.20696258544922
+  ],
+  "meshes": [
+    {
+      "name": "Object_10",
+      "triangles": 828,
+      "materials": [
+        "material"
+      ]
+    },
+    {
+      "name": "Object_11",
+      "triangles": 684,
+      "materials": [
+        "yellow_light"
+      ]
+    },
+    {
+      "name": "Object_12",
+      "triangles": 16471,
+      "materials": [
+        "lighter_gray"
+      ]
+    },
+    {
+      "name": "Object_13",
+      "triangles": 244,
+      "materials": [
+        "white_light"
+      ]
+    },
+    {
+      "name": "Object_14",
+      "triangles": 1532,
+      "materials": [
+        "red_light"
+      ]
+    },
+    {
+      "name": "Object_15",
+      "triangles": 21577,
+      "materials": [
+        "black"
+      ]
+    },
+    {
+      "name": "Object_16",
+      "triangles": 7169,
+      "materials": [
+        "white"
+      ]
+    },
+    {
+      "name": "Object_17",
+      "triangles": 27912,
+      "materials": [
+        "metallic"
+      ]
+    },
+    {
+      "name": "Object_18",
+      "triangles": 4404,
+      "materials": [
+        "darker_gray"
+      ]
+    },
+    {
+      "name": "Object_19",
+      "triangles": 168,
+      "materials": [
+        "blue_light"
+      ]
+    },
+    {
+      "name": "Object_20",
+      "triangles": 4278,
+      "materials": [
+        "door"
+      ]
+    },
+    {
+      "name": "Object_4",
+      "triangles": 2483,
+      "materials": [
+        "underbody_material"
+      ]
+    },
+    {
+      "name": "Object_5",
+      "triangles": 595,
+      "materials": [
+        "concrete_baked"
+      ]
+    },
+    {
+      "name": "Object_6",
+      "triangles": 970,
+      "materials": [
+        "paint_bump"
+      ]
+    },
+    {
+      "name": "Object_7",
+      "triangles": 5087,
+      "materials": [
+        "hull_texture"
+      ]
+    },
+    {
+      "name": "Object_8",
+      "triangles": 3695,
+      "materials": [
+        "island_material"
+      ]
+    },
+    {
+      "name": "Object_9",
+      "triangles": 126,
+      "materials": [
+        "decal_texture"
+      ]
+    }
+  ],
+  "images": [
+    {
+      "name": "Image_0",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_1",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_10",
+      "size": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "Image_2",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_3",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_4",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_5",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_6",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_7",
+      "size": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "name": "Image_8",
+      "size": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "Image_9",
+      "size": [
+        2048,
+        2048
+      ]
+    }
+  ]
+}

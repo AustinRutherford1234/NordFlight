@@ -381,7 +381,10 @@ pub fn aero(d: &AircraftDamage, flow: DVec3, q: f64, cl: f64) -> (DVec3, DVec3) 
     if d.aircraft!=crate::aircraft::Aircraft::Gripen {
         let lift=DVec3::X.cross(flow.normalize_or_zero()).normalize_or_zero();let mut force=DVec3::ZERO;let mut moment=DVec3::ZERO;let s=d.aircraft.spec();
         for side in 0..2 {let lost=-lift*(q*s.area*cl*0.4*(1.-d.wings[side]));let arm=DVec3::new(if side==0{-s.span*0.24}else{s.span*0.24},0.,s.length*0.04);force+=lost;moment+=arm.cross(lost);}
-        for(i,p)in d.aircraft.panels().iter().enumerate().filter(|(_,p)|p.area>0.){if d.surface_state[i]==SurfaceState::Detached && p.normal==DVec3::Y {let lost=-lift*(q*cl*p.area);force+=lost;moment+=p.center.cross(lost);}}
+        for(i,p)in d.aircraft.panels().iter().enumerate().filter(|(_,p)|p.area>0.){
+            let missing_wing_panel = d.aircraft == crate::aircraft::Aircraft::F22 &&
+                (([1,2,9].contains(&i) && d.wing_broken[0]) || ([5,6,10].contains(&i) && d.wing_broken[1]));
+            if !missing_wing_panel && d.surface_state[i]==SurfaceState::Detached && p.normal==DVec3::Y {let lost=-lift*(q*cl*p.area);force+=lost;moment+=p.center.cross(lost);}}
         force-=flow.normalize_or_zero()*(q*s.area*0.04*(2.-d.wings[0]-d.wings[1]));return(force,moment);
     }
     let lift = DVec3::X.cross(flow.normalize_or_zero()).normalize_or_zero();

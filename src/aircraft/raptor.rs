@@ -2,6 +2,8 @@
 //! shape; aerodynamic/control derivatives remain explicit gameplay estimates.
 use super::*;
 use bevy::math::DMat3;
+pub mod flight_model;
+pub mod fbw;
 
 pub fn sections() -> Vec<(f64, f64, f64, f64)> {
     // z, half-width, upper half-height, vertical centre, metres. Chines widen
@@ -218,9 +220,11 @@ pub fn panels() -> [Panel; SURFACES] {
     }
     p
 }
-/// Simulator tuning: stronger stabilator loads without enlarging the mesh or
-/// changing the physical hinge/travel. This is not calibrated F-22 test data.
-pub const STABILATOR_EFFECTIVENESS: f64 = 1.30;
+/// Baseline effectiveness; the former blanket 30% force boost is superseded by
+/// the scheduled model and independent physical travel/rate limits.
+pub const STABILATOR_EFFECTIVENESS: f64 = 1.0;
+/// Requested gameplay increase: twice the outer ailerons' incremental loads.
+pub const AILERON_EFFECTIVENESS: f64 = 2.0;
 
 pub fn nozzle_target(engine: usize, actuator: DVec3) -> f64 {
     let side = if engine == 0 { -1. } else { 1. };
@@ -236,9 +240,10 @@ pub fn vector_jacobian(f: &Flight) -> DMat3 {
     if !f.engine || (!f.infinite_fuel && f.fuel <= 0.) || f.damage.hydraulics <= 0.12 {
         return DMat3::ZERO;
     }
-    let thrust = jet_output(Aircraft::F22, f.spool, f.density, f.mach).0 / 2.;
+    let thrust = flight_model::installed(f).0 / 2.;
     let mut columns = [DVec3::ZERO; 3];
     let cg = mass_center(f);
+    let command = flight_model::nozzle_command(f);
     for (i, pos) in f.aircraft.engine_positions().iter().enumerate() {
         if f.damage.nozzles[i] <= 0.1 || !f.systems.engine_on[i] {
             continue;
@@ -247,8 +252,8 @@ pub fn vector_jacobian(f: &Flight) -> DMat3 {
         let derivative = DVec3::new(0., angle.cos(), angle.sin()) * thrust * f.systems.engines[i];
         for (column, axis) in columns.iter_mut().zip([DVec3::X, DVec3::Y, DVec3::Z]) {
             // Include the per-engine mixer saturation in the allocation model.
-            let slope = (nozzle_target(i, f.surface + axis * 1e-4)
-                - nozzle_target(i, f.surface - axis * 1e-4))
+            let slope = (nozzle_target(i, command + axis * 1e-4)
+                - nozzle_target(i, command - axis * 1e-4))
                 / 2e-4;
             *column += (*pos - cg).cross(derivative * slope);
         }
@@ -256,12 +261,14 @@ pub fn vector_jacobian(f: &Flight) -> DMat3 {
     DMat3::from_cols(columns[0], columns[1], columns[2])
 }
 pub fn target_rates(f: &Flight, command: DVec3) -> DVec3 {
-    // Blend from incidence command at low speed to pitch-rate command at high
-    // speed. Neutral stick unloads; full aft stick permits controlled high alpha.
+    // Low pressure alone does not mean low speed: BVR flight in thin air must
+    // retain normal-load control. Reserve post-stall incidence command for low TAS.
+    let pressure = 0.5 * f.density * f.airspeed.powi(2);
     let low = if f.autopilot {
         0.
     } else {
-        ((190. - f.airspeed) / 90.).clamp(0., 1.)
+        (1. - flight_model::smooth(6000., 20000., pressure))
+            * (1. - flight_model::smooth(140., 240., f.airspeed))
     };
     let alpha_target = if command.x >= 0. {
         0.06 + command.x * 0.98
@@ -269,14 +276,42 @@ pub fn target_rates(f: &Flight, command: DVec3) -> DVec3 {
         0.06 + command.x * 0.42
     };
     let incidence_rate = ((alpha_target - f.alpha) * 1.6).clamp(-0.65, 0.75);
-    let pitch = (command.x * 0.65 * (1. - low) + incidence_rate * low)
-        .min(((1.08 - f.alpha - f.rates.x * 0.15) * 1.8).max(-0.4));
+    let g_target = if command.x >= 0. { 1. + command.x * 8. } else { 1. + command.x * 4. };
+    let gravity_projection = (f.orientation * DVec3::Y).dot(f.up());
+    let g_rate = ((g_target - f.g_load) * 0.09
+        + 9.80665 * (g_target - gravity_projection) / f.airspeed.max(40.)).clamp(-0.55, 0.65);
+    let rate = if f.autopilot { command.x * 0.65 } else { g_rate * (1. - low) + incidence_rate * low };
+    // At cruise speed, stop pulling before the separated polar loses lift and
+    // the panel effectiveness reverses. Low-speed vectoring retains high AoA.
+    let cruise_alpha = 0.48 - 0.16 * flight_model::smooth(0.8, 1.6, f.mach);
+    let balanced_vector = (0..2).map(|i| {
+        if f.systems.engine_on[i] { f.systems.engines[i] * f.damage.nozzles[i] } else { 0. }
+    }).fold(1_f64,f64::min) * flight_model::smooth(0.08,0.25,
+        flight_model::installed(f).0 * flight_model::running_fraction(f) / (f.mass()*9.80665))
+        * flight_model::smooth(0.12,0.5,f.damage.hydraulics);
+    let low_alpha_limit = 0.48 + 0.57 * balanced_vector;
+    let fast = flight_model::smooth(180.,260.,f.airspeed);
+    let slip_recovery = flight_model::smooth(0.10,0.35,f.beta.abs()) * fast;
+    let alpha_limit = (low_alpha_limit + (cruise_alpha - low_alpha_limit)
+        * flight_model::smooth(160., 260., f.airspeed)) * (1.-0.6*slip_recovery);
+    let negative_alpha_limit = -0.40 + 0.18 * flight_model::smooth(0.8, 1.6, f.mach);
+    let positive_rate = 9.80665 * (9. - gravity_projection) / f.airspeed.max(40.) + (9. - f.g_load) * 0.12;
+    let negative_rate = 9.80665 * (-3. - gravity_projection) / f.airspeed.max(40.) + (-3. - f.g_load) * 0.12;
+    let pitch = rate.clamp(negative_rate, positive_rate)
+        .min(((alpha_limit + 0.03 - f.alpha - f.rates.x * 0.15) * 1.8).max(-0.4))
+        .max(((negative_alpha_limit - 0.03 - f.alpha - f.rates.x * 0.15) * 1.8).min(0.4));
     let authority = (1. - 0.70 * (f.alpha.abs() / 1.05).clamp(0., 1.)).max(0.25);
-    DVec3::new(
-        pitch,
-        command.y * 0.32 - f.beta * 0.65,
-        -command.z * 2.80 * authority,
-    )
+    let air_axis = DVec3::new(f.beta.sin(), -f.alpha.sin() * f.beta.cos(), -f.alpha.cos() * f.beta.cos());
+    let yaw_authority = flight_model::smooth(1500., 10000., pressure);
+    // Without yaw authority, fast wind-axis rolls at incidence become mostly
+    // sideslip. Slow the roll before the yaw channel spends all its travel.
+    let coordination = 1. - (1. - yaw_authority) * flight_model::smooth(0.12, 0.6, f.alpha.abs()) * 0.75;
+    // Let the stronger ailerons command twice the normal roll rate where
+    // airflow supports it; retain the established thin-air/post-stall schedule.
+    let roll_gain=1.+flight_model::smooth(6000.,15000.,pressure)
+        * (1.-flight_model::smooth(0.10,0.30,f.alpha.abs()));
+    let roll = air_axis * (command.z * 2.80 * roll_gain * authority * coordination * (1.-slip_recovery));
+    DVec3::new(pitch + roll.x, command.y * 0.32 - f.beta * 0.65 + roll.y * yaw_authority, roll.z)
 }
 
 fn trial(
@@ -420,7 +455,7 @@ fn level_trial(bank: f64) -> (Flight, Vec<serde_json::Value>) {
             - f.vertical_speed() * 0.04)
             .clamp(0.2, 4.);
         f.controls = DVec3::new(
-            ((load - f.g_load) * 0.04 - f.rates.x * 0.35).clamp(-0.5, 0.5),
+            ((load - 1.) / if load >= 1. { 8. } else { 4. }).clamp(-0.5, 0.5),
             0.,
             ((bank - f.roll()) * 2.).clamp(-0.6, 0.6),
         );
@@ -533,8 +568,10 @@ mod tests {
                     "untrimmed M={mach}: {residual:?}");
                 assert!(acceleration.is_finite());
                 if power == 0.88 && mach == 1.5 { assert!(acceleration > 0.2); }
-                if power == 1. && mach == 2.4 { assert!(acceleration > 0.2); }
-                if power == 1. && mach == 2.5 { assert!(acceleration.abs() < 0.08); }
+                if power == 1. && mach == 2. { assert!(acceleration > 0.2); }
+                // A broad public Mach-two-class bracket replaces the previous
+                // exact Mach-2.5 tuning target, which was not flight-test data.
+                if power == 1. && mach == 2.5 { assert!(acceleration < 0.); }
                 if power == 1. && mach == 2.6 { assert!(acceleration < -0.2); }
             }
         }
@@ -576,6 +613,9 @@ mod tests {
                             "weak FBW roll at {speed}: {}",
                             f.rates.z
                         );
+                    }
+                    if assist && speed >= 220. {
+                        assert!(f.rates.z.abs()>270_f64.to_radians(),"stronger aileron roll response: {}",f.rates.z);
                     }
                 }
             }

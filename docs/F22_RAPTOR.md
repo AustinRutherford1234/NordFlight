@@ -1,5 +1,9 @@
 # F-22A refinement
 
+The subsequent [flight-model revision](F22_FLIGHT_MODEL_V2.md) supersedes the
+engine/polar, actuator, inertia, envelope and approach tuning described in this
+historical report, and adds finite missile release dynamics.
+
 The later [differential-vectoring update](F22_DIFFERENTIAL_TVC.md) adds nozzle
 roll control, stronger stabilator loads and updated F-22 control allocation.
 

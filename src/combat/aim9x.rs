@@ -413,7 +413,7 @@ pub fn install(c: &mut Commands, root: Entity, missile: usize, assets: &VisualAs
 pub(super) fn local_control(m: &Missile) -> Vec3 {
     let frame = DQuat::from_rotation_arc(m.gnc.attitude * -DVec3::Z,
         m.gnc.body.normalize_or(-DVec3::Z)) * m.gnc.attitude;
-    let velocity = m.velocity.normalize_or_zero();
+    let velocity = (m.velocity - m.gnc.wind).normalize_or_zero();
     let normal = m.gnc.fins - velocity * m.gnc.fins.dot(velocity);
     (frame.conjugate() * normal).as_vec3().clamp_length_max(1.)
 }
@@ -518,12 +518,17 @@ pub fn write_smoke(
     p.clear();
     col.clear();
     uv.clear();
-    let tail = (m.gnc.thrust > 0.).then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * 1.6);
+    let tail = (m.gnc.thrust > 0.)
+        .then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * 1.6);
     let point_count = m.trail.len() + usize::from(tail.is_some());
     let points = m.trail.iter().copied().chain(tail);
+    let all: Vec<DVec3> = points.clone().collect();
+    let distance = super::smoke_distances(&all, tail.unwrap_or(m.position));
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {
         for j in 0..6 {
             let t = (j as f64 + 0.5) / 6.;
+            let clearance =
+                super::smoke_clearance(distance[i] + (distance[i + 1] - distance[i]) * t);
             let behind = (point_count - 2 - i) as f64 + 1. - t;
             let age = (m.trail_clock + behind * 0.075).max(0.);
             let center_world =
@@ -534,11 +539,12 @@ pub fn write_smoke(
             let along = (tangent - normal * tangent.dot(normal)).normalize_or(camera_up);
             let across = normal.cross(along).normalize_or(Vec3::X);
             let phase = (a.x * 0.13 + a.z * 0.19 + j as f64 * 2.4) as f32;
-            let width = (0.10 + 0.64 * (age as f32).sqrt()) * (1. + 0.16 * phase.sin())
-                * if m.kind==Weapon::Radar{1.35}else{1.0};
+            let width = (0.10 + 0.64 * (age as f32).sqrt())
+                * (1. + 0.16 * phase.sin())
+                * if m.kind == Weapon::Radar { 1.35 } else { 1.0 };
             let half = (tangent.length() / 12. + width * 0.8).max(width);
             let center = center + across * (0.13 * width * (phase + age as f32).sin());
-            let alpha = ((1. - age / 5.).clamp(0., 1.).powi(2) * 0.82) as f32;
+            let alpha = ((1. - age / 5.).clamp(0., 1.).powi(2) * 0.82) as f32 * clearance;
             for (x, y) in [(-1., -1.), (1., -1.), (1., 1.), (-1., 1.)] {
                 p.push((center + along * half * y + across * width * x).to_array());
                 col.push([1., 1., 1., alpha]);

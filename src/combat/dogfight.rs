@@ -650,6 +650,7 @@ impl Combat {
                     && launcher.damage.radar > 0.25
                     && launcher.damage.avionics > 0.25,
             };
+            m.gnc.wind = self.environment.wind(m.position);
             super::guidance::fly(m, contact, support, self.sun, dt);
             let (closest, _) =
                 super::damage::closest_relative(old - fight.last_player, m.position - f.position);

@@ -330,6 +330,7 @@ pub fn controls(
     mut bvr: ResMut<crate::combat::bvr::Menu>,
     mut hangar: ResMut<crate::hangar::Hangar>,
     mut audio: ResMut<crate::sound::Settings>,
+    mut crew: Option<ResMut<crate::crew::Crew>>,
     mut quit: MessageWriter<AppExit>,
     scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
     mut panels: Query<&mut ScrollPosition, With<Root>>,
@@ -396,7 +397,7 @@ pub fn controls(
                 menu.scenario = if menu.space { 3 } else { 1 };
             }
             10..=14 => menu.aircraft = Aircraft::ALL[(id - 10) as usize],
-            100..=110 => menu.scenario = (id - 100) as u8,
+            100..=112 => {menu.scenario = (id - 100) as u8;if matches!(id,111|112){menu.aircraft=Aircraft::Hornet;}},
             200..=202 => {
                 menu.difficulty = match id {
                     200 => Difficulty::Training,
@@ -412,6 +413,8 @@ pub fn controls(
             230 => menu.fbw = !menu.fbw,
             231 => menu.infinite = !menu.infinite,
             232 => menu.external = !menu.external,
+            233 => {if let Some(crew)=crew.as_mut(){let enabled=!crew.control_loss;crew.set_control_loss(enabled);}},
+            234 => {if let Some(crew)=crew.as_mut(){let enabled=!crew.cockpit_g_effects;crew.set_cockpit_g_effects(enabled);}},
             300 => view.high_quality = !view.high_quality,
             301 => audio.menu_volume(-0.1),
             302 => audio.menu_volume(0.1),
@@ -478,6 +481,7 @@ pub fn ui(
     mut menu: ResMut<Menu>,
     view: Res<ViewState>,
     audio: Res<crate::sound::Settings>,
+    crew: Option<Res<crate::crew::Crew>>,
     camera: Query<Entity, With<MenuCamera>>,
     roots: Query<Entity, With<Root>>,
     assets: Res<AssetServer>,
@@ -503,6 +507,8 @@ pub fn ui(
     let Ok(camera) = camera.single() else {
         return;
     };
+    let control_loss=crew.as_ref().is_some_and(|c|c.control_loss);
+    let cockpit_g_effects=crew.as_ref().is_none_or(|c|c.cockpit_g_effects);
     c.spawn((Root,ScrollPosition::default(),UiTargetCamera(camera),GlobalZIndex(500),Node {position_type:PositionType::Absolute,
         left:px(30),top:px(25),bottom:px(25),width:px(460),max_width:percent(48),padding:UiRect::all(px(22)),
         flex_direction:FlexDirection::Column,row_gap:px(8),overflow:Overflow::scroll_y(),border_radius:BorderRadius::all(px(12)),..default()},
@@ -526,6 +532,10 @@ pub fn ui(
             label(p,"Use the in-flight SAS panel for attitude targets and the orbital map for maneuver planning. The warp panel edits rates and simulation timestep.",16.,Color::srgb(0.66,0.80,0.84));
             button(p,902,"BACK",false);
         } else if menu.page==Page::Settings {
+            heading(p,"PILOT G-LOC / F-22 CREW");
+            button(p,234,if cockpit_g_effects{"COCKPIT G EFFECTS: ON"}else{"COCKPIT G EFFECTS: OFF"},cockpit_g_effects);
+            button(p,233,if control_loss{"G-LOC CONTROL LOSS: ON"}else{"G-LOC CONTROL LOSS: OFF"},control_loss);
+            label(p,"Cockpit G effects controls grey-out, red-out and blackout. Dog animations and crew status continue with it OFF. Control loss is separate: enable it to fade stick/rudder input and hold throttle while unconscious. Autopilot, camera, pause and reset remain available.",14.,Color::srgb(0.66,0.80,0.84));
             heading(p,"PRESENTATION");
             button(p,300,if view.high_quality {"GRAPHICS: HIGH"}else{"GRAPHICS: STANDARD"},view.high_quality);
             heading(p,&format!("MASTER AUDIO  /  {}%",(audio.menu_level()*100.).round()));
@@ -546,17 +556,23 @@ pub fn ui(
                 row(p,|p| {button(p,230,if menu.fbw{"FBW ON"}else{"FBW OFF"},menu.fbw);
                     if menu.aircraft==Aircraft::F22 {button(p,232,if menu.external{"EXTERNAL STORES"}else{"CLEAN / INTERNAL"},menu.external);}});
             }
+            if !menu.space {
+                button(p,234,if cockpit_g_effects{"COCKPIT G EFFECTS: ON"}else{"COCKPIT G EFFECTS: OFF"},cockpit_g_effects);
+                button(p,233,if control_loss{"G-LOC CONTROL LOSS: ON"}else{"G-LOC CONTROL LOSS: OFF"},control_loss);
+            }
             button(p,231,if menu.infinite{"FUEL: UNLIMITED"}else{"FUEL: FINITE"},menu.infinite);
             heading(p,"03 / SELECT STARTING SCENARIO");
             if menu.space {
                 for (id,name) in [(3,"EARTH ORBIT / LANDER ATTACHED"),(9,"LUNAR ORBIT"),(10,"LUNAR LANDING APPROACH")] {button(p,100+id,name,menu.scenario==id as u8);}
             } else {
                 row(p,|p| {for (id,name) in [(0,"COLD & DARK"),(1,"TAKEOFF"),(2,"APPROACH")] {button(p,100+id,name,menu.scenario==id as u8);}});
+                heading(p,"CARRIER / F/A-18F");
+                row(p,|p| {button(p,111,"CARRIER APPROACH",menu.scenario==11);button(p,112,"CARRIER CATAPULT",menu.scenario==12);});
                 heading(p,"COMBAT / TARGET PRACTICE");
                 row(p,|p| {button(p,104,"TARGET PRACTICE",menu.scenario==4);button(p,105,"AIR COMBAT",menu.scenario==5);});
                 heading(p,"BEYOND VISUAL RANGE");
                 row(p,|p| {for (i,name) in ["1 vs 2","2 vs 2","2 vs 4","4 vs 8"].into_iter().enumerate() {button(p,210+i as u16,name,menu.scenario==8&&menu.formation==i);}});
-                if menu.scenario>=5 {
+                if (5..=8).contains(&menu.scenario) {
                     row(p,|p| {for (i,d) in [Difficulty::Training,Difficulty::Balanced,Difficulty::Hard].into_iter().enumerate(){button(p,200+i as u16,d.label(),menu.difficulty==d);}});
                 }
                 if menu.scenario==8 {row(p,|p| {button(p,220,"ELIMINATION",!menu.defense);button(p,221,"INTERCEPT / DEFEND",menu.defense);});}
@@ -658,6 +674,7 @@ pub fn presentation(world: &mut World) {
         world.insert_resource(preview);
         let results = [
             world.run_system_cached(crate::aircraft::visual::update),
+            world.run_system_cached(crate::aircraft::visual::hornet::update),
             world.run_system_cached(crate::aircraft::visual::raptor_detail::update),
             world.run_system_cached(crate::gear::update),
             world.run_system_cached(crate::lunar::visuals),
@@ -685,6 +702,11 @@ pub fn presentation(world: &mut World) {
                 .map(|(e, _)| e)
         };
         if let Some(source) = source {
+            if aircraft == Aircraft::Hornet && !space {
+                let pending = world.query_filtered::<Option<&Children>, With<crate::aircraft::visual::hornet::ImportedHornet>>()
+                    .iter(world).any(|children| children.is_none());
+                if pending { return; }
+            }
             let root = world
                 .spawn((
                     PreviewVehicle,

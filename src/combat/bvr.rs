@@ -894,6 +894,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
                 }
             }
         }
+        m.gnc.wind = c.environment.wind(m.position);
         guidance::fly(
             m,
             tracked,

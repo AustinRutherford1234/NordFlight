@@ -1,0 +1,22 @@
+{
+  "uid": "e9f23bab3bd14f34ba9e54ccd082f46d",
+  "name": "USS Nimitz class aircraft carrier",
+  "viewerUrl": "https://sketchfab.com/3d-models/uss-nimitz-class-aircraft-carrier-e9f23bab3bd14f34ba9e54ccd082f46d",
+  "description": "USS Nimitz class aircraft carrier\n\n- textures baked. 4k, 2k\n- medium poly\n- detailed\n- paint on deck is a mesh, not a decal :( gets low quality and very pixelated when i use decals even at 4k res\n- open to suggestions whether its my sketchfab page or my model\n- free to use commercially, just credit me: k26_k29\n\ni originally used ORM packed textures to lessen the amount of files and clutter. it worked in blender but not here. does sketchfab support ORM? id love an answer since theres really not much videos and tutorials about sketchfab",
+  "license": {
+    "uri": "https://api.sketchfab.com/v3/licenses/322a749bcfa841b29dff1e8a1bb74b0b",
+    "label": "CC Attribution",
+    "fullName": "Creative Commons Attribution",
+    "requirements": "Author must be credited. Commercial use is allowed.",
+    "url": "http://creativecommons.org/licenses/by/4.0/",
+    "slug": "by"
+  },
+  "faceCount": 98225,
+  "vertexCount": 60852,
+  "isDownloadable": true,
+  "author": {
+    "displayName": "Larcenie Grant",
+    "username": "GrantLarcenie",
+    "profileUrl": "https://sketchfab.com/GrantLarcenie"
+  }
+}

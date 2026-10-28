@@ -1,0 +1,18 @@
+# USS Nimitz class aircraft carrier
+
+By **Larcenie Grant (GrantLarcenie)**. Creator-requested credit: **k26_k29**.
+
+Source: https://sketchfab.com/3d-models/uss-nimitz-class-aircraft-carrier-e9f23bab3bd14f34ba9e54ccd082f46d
+
+License: **Creative Commons Attribution 4.0 International (CC BY 4.0)**.
+https://creativecommons.org/licenses/by/4.0/
+
+`source.glb` is the unmodified 4K GLB downloaded through the creator's Sketchfab download on 2026-10-28. Attribution, the source and license links must accompany distribution. No endorsement by the creator is implied. This license applies to this asset, not automatically to the project's code or other assets.
+
+The download contains one scene, 17 meshes/materials and 11 embedded images, with no external dependencies. The creator lists approximately 98,225 triangles. `inspection.json` records Blender-imported bounds, materials and texture sizes. Original geometry has an offset origin and a visual length of approximately 303.84 units. `examples/nimitz_asset_preview.rs` preserves the source file and applies a centering transform and estimated scale to 333m overall visual length. This is not a dimensionally verified collision deck or waterline.
+
+Run `cargo run --example nimitz_asset_preview` for the static Bevy scene on a simple ocean plane. Set `NORD_NIMITZ_CAPTURE=1` for a capture to `tests/nimitz-import.png`. The standalone preview is an import inspection. The main application now has a moving carrier, deck contacts, swept hook catches and force-based catapult/arrest simulation; see `docs/hornet/VALIDATION.md` and `docs/CARRIER_OPERATIONS.md`. Carrier weapons and servicing are subsequent work.
+
+Re-inspect using Blender with `--background --python-exit-code 1 --python scripts/nimitz/inspect_asset.py`.
+
+Validation: Blender imported 98,223 triangles with all 11 embedded images present (eight 4K and three 2K). The standalone Bevy preview compiled and instantiated 17 carrier mesh entities plus its ocean plane, and produced `tests/nimitz-import.png`. The rendered overview shows deck markings, island, hull and deck-edge equipment. No moving-component separation or deck-level collision verification has been performed.

@@ -157,6 +157,8 @@ pub struct Hull {
     edges: Vec<DVec3>,
     hinge: Option<(SurfaceKind, DVec3, DVec3)>,
     fleet_surface: Option<usize>,
+    // A rigid local approximation to a small portion of a flexible surface.
+    flex_surface: Option<usize>,
     planes: OnceLock<Vec<(DVec3, f64)>>,
     bounds: OnceLock<(DVec3, DVec3)>,
 }
@@ -164,6 +166,43 @@ pub struct Hull {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn broken_f22_wing_removes_only_its_collision_pieces() {
+        let mut f = Flight::runway();
+        crate::aircraft::select(&mut f, crate::aircraft::Aircraft::F22);
+        f.damage.wing_broken[0] = true;
+        for i in [1, 2, 9] { f.damage.surface_state[i] = crate::combat::damage::SurfaceState::Detached; }
+        let hulls = aircraft_hulls(f.aircraft);
+        assert!(hulls.iter().any(|h| h.flex_surface == Some(crate::structural::LEFT_WING) && !h.enabled(&f)));
+        assert!(hulls.iter().filter(|h| h.flex_surface == Some(crate::structural::RIGHT_WING)).all(|h| h.enabled(&f)));
+        assert!(hulls.iter().find(|h| h.fleet_surface == Some(0)).unwrap().enabled(&f));
+    }
+    #[test]
+    fn raptor_collision_segments_follow_elastic_state() {
+        use crate::{aircraft::Aircraft, structural::RIGHT_WING};
+        let mut f = Flight::runway();
+        crate::aircraft::select(&mut f, Aircraft::F22);
+        let pieces: Vec<_> = aircraft_hulls(Aircraft::F22).iter()
+            .filter(|h| h.flex_surface == Some(RIGHT_WING) && h.fleet_surface.is_none())
+            .collect();
+        assert!(pieces.len() >= 4);
+        let tip = pieces.iter().max_by(|a, b| {
+            let x = |h: &&Hull| h.vertices.iter().map(|p| p.x).sum::<f64>() / h.vertices.len() as f64;
+            x(a).total_cmp(&x(b))
+        }).unwrap();
+        let center = tip.vertices.iter().copied().sum::<DVec3>() / tip.vertices.len() as f64;
+        f.structure.surfaces[RIGHT_WING].bend = 0.4;
+        let (rotation, offset) = tip.pose(&f);
+        assert!((rotation * center + offset).y > center.y + 0.1);
+        assert!(pieces.iter().all(|h| h.vertices.iter().all(|p| p.is_finite())
+            && h.normals.iter().all(|p| p.is_finite())));
+        let panel = aircraft_hulls(Aircraft::F22).iter().find(|h| h.fleet_surface == Some(6)).unwrap();
+        let center = panel.vertices.iter().copied().sum::<DVec3>() / panel.vertices.len() as f64;
+        let (before_q, before_offset) = panel.pose(&f);
+        f.structure.panel_modes[6].bend = 0.15;
+        let (after_q, after_offset) = panel.pose(&f);
+        assert!((after_q * center + after_offset).distance(before_q * center + before_offset) > 0.001);
+    }
     #[test]
     fn raptor_collision_covers_the_new_belly_and_engine_housings() {
         use crate::aircraft::{Aircraft, raptor};
@@ -318,6 +357,7 @@ impl Hull {
             edges,
             hinge: None,
             fleet_surface: None,
+            flex_surface: None,
             planes: OnceLock::new(),
             bounds: OnceLock::new(),
         }
@@ -361,6 +401,7 @@ impl Hull {
             edges,
             hinge: None,
             fleet_surface: None,
+            flex_surface: None,
             planes: OnceLock::new(),
             bounds: OnceLock::new(),
         }
@@ -387,13 +428,34 @@ impl Hull {
             normals.push(ring.cross(length).normalize());
             edges.extend([ring.normalize(), length.normalize()]);
         }
-        Self { vertices, normals, edges, hinge: None, fleet_surface: None, planes: OnceLock::new(), bounds: OnceLock::new() }
+        Self { vertices, normals, edges, hinge: None, fleet_surface: None, flex_surface: None, planes: OnceLock::new(), bounds: OnceLock::new() }
     }
     pub fn pose(&self, f: &Flight) -> (DQuat, DVec3) {
         if let Some(i)=self.fleet_surface {
             let p=f.aircraft.panels()[i];
             let q=crate::aircraft::surface_rotation(f.aircraft,i,control_surfaces::effective_angle(&f.damage,i,crate::aircraft::angles(f)[i]));
+            if let Some(surface) = self.flex_surface {
+                let config = crate::structural::Config::f22();
+                let frame = f.structure.frame_rotation(&config, surface, p.center);
+                let center = f.structure.deform_point(&config, surface, p.center);
+                // Each panel also has its own local bending and twist. Sample
+                // its convex hull at the centroid and compose that local frame
+                // with the hinge and the supporting surface frame.
+                let sample = self.vertices.iter().copied().sum::<DVec3>() / self.vertices.len() as f64;
+                let panel_rotation = f.structure.panel_frame_rotation(&config, i, sample);
+                let displaced = f.structure.deform_panel_point(&config, i, sample);
+                let rotation = frame * q * panel_rotation;
+                let moved = center + frame * q * (displaced - p.center);
+                return (rotation, moved - rotation * sample);
+            }
             return(q,p.center-q*p.center);
+        }
+        if let Some(surface) = self.flex_surface {
+            let config = crate::structural::Config::f22();
+            let center = self.vertices.iter().copied().sum::<DVec3>() / self.vertices.len() as f64;
+            let rotation = f.structure.frame_rotation(&config, surface, center);
+            let moved = f.structure.deform_point(&config, surface, center);
+            return (rotation, moved - rotation * center);
         }
         if let Some((kind, origin, axis)) = self.hinge {
             let q = DQuat::from_axis_angle(
@@ -430,6 +492,10 @@ impl Hull {
         })
     }
     pub fn enabled(&self, f: &Flight) -> bool {
+        if f.aircraft == crate::aircraft::Aircraft::F22 && self.fleet_surface.is_none() {
+            if self.flex_surface == Some(crate::structural::LEFT_WING) && f.damage.wing_broken[0] { return false; }
+            if self.flex_surface == Some(crate::structural::RIGHT_WING) && f.damage.wing_broken[1] { return false; }
+        }
         self.surface_index().is_none_or(|i| {
             f.damage.surface_state[i] != crate::combat::damage::SurfaceState::Detached
         })
@@ -509,6 +575,28 @@ impl Hull {
     }
 }
 pub fn for_flight(f:&Flight)-> &'static [Hull]{if f.vehicle==Vehicle::Spacecraft{hulls(f.vehicle)}else{aircraft_hulls(f.aircraft)}}
+
+// Split a convex wing into narrow spanwise hulls. Each hull follows the local
+// elastic frame, retaining convex SAT and the existing broad-phase cache.
+fn clip_span(points: &[DVec3], side: f64, bound: f64, keep_outboard: bool) -> Vec<DVec3> {
+    let distance = |p: DVec3| if keep_outboard { side * p.x - bound } else { bound - side * p.x };
+    let mut output = Vec::new();
+    let Some(mut previous) = points.last().copied() else { return output; };
+    let mut before = distance(previous);
+    for &point in points {
+        let after = distance(point);
+        if (before >= 0.) != (after >= 0.) {
+            output.push(previous + (point - previous) * (before / (before - after)));
+        }
+        if after >= 0. { output.push(point); }
+        previous = point;
+        before = after;
+    }
+    output.dedup_by(|a, b| a.distance_squared(*b) < 1e-16);
+    if output.len() > 1 && output[0].distance_squared(*output.last().unwrap()) < 1e-16 { output.pop(); }
+    output
+}
+
 pub fn aircraft_hulls(a:crate::aircraft::Aircraft)-> &'static [Hull]{
     use crate::aircraft::Aircraft;
     static FLEET:OnceLock<[Vec<Hull>;4]>=OnceLock::new();
@@ -521,10 +609,41 @@ pub fn aircraft_hulls(a:crate::aircraft::Aircraft)-> &'static [Hull]{
             else {h.push(Hull::section(p[0],p[1]));}
         }
         let d=a.cabin_offset().as_dvec3();let canopy=[(d.z-4.08,0.06,0.10,0.66),(d.z-3.4,0.49,0.88,0.66),(d.z-2.5,0.55,0.95,0.66),(d.z-1.35,0.06,0.10,0.66)];for p in canopy.windows(2){h.push(Hull::section(p[0],p[1]));}
-        for side in [-1.,1.] {for piece in crate::aircraft::visual::fixed_wing(a,side){h.push(Hull::prism(&piece.iter().map(|p|p.as_dvec3()).collect::<Vec<_>>(),DVec3::Y*0.045));}let(fin,thickness)=crate::aircraft::visual::fin(a,side);h.push(Hull::prism(&fin.map(|p|p.as_dvec3()),thickness.as_dvec3()));}
+        for side in [-1.,1.] {
+            let wing = if side < 0. { crate::structural::LEFT_WING } else { crate::structural::RIGHT_WING };
+            let fin_surface = if side < 0. { crate::structural::LEFT_FIN } else { crate::structural::RIGHT_FIN };
+            for piece in crate::aircraft::visual::fixed_wing(a,side) {
+                let points = piece.iter().map(|p|p.as_dvec3()).collect::<Vec<_>>();
+                if a == Aircraft::F22 {
+                    for bounds in [0.0, 2.93, 4.21, 5.49, 7.0].windows(2) {
+                        let clipped = clip_span(&clip_span(&points,side as f64,bounds[0],true),side as f64,bounds[1],false);
+                        if clipped.len() >= 3 {
+                            let area = (clipped[1]-clipped[0]).cross(clipped[2]-clipped[0]).length_squared();
+                            if area > 1e-14 {
+                                let mut hull = Hull::prism(&clipped,DVec3::Y*0.045);
+                                hull.flex_surface = Some(wing);
+                                h.push(hull);
+                            }
+                        }
+                    }
+                } else { h.push(Hull::prism(&points,DVec3::Y*0.045)); }
+            }
+            let(fin,thickness)=crate::aircraft::visual::fin(a,side);
+            let mut hull = Hull::prism(&fin.map(|p|p.as_dvec3()),thickness.as_dvec3());
+            if a == Aircraft::F22 { hull.flex_surface = Some(fin_surface); }
+            h.push(hull);
+        }
         for(i,p)in a.panels().iter().enumerate().filter(|(_,p)|p.area>0.){
             let (points,thickness)=crate::aircraft::visual::panel_polygon(*p);
-            let mut hull=Hull::prism(&points.map(|p|p.as_dvec3()),thickness.as_dvec3());hull.fleet_surface=Some(i);h.push(hull);
+            let mut hull=Hull::prism(&points.map(|p|p.as_dvec3()),thickness.as_dvec3());hull.fleet_surface=Some(i);
+            if a == Aircraft::F22 {
+                hull.flex_surface = match i {
+                    0 => Some(crate::structural::LEFT_TAIL), 4 => Some(crate::structural::RIGHT_TAIL),
+                    1 | 2 | 9 => Some(crate::structural::LEFT_WING), 5 | 6 | 10 => Some(crate::structural::RIGHT_WING),
+                    3 => Some(crate::structural::LEFT_FIN), 7 => Some(crate::structural::RIGHT_FIN), _ => None,
+                };
+            }
+            h.push(hull);
         }
         for p in a.engine_positions().iter().take(a.spec().engines){h.push(Hull::box_at(*p,DVec3::new(0.65,0.65,1.2)));}
         h

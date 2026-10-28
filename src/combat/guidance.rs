@@ -3,6 +3,7 @@
 use super::{Missile, Weapon};
 use crate::physics::{MU, RADIUS, atmosphere, terrain_height};
 use bevy::math::{DQuat, DVec3};
+mod dynamics;
 
 #[derive(Clone, Copy)]
 pub struct Contact {
@@ -52,6 +53,10 @@ pub struct Gnc {
     pub mode: Mode,
     pub body: DVec3,
     pub body_rate: DVec3,
+    /// Local atmosphere velocity; world velocity is retained for navigation.
+    pub wind: DVec3,
+    pub restoring_moment: DVec3,
+    pub control_moment: DVec3,
     pub attitude: DQuat,
     pub gimbal: DVec3,
     pub confidence: f64,
@@ -87,6 +92,9 @@ impl Default for Gnc {
             mode: Mode::Separation,
             body: DVec3::ZERO,
             body_rate: DVec3::ZERO,
+            wind: DVec3::ZERO,
+            restoring_moment: DVec3::ZERO,
+            control_moment: DVec3::ZERO,
             attitude: DQuat::IDENTITY,
             gimbal: DVec3::ZERO,
             confidence: 0.0,
@@ -457,9 +465,10 @@ fn fly_profile(
         return;
     }
     m.age += dt;
-    let speed = m.velocity.length().max(1.0);
-    let velocity_axis = if m.velocity.length_squared() > 1e-8 {
-        m.velocity.normalize()
+    let air_velocity = m.velocity - m.gnc.wind;
+    let speed = air_velocity.length().max(1.0);
+    let velocity_axis = if air_velocity.length_squared() > 1e-8 {
+        air_velocity.normalize()
     } else if m.gnc.body.length_squared() > 0.5 {
         m.gnc.body
     } else {
@@ -711,13 +720,17 @@ fn fly_profile(
     m.gnc.commanded_acceleration = command;
     // Acceleration PI + feed-forward, anti-windup, fin rate and travel limits.
     let error = command - m.gnc.measured_acceleration;
-    if command.length() < aero_limit * 0.95 {
+    if m.age <= 0.22 {
+        m.gnc.integral = DVec3::ZERO;
+        m.gnc.fins = DVec3::ZERO;
+    } else if command.length() < aero_limit * 0.95 {
         m.gnc.integral = (m.gnc.integral + error * dt).clamp_length_max(15.0);
     } else {
         m.gnc.integral *= (-2.0 * dt).exp();
     }
-    let desired_fin = ((command + error * 0.35 + m.gnc.integral * 1.2) / aero_limit.max(1.0))
-        .clamp_length_max(1.0);
+    let desired_fin = if m.age <= 0.22 { DVec3::ZERO } else {
+        ((command + error * 0.35 + m.gnc.integral * 1.2) / aero_limit.max(1.0))
+        .clamp_length_max(1.0) };
     let fin_step = ((desired_fin - m.gnc.fins) * (dt / 0.065).min(1.0)).clamp_length_max(4.0 * dt);
     m.gnc.fins = (m.gnc.fins + fin_step).clamp_length_max(1.0);
     // Normal force follows body incidence, not a direct sideways velocity
@@ -728,12 +741,7 @@ fn fly_profile(
     let angular_error=m.gnc.body.cross(demand);
     let requested_rate=(velocity_axis.cross(m.gnc.measured_acceleration)/speed
         +angular_error*12.).clamp_length_max(4.0);
-    m.gnc.body_rate+=(requested_rate-m.gnc.body_rate)*(1.-(-dt/0.08).exp());
-    if m.gnc.body_rate.length()>1e-8 {
-        let dq=DQuat::from_axis_angle(m.gnc.body_rate.normalize(),m.gnc.body_rate.length()*dt);
-        m.gnc.body=(dq*m.gnc.body).normalize();
-        m.gnc.attitude=(dq*m.gnc.attitude).normalize();
-    }
+    dynamics::advance(m, velocity_axis, q, area, speed, aerodynamic_limit, vector_limit, requested_rate, dt);
     let incidence=m.gnc.body-velocity_axis*m.gnc.body.dot(velocity_axis);
     let alpha=m.gnc.body.dot(velocity_axis).clamp(-1.,1.).acos();
     let normal=incidence.normalize_or_zero()*aerodynamic_limit
@@ -835,6 +843,47 @@ fn trajectory_trial(
         "retreating":retreat,"profile":if efficient {"smooth loft"} else {"previous bias"},
         "hit":closest < 12.0,"closest_m":closest,"encounter_speed_mps":encounter_speed,
         "peak_altitude_m":peak_altitude,"drag_loss_J_kg":drag_loss,"seconds":m.age})
+}
+
+/// Release transient through the production GNC path, including inherited
+/// attitude/rates, wind, motor delay, natural stability and steering handover.
+pub fn release_study() {
+    let mut cases = Vec::new();
+    for (kind, aim9x, label) in [(Weapon::Heat, false, "IR"), (Weapon::Heat, true, "AIM-9X"), (Weapon::Radar, false, "Radar")] {
+        for altitude in [3000., 12000.] {
+            for alpha in [0_f64, 20., 45.] {
+                let position = DVec3::Y * (RADIUS + altitude);
+                let mut contact = Contact { position: position - DVec3::Z * 5000., velocity: -DVec3::Z * 230.,
+                    forward: -DVec3::Z, throttle: 0.8, engine: true, alive: true, decoy: false, strength: 1. };
+                let wind = DVec3::new(12., 0., 0.);
+                let velocity = -DVec3::Z * 250. + wind;
+                let attitude = DQuat::from_rotation_x(alpha.to_radians());
+                let mut gnc = Gnc::launch(velocity, contact, 1).inherit(attitude, DVec3::ZERO);
+                gnc.aim9x = aim9x;
+                gnc.wind = wind;
+                let mut m = Missile { gnc, decoy: None, position, velocity, kind, target: 0,
+                    age: 0., alive: true, guided: true, lost_for: 0., trail: vec![], trail_clock: 0. };
+                let support = Support { position, forward: -DVec3::Z, available: true };
+                let mut samples = Vec::new();
+                for frame in 0..=240 {
+                    if frame % 2 == 0 {
+                        samples.push(serde_json::json!({"t":m.age,
+                            "incidence_deg":m.gnc.body.angle_between(m.velocity - wind).to_degrees(),
+                            "body_rate_deg_s":m.gnc.body_rate.length().to_degrees(),
+                            "restoring_moment_Nm":m.gnc.restoring_moment.length(),
+                            "control_moment_Nm":m.gnc.control_moment.length(),
+                            "fin":m.gnc.fins.length(),"g":m.gnc.actual_g,
+                            "mode":m.gnc.mode.label(),"speed":(m.velocity-wind).length()}));
+                    }
+                    if frame == 240 { break; }
+                    contact.position += contact.velocity / 240.;
+                    fly(&mut m, contact, support, -DVec3::X, 1. / 240.);
+                }
+                cases.push(serde_json::json!({"weapon":label,"altitude_m":altitude,"release_alpha_deg":alpha,"samples":samples}));
+            }
+        }
+    }
+    println!("{}", serde_json::to_string_pretty(&cases).unwrap());
 }
 
 /// Repeatable end-to-end engagements, without the renderer or AI controller.
@@ -1162,6 +1211,36 @@ fn ir_evasion_trial_dt(seed: u64, flares: bool, turn: bool, dt: f64) -> (bool, u
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn separation_has_finite_weathercocking_and_no_hidden_alignment_controller() {
+        for kind in [Weapon::Heat, Weapon::Radar] {
+            let (mut m, c, s) = scene(kind, 2000.);
+            let launch_axis = m.velocity.normalize();
+            let attitude = DQuat::from_rotation_arc(-DVec3::Z, launch_axis)
+                * DQuat::from_rotation_x(20_f64.to_radians());
+            m.gnc = m.gnc.inherit(attitude, DVec3::ZERO);
+            let initial = m.gnc.body.angle_between(launch_axis);
+            for _ in 0..12 { fly(&mut m, c, s, -DVec3::Y, 1. / 120.); }
+            let remaining = m.gnc.body.angle_between(m.velocity);
+            assert!(remaining > initial * 0.65, "{kind:?}: {remaining} from {initial}");
+            assert_eq!(m.gnc.fins, DVec3::ZERO);
+            assert_eq!(m.gnc.control_moment, DVec3::ZERO);
+            assert!(m.gnc.body_rate.is_finite());
+            assert!(m.gnc.restoring_moment.length() > 0.);
+        }
+    }
+    #[test]
+    fn missile_uses_air_relative_velocity_and_retains_inherited_roll() {
+        let (mut m, c, s) = scene(Weapon::Heat, 2000.);
+        let q = DQuat::from_rotation_arc(-DVec3::Z, m.velocity.normalize());
+        m.gnc = m.gnc.inherit(q, m.velocity.normalize() * 0.4);
+        m.gnc.wind = DVec3::X * 40.;
+        let before = m.gnc.attitude;
+        fly(&mut m, c, s, -DVec3::Y, 0.001);
+        assert!(m.gnc.actual_g > 0.);
+        assert!(m.gnc.attitude != before && m.gnc.body_rate.is_finite());
+        assert!(m.gnc.body_rate.dot(m.velocity.normalize()) > 0.35);
+    }
     #[test]
     fn release_preserves_attitude_rates_and_incidence_generates_load() {
         let (mut m,c,s)=scene(Weapon::Heat,2000.);

@@ -52,6 +52,7 @@ fn trim(altitude: f64, mach: f64, mass: f64) -> Trim {
             lag_beta: 0.0,
             vortex_lift: 0.0,
             attached: 1.0,
+            wing_attached: [1.; 2],
         };
         let coeff = aero::evaluate(
             aero::Conditions {

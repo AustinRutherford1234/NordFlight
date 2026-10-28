@@ -1,8 +1,9 @@
 # Player aircraft fleet
 
 This update adds four selectable player aircraft alongside the existing Gripen:
-Su-27SM, F-35B, F-22A and F/A-18E. These are original procedural game models,
-refined after an initial native capture pass. They are not scanned replicas or
+Su-27SM, F-35B, F-22A and F/A-18F. Most use original procedural game models;
+the F/A-18F exterior is an attributed third-party derivative with a noncommercial,
+share-alike license described in [its asset documentation](../assets/aircraft/fa18f/README.md). They are not scanned replicas or
 validated reproductions of military flight-control software. Public dimensions
 guide their proportions; aerodynamic derivatives, inertias, vulnerability,
 propulsion installation and control laws are gameplay estimates.
@@ -28,6 +29,10 @@ hangar while in a spacecraft starts the runway scenario.
 | Alt+J | Jettison the modeled missile stores |
 | Alt/Option+click | Cockpit switches and radar controls |
 | Shift / Control | Full / zero throttle, as before |
+| H / Shift+H, F/A-18F | Lower or raise the arresting hook / help |
+| Alt+O / Alt+F, F/A-18F | Toggle canopy / wing fold while parked; closing remains available in flight |
+| Alt+I / Alt+Shift+I / Alt+L, F/A-18F | Toggle navigation / anti-collision / landing lights; I remains the master switch |
+| Shift, F/A-18F | Full throttle; Shift+H opens help without changing throttle |
 
 New cockpit switches include individual engine fuel valves, jettison, weapon
 bays, and F-35B conversion where applicable. Existing camera, radar, map,
@@ -41,7 +46,7 @@ in the header rather than covering the runway readout.
 | Su-27SM | Long blended forebody, widely separated twin nacelles, twin tails, blue finish, conventional stabilators, dorsal brake, teal cockpit with two digital displays and working analog gauges |
 | F-35B | Broader body/chines, forward cockpit, single engine, rotating aft nozzle, animated lift fan, fitted intake and outlet doors, wide segmented cockpit display, side stick, gun pod and main weapon bays |
 | F-22A | Broad diamond wing, canted twin tails, twin rectangular vectoring nozzles, main and side weapon bays, side-stick cockpit and additional flight/system readout |
-| F/A-18E | Extended leading-edge roots, carrier-style wing and twin tails, two engines, conventional stabilators, LEX spoilers and three multifunction displays |
+| F/A-18F | Tandem-seat Super Hornet exterior, folding wingtips, functional arresting hook, two engines and external stores; dedicated estimated physics and moving-carrier loads; existing cockpit/HUD retained |
 
 All use the existing double-precision six-degree-of-freedom integration and
 configured timestep. The selected aircraft supplies wing area, dimensions, mass,
@@ -157,7 +162,10 @@ target/debug/gripen-flight --study-fleet
 python3 tests/fleet/capture.py --output my-fleet-captures
 ```
 
-`NORD_AIRCRAFT=su27|f35b|f22|fa18e|gripen` and `NORD_FLEET_CAPTURE` are developer
+`NORD_AIRCRAFT=su27|f35b|f22|fa18f|gripen` and `NORD_FLEET_CAPTURE` are developer
 fixtures. They do not replace the in-game hangar or alter ordinary simulation
 timing. Final measured results and artifact identity are recorded in
 `tests/fleet/delivery.json` after packaging.
+The previous `fa18e` identifier remains an alias for the F/A-18F.
+
+The dedicated Hornet physics, parameter provenance, numerical evidence and remaining flight-review requirements are described in [Hornet validation](hornet/VALIDATION.md) and the [parameter register](hornet/PARAMETERS.md).

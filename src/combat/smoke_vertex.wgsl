@@ -13,6 +13,9 @@ fn vertex(v:Vertex)->VertexOutput {
     var center=v.position;
     var tangent=v.normal;
     if v.color.w>=0.0 {tangent=smoke.head.xyz-center;center=mix(center,smoke.head.xyz,v.color.w);}
+    // Matches combat::smoke_clearance: clear for 16 m behind the nozzle, then
+    // a 14 m fade-in, so a chased missile is not buried in its own exhaust.
+    let clearance=smoothstep(16.0,30.0,length(smoke.head.xyz-center));
     center+=v.tangent.xyz*(age*0.40)+vec3<f32>(age*0.25,0.0,0.0);
     var world=mesh_functions::mesh_position_local_to_world(model,vec4<f32>(center,1.0)).xyz;
     let direction=mesh_functions::mesh_position_local_to_world(model,vec4<f32>(tangent,0.0)).xyz;
@@ -30,7 +33,7 @@ fn vertex(v:Vertex)->VertexOutput {
     out.world_normal=normal;
     out.world_tangent=vec4<f32>(across,1.0);
     out.uv=v.uv;
-    out.color=vec4<f32>(1.0,1.0,1.0,fade*fade*0.82);
+    out.color=vec4<f32>(1.0,1.0,1.0,fade*fade*0.82*clearance);
 #ifdef VERTEX_OUTPUT_INSTANCE_INDEX
     out.instance_index=v.instance_index;
 #endif

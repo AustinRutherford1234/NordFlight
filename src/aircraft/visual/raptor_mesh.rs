@@ -190,15 +190,21 @@ pub(super) fn details(
                 (Vec2::new(0., 0.36), Vec2::new(0.20, 0.36)),
                 (Vec2::new(0., 0.19), Vec2::new(0.16, 0.19)),
             ] {
-                tube(
+                let start=b + across * p.x + up * p.y;
+                let end=b + across * q.x + up * q.y;
+                let letter_piece=tube(
                     c,
                     m,
                     root,
                     ram.clone(),
-                    b + across * p.x + up * p.y,
-                    b + across * q.x + up * q.y,
+                    start,
+                    end,
                     0.012,
                 );
+                c.entity(letter_piece).insert(FlexibleAnchor {
+                    surface:structural_surface(side,1), position:(start+end)*0.5,
+                    rotation:Quat::from_rotation_arc(Vec3::Y,(end-start).normalize()),
+                });
             }
         }
         let mut v=Vec::new();let mut ix=Vec::new();
@@ -251,5 +257,9 @@ pub(super) fn details(
             Vec3::new(0.025, 0.012, 0.34),
         );
         c.entity(e).insert(Lens(Aircraft::F22));
+        c.entity(e).insert(FlexibleAnchor {
+            surface:structural_surface(side,0), position:Vec3::new(side * 6.66, 0.012, 4.00),
+            rotation:Quat::IDENTITY,
+        });
     }
 }

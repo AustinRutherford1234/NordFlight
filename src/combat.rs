@@ -674,6 +674,7 @@ impl Combat {
                     && f.damage.radar >= 0.25
                     && self.selected == missile.target,
             };
+            missile.gnc.wind = self.environment.wind(missile.position);
             guidance::fly(missile, tracked, support, self.sun, dt);
             let (miss, _) = damage::closest_relative(
                 old - old_targets[missile.target],
@@ -1490,7 +1491,8 @@ pub fn controls(
         return;
     }
     let mut next = keys.just_pressed(KeyCode::Tab);
-    let mut weapon = keys.just_pressed(KeyCode::KeyO);
+    let mut weapon = keys.just_pressed(KeyCode::KeyO)
+        && !(f.aircraft == crate::aircraft::Aircraft::Hornet && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)));
     let mut fire = keys.just_pressed(KeyCode::Space);
     for (interaction, button, mut color) in &mut buttons {
         color.0 = if *interaction == Interaction::None {
@@ -2103,28 +2105,50 @@ pub fn smoke(
             // A generic trail's vertices depend only on its points and, while
             // powered, the nozzle tail; the detailed cards also track the missile.
             age: if detailed { missile.age } else { 0. },
-            position: if detailed || missile.gnc.thrust > 0. { missile.position }
-                else { *missile.trail.last().unwrap() },
-            velocity: if detailed { missile.velocity }
-                else if missile.gnc.thrust > 0. { missile.gnc.body } else { DVec3::ZERO },
+            position: if detailed || missile.gnc.thrust > 0. || smoke_clearance_live(missile) {
+                missile.position
+            } else {
+                *missile.trail.last().unwrap()
+            },
+            velocity: if detailed {
+                missile.velocity
+            } else if missile.gnc.thrust > 0. {
+                missile.gnc.body
+            } else {
+                DVec3::ZERO
+            },
             powered: missile.gnc.thrust > 0.,
             points: missile.trail.len(),
             generation: combat.generation,
-            camera: detailed.then_some((camera.translation,camera.rotation)),
+            camera: detailed.then_some((camera.translation, camera.rotation)),
         };
         if previous[tag.0] == Some(state) {
             continue;
         }
         if let Some(asset) = meshes.get_mut(&handle.0) {
             if detailed {
-                *bounds=aim9x::write_smoke(asset,missile,basis,origin,camera.translation,camera.rotation*Vec3::Y);
-                previous[tag.0]=Some(state);
+                *bounds = aim9x::write_smoke(
+                    asset,
+                    missile,
+                    basis,
+                    origin,
+                    camera.translation,
+                    camera.rotation * Vec3::Y,
+                );
+                previous[tag.0] = Some(state);
                 continue;
             }
-            let tail = state
-                .powered
-                .then(|| missile.position - missile.gnc.body.normalize_or(missile.velocity.normalize()) * 1.6);
-            *bounds = write_smoke_mesh(asset, &missile.trail, tail, DQuat::IDENTITY, anchor);
+            let tail = state.powered.then(|| {
+                missile.position - missile.gnc.body.normalize_or(missile.velocity.normalize()) * 1.6
+            });
+            *bounds = write_smoke_mesh(
+                asset,
+                &missile.trail,
+                tail,
+                missile.position,
+                DQuat::IDENTITY,
+                anchor,
+            );
             previous[tag.0] = Some(state);
         }
     }
@@ -2139,12 +2163,43 @@ pub(crate) struct TrailState {
     powered: bool,
     points: usize,
     generation: u64,
-    camera: Option<(Vec3,Quat)>,
+    camera: Option<(Vec3, Quat)>,
+}
+/// Smoke stays clear of the first metres behind the nozzle and fades in over
+/// a ramp, so the missile (and a chase camera ~13 m behind it) is not buried
+/// in its own fresh exhaust.
+pub(crate) const SMOKE_CLEAR_M: f64 = 16.0;
+pub(crate) const SMOKE_RAMP_M: f64 = 14.0;
+/// Opacity factor for smoke `distance` metres behind the nozzle.
+pub(crate) fn smoke_clearance(distance: f64) -> f32 {
+    let t = ((distance - SMOKE_CLEAR_M) / SMOKE_RAMP_M).clamp(0.0, 1.0) as f32;
+    t * t * (3.0 - 2.0 * t)
+}
+/// Distance of each smoke point from the nozzle, along the trail: the gap
+/// from the nozzle to the newest point plus arc length back from there.
+pub(crate) fn smoke_distances(points: &[DVec3], nozzle: DVec3) -> Vec<f64> {
+    let mut d = vec![0.0; points.len()];
+    let Some(last) = points.len().checked_sub(1) else {
+        return d;
+    };
+    d[last] = nozzle.distance(points[last]);
+    for i in (0..last).rev() {
+        d[i] = d[i + 1] + points[i].distance(points[i + 1]);
+    }
+    d
+}
+/// True while the nozzle is still close enough to the trail end for the
+/// clearance ramp to depend on where the missile currently is.
+pub(crate) fn smoke_clearance_live(m: &Missile) -> bool {
+    m.trail
+        .last()
+        .is_some_and(|p| p.distance(m.position) < SMOKE_CLEAR_M + SMOKE_RAMP_M + 2.0)
 }
 fn write_smoke_mesh(
     asset: &mut Mesh,
     trail: &[DVec3],
     tail: Option<DVec3>,
+    nozzle: DVec3,
     basis: DQuat,
     origin: DVec3,
 ) -> Aabb {
@@ -2200,6 +2255,8 @@ fn write_smoke_mesh(
     positions.clear();
     colors.clear();
     let points = trail.iter().copied().chain(tail);
+    let all: Vec<DVec3> = points.clone().collect();
+    let distance = smoke_distances(&all, tail.unwrap_or(nozzle));
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {
         let tangent = (b - a).normalize_or_zero();
         let up = a.normalize();
@@ -2210,7 +2267,7 @@ fn write_smoke_mesh(
                 let fraction = (i + end) as f32 / (point_count - 1) as f32;
                 let width =
                     (0.12 + 1.7 * (1.0 - fraction)) * (1.0 + 0.10 * ((i + end) as f32 * 1.7).sin());
-                let alpha = (fraction * 4.0).min(1.0) * 0.75;
+                let alpha = (fraction * 4.0).min(1.0) * 0.75 * smoke_clearance(distance[i + end]);
                 for (across, feather) in [
                     (-1.0, 0.0),
                     (-0.5, 0.45),
@@ -2390,6 +2447,16 @@ mod tests {
         }
     }
     #[test]
+    fn smoke_starts_clear_behind_the_nozzle_and_fades_in() {
+        assert_eq!(smoke_clearance(0.0), 0.0);
+        assert_eq!(smoke_clearance(SMOKE_CLEAR_M), 0.0);
+        assert!(smoke_clearance(SMOKE_CLEAR_M + SMOKE_RAMP_M * 0.5) > 0.4);
+        assert_eq!(smoke_clearance(SMOKE_CLEAR_M + SMOKE_RAMP_M), 1.0);
+        let points = [DVec3::ZERO, DVec3::Z * 10.0, DVec3::Z * 20.0];
+        let d = smoke_distances(&points, DVec3::Z * 25.0);
+        assert_eq!(d, vec![25.0, 15.0, 5.0]);
+    }
+    #[test]
     fn streamed_trails_preserve_vertices_colors_topology_and_conservative_bounds() {
         use bevy::mesh::VertexAttributeValues;
         for f in [Flight::runway(), Flight::spacecraft()] {
@@ -2408,6 +2475,8 @@ mod tests {
                     let tail = powered.then(|| *trail.last().unwrap() + DVec3::new(10., 0., -30.));
                     let mut all = trail.clone();
                     all.extend(tail);
+                    let nozzle = *all.last().unwrap();
+                    let distance = smoke_distances(&all, nozzle);
                     let (mut expected_pos, mut expected_col, mut expected_idx) =
                         (Vec::new(), Vec::new(), Vec::new());
                     for (i, pair) in all.windows(2).enumerate() {
@@ -2420,7 +2489,9 @@ mod tests {
                                 let fraction = (i + end) as f32 / (all.len() - 1) as f32;
                                 let width = (0.12 + 1.7 * (1. - fraction))
                                     * (1. + 0.10 * ((i + end) as f32 * 1.7).sin());
-                                let alpha = (fraction * 4.).min(1.) * 0.75;
+                                let alpha = (fraction * 4.).min(1.)
+                                    * 0.75
+                                    * smoke_clearance(distance[i + end]);
                                 let center = world::local(*point, &f);
                                 for (across, feather) in
                                     [(-1., 0.), (-0.5, 0.45), (0., 1.), (0.5, 0.45), (1., 0.)]
@@ -2440,7 +2511,7 @@ mod tests {
                     let mut asset = mesh(vec![Vec3::ZERO, Vec3::X, Vec3::Y], vec![0, 1, 2]);
                     let basis = world::frame(&f).conjugate();
                     let origin = world::render_origin(&f);
-                    let bounds = write_smoke_mesh(&mut asset, &trail, tail, basis, origin);
+                    let bounds = write_smoke_mesh(&mut asset, &trail, tail, nozzle, basis, origin);
                     let Some(VertexAttributeValues::Float32x3(actual)) =
                         asset.attribute(Mesh::ATTRIBUTE_POSITION)
                     else {
@@ -2467,7 +2538,7 @@ mod tests {
                     };
                     assert_eq!(*actual, expected_idx);
                     trail[0].x += 0.01;
-                    write_smoke_mesh(&mut asset, &trail, tail, basis, origin);
+                    write_smoke_mesh(&mut asset, &trail, tail, nozzle, basis, origin);
                     let Some(VertexAttributeValues::Float32x3(actual)) =
                         asset.attribute(Mesh::ATTRIBUTE_POSITION)
                     else {

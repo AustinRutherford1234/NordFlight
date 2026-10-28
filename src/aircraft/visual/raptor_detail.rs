@@ -258,16 +258,21 @@ fn burner_face() -> Mesh {
     m
 }
 
-pub(super) fn wing(s: f32) -> Vec<Vec3> {
-    [
+const WING_OUTLINE:[(f32,f32);5]=[
         (1.90, -0.75),
         (6.78, 3.35),
         (6.78, 4.50),
         (5.87, 5.39),
         (1.50, 6.55),
-    ]
+    ];
+pub(super) fn wing(s: f32) -> Vec<Vec3> {
+    WING_OUTLINE
     .map(|(x, z)| Vec3::new(s * x, -0.04, z))
     .to_vec()
+}
+fn trailing_edge_z(x:f64)->f64 {
+    let (ax,az)=WING_OUTLINE[3];let (bx,bz)=WING_OUTLINE[4];
+    az as f64+(bz-az) as f64*(x-ax as f64)/(bx-ax) as f64
 }
 pub(super) fn panels() -> [Panel; SURFACES] {
     let mut p = Aircraft::F22.panels();
@@ -282,21 +287,23 @@ pub(super) fn panels() -> [Panel; SURFACES] {
             .map(|(x, y, z)| DVec3::new(s * x, y, z)),
         );
         p[b].center = DVec3::new(s * 2.65, 0.02, 7.65);
+        // A common split assigns the entire trailing edge to moving panels;
+        // the old gap left a fixed rib projecting behind deflected controls.
         p[b + 2].outline = Some(
             [
-                (3.97, -0.04, 4.90),
-                (6.45, -0.04, 4.55),
+                (3.935, -0.04, 4.905),
+                (6.78, -0.04, 4.50),
                 (5.87, -0.04, 5.39),
-                (3.97, -0.04, 5.89),
+                (3.935, -0.04, trailing_edge_z(3.935)),
             ]
             .map(|(x, y, z)| DVec3::new(s * x, y, z)),
         );
         p[b + 1].outline = Some(
             [
                 (1.65, -0.04, 5.15),
-                (3.90, -0.04, 4.91),
-                (3.90, -0.04, 5.91),
-                (1.65, -0.04, 6.51),
+                (3.935, -0.04, 4.905),
+                (3.935, -0.04, trailing_edge_z(3.935)),
+                (1.65, -0.04, trailing_edge_z(1.65)),
             ]
             .map(|(x, y, z)| DVec3::new(s * x, y, z)),
         );
@@ -622,6 +629,11 @@ fn batch(
 pub(super) fn border(points: &[Vec3], normal: Vec3) -> Mesh {
     let mut v = Vec::new();
     let mut ix = Vec::new();
+    for q in border_quads(points,normal) {quad(&mut v,&mut ix,q);}
+    mesh(v, ix)
+}
+pub(super) fn border_quads(points: &[Vec3], normal: Vec3) -> Vec<[Vec3;4]> {
+    let mut strips=Vec::with_capacity(points.len());
     let mid = points.iter().copied().sum::<Vec3>() / points.len() as f32;
     for j in 0..points.len() {
         let k = (j + 1) % points.len();
@@ -629,9 +641,9 @@ pub(super) fn border(points: &[Vec3], normal: Vec3) -> Mesh {
         let b = points[k] + normal * 0.048;
         let ai = a + (mid - points[j]).normalize_or_zero() * 0.075;
         let bi = b + (mid - points[k]).normalize_or_zero() * 0.075;
-        quad(&mut v, &mut ix, [a, b, bi, ai]);
+        strips.push([a,b,bi,ai]);
     }
-    mesh(v, ix)
+    strips
 }
 pub(super) fn dorsal_details(
     c: &mut Commands,

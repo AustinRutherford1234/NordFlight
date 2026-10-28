@@ -7,6 +7,7 @@ mod raptor_finish;
 pub mod raptor_bay;
 pub mod raptor_main_bay;
 pub mod raptor_detail;
+pub mod hornet;
 #[derive(Component)]
 pub struct Root(pub Aircraft);
 #[derive(Component)]
@@ -93,6 +94,161 @@ pub(crate) struct Gauge(Aircraft, u8);
 pub(crate) struct FanSpin(Aircraft);
 #[derive(Component)]
 pub(crate) struct Lens(Aircraft);
+#[derive(Component)]
+pub(crate) struct ArrestingHook;
+
+#[cfg(test)]
+mod hook_tests {
+    use super::*;
+    #[test]
+    fn hornet_hook_exists_and_updates_without_query_conflicts() {
+        let mut app = App::new();
+        let mut flight = Flight::runway();
+        flight.aircraft = Aircraft::Hornet;
+        flight.systems.hook_down = true;
+        app.add_plugins(MinimalPlugins).insert_resource(flight)
+            .init_resource::<Assets<Mesh>>().init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Image>>()
+            .add_systems(Startup, setup).add_systems(Update, update);
+        app.update();
+        assert_eq!(app.world_mut().query::<&ArrestingHook>().iter(app.world()).count(), 1);
+    }
+}
+
+/// Unique, mutable F-22 geometry. Coordinates are kept in the original local
+/// mesh frame so each update is evaluated from the undeformed shape.
+#[derive(Component)]
+pub(crate) struct FlexibleMesh {
+    surface: usize,
+    panel: Option<usize>,
+    origin: Vec3,
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+}
+
+#[derive(Component)]
+pub(crate) struct FlexibleAnchor {
+    surface: usize,
+    position: Vec3,
+    rotation: Quat,
+}
+
+fn structural_surface(side: f32, kind: u8) -> usize {
+    use crate::structural::*;
+    match (side < 0., kind) {
+        (true, 0) => LEFT_WING, (false, 0) => RIGHT_WING,
+        (true, 1) => LEFT_FIN, (false, 1) => RIGHT_FIN,
+        (true, _) => LEFT_TAIL, (false, _) => RIGHT_TAIL,
+    }
+}
+
+fn panel_structure(i: usize) -> usize {
+    let side = if i < 4 || i == 9 { -1. } else { 1. };
+    structural_surface(side, match i { 0 | 4 => 2, 3 | 7 => 1, _ => 0 })
+}
+
+/// Render planforms and the aerodynamic panel planforms differ. Map points
+/// using corresponding hinge endpoints and the opposing edge so the panel's
+/// elastic hinge line coincides with the visible hinge.
+fn panel_physics_map(i: usize) -> Option<(DVec3, DVec3, bevy::math::DMat3)> {
+    let visual=raptor_detail::panels()[i];
+    let physics=Aircraft::F22.panels()[i];
+    let (v,p)=(visual.outline?,physics.outline?);
+    let leading=i==9 || i==10;
+    let basis=|q: [DVec3;4], normal: DVec3| {
+        let (h0,h1,o0,o1)=if leading {(q[3],q[2],q[0],q[1])}else{(q[0],q[1],q[3],q[2])};
+        (h0,bevy::math::DMat3::from_cols(h1-h0,(o0+o1-h0-h1)*0.5,normal.normalize()))
+    };
+    let (v0,vbasis)=basis(v,visual.normal);
+    let (p0,pbasis)=basis(p,physics.normal);
+    (vbasis.determinant().abs()>1e-9).then(||(v0,p0,pbasis*vbasis.inverse()))
+}
+
+#[cfg(test)]
+mod elastic_visual_tests {
+    use super::*;
+    #[test]
+    fn broken_wing_hides_its_skin_and_preserves_the_other_side() {
+        let mut app = App::new();
+        let mut flight = Flight::default();
+        flight.aircraft = Aircraft::F22;
+        flight.damage.wing_broken[0] = true;
+        app.insert_resource(flight).init_resource::<Time>()
+            .init_resource::<Assets<Mesh>>().init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Image>>()
+            .add_systems(Startup,setup).add_systems(Update,update);
+        app.update();
+        let world = app.world_mut();
+        let wings: Vec<_> = world.query::<(&FlexibleMesh, &Visibility)>().iter(world)
+            .filter(|(p,_)| p.panel.is_none() && [crate::structural::LEFT_WING, crate::structural::RIGHT_WING].contains(&p.surface))
+            .map(|(p,v)| (p.surface,*v)).collect();
+        assert!(wings.iter().any(|(s,_)| *s == crate::structural::LEFT_WING));
+        assert!(wings.iter().filter(|(s,_)| *s == crate::structural::LEFT_WING).all(|(_,v)| *v == Visibility::Hidden));
+        assert!(wings.iter().filter(|(s,_)| *s == crate::structural::RIGHT_WING).all(|(_,v)| *v == Visibility::Inherited));
+    }
+    #[test]
+    fn visual_control_hinges_map_to_the_structural_hinges() {
+        let config=crate::structural::Config::f22();
+        let mut state=crate::structural::State::default();
+        for i in [1,2,3,5,6,7,9,10] {
+            state.panel_modes[i].bend=0.1;
+            state.panel_modes[i].twist=0.1;
+            let outline=raptor_detail::panels()[i].outline.unwrap();
+            let (a,b)=if i==9 || i==10 {(outline[3],outline[2])} else {(outline[0],outline[1])};
+            let (v,p,m)=panel_physics_map(i).unwrap();
+            for t in [0.,0.5,1.] {
+                let sample=p+m*(a.lerp(b,t)-v);
+                assert!((state.deform_panel_point(&config,i,sample)-sample).length()<1e-10,
+                    "panel {i} must remain fixed along its hinge");
+            }
+        }
+    }
+    #[test]
+    fn flexible_meshes_are_unique_and_follow_structural_state() {
+        use std::collections::HashSet;
+        let mut app=App::new();
+        let mut flight=Flight::default();
+        flight.aircraft=Aircraft::F22;
+        flight.structure.surfaces[crate::structural::RIGHT_WING].bend=0.12;
+        flight.structure.panel_modes[6].bend=0.08;
+        app.insert_resource(flight).init_resource::<Time>()
+            .init_resource::<Assets<Mesh>>().init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Image>>()
+            .add_systems(Startup,setup).add_systems(Update,update);
+        app.update();
+        let world=app.world_mut();
+        let parts=world.query::<(Entity,&FlexibleMesh,&Mesh3d)>().iter(world)
+            .map(|(e,p,m)|(e,p.surface,p.panel,p.origin,p.positions.clone(),m.0.clone()))
+            .collect::<Vec<_>>();
+        assert!(!parts.is_empty());
+        let mut handles=HashSet::new();
+        let meshes=world.resource::<Assets<Mesh>>();
+        let mut found_displacement=false;
+        let mut found_panel_flex=false;
+        let state=&world.resource::<Flight>().structure;
+        let config=crate::structural::Config::f22();
+        for (entity,surface,panel,origin,original,handle) in &parts {
+            assert!(handles.insert(handle.id()),"flexible meshes must not share a handle");
+            assert!(world.get::<ImmutableGeometry>(*entity).is_none());
+            let Some(bevy::mesh::VertexAttributeValues::Float32x3(after))=
+                meshes.get(handle).and_then(|m|m.attribute(Mesh::ATTRIBUTE_POSITION)) else {panic!("positions");};
+            if *surface==crate::structural::RIGHT_WING && *origin==Vec3::ZERO {
+                found_displacement |= after.iter().zip(original).any(|(a,b)|(a[1]-b[1]).abs()>0.001);
+            }
+            if *panel==Some(6) {
+                let base=state.deform_point(&config,*surface,origin.as_dvec3());
+                let inverse=state.frame_rotation(&config,*surface,origin.as_dvec3()).inverse();
+                found_panel_flex |= after.iter().zip(original).any(|(a,b)|{
+                    let point=origin.as_dvec3()+Vec3::from_array(*b).as_dvec3();
+                    let inherited=(inverse*(state.deform_point(&config,*surface,point)-base)).as_vec3();
+                    (Vec3::from_array(*a)-inherited).length()>0.001
+                });
+            }
+        }
+        assert!(found_displacement,"wing mesh should reflect its structural displacement");
+        assert!(found_panel_flex,"control surface should also show its independent elastic mode");
+    }
+}
 
 pub fn sections(a: Aircraft) -> Vec<(f64, f64, f64, f64)> {
     if a==Aircraft::F22{return super::raptor::sections();}
@@ -276,6 +432,52 @@ fn mesh(p: Vec<Vec3>, idx: Vec<u32>) -> Mesh {
     m.insert_indices(Indices::U32(idx));
     m.compute_normals();
     m
+}
+/// Clip the stationary finish with the same control-surface openings as the
+/// wing skin. Moving panels carry their own borders on their hinge entities.
+fn raptor_fixed_wing_border(side:f32)->Mesh {
+    let outline=raptor_detail::wing(side);
+    let panels=raptor_detail::panels();
+    let mut vertices=Vec::new();let mut indices=Vec::new();
+    for strip in raptor_detail::border_quads(&outline,Vec3::Y) {
+        for piece in fixed_wing_with(Aircraft::F22,side,strip.to_vec(),panels) {
+            polygon_into(&mut vertices,&mut indices,&piece);
+        }
+    }
+    mesh(vertices,indices)
+}
+#[cfg(test)]
+mod trailing_edge_tests {
+    use super::*;
+    fn inside(p:Vec3,cut:[Vec3;4])->bool {
+        let cross=|a:Vec3,b:Vec3|a.x*b.z-a.z*b.x;
+        let sign=cross(cut[1]-cut[0],cut[2]-cut[1]).signum();
+        (0..4).all(|i|cross(cut[(i+1)%4]-cut[i],p-cut[i])*sign>1e-5)
+    }
+    #[test]
+    fn fixed_skin_and_finish_do_not_bridge_moving_trailing_edges() {
+        for side in [-1.,1.] {
+            let panels=raptor_detail::panels();
+            let cuts=[1,2,5,6,9,10].into_iter().filter(|&i|panels[i].center.x.signum() as f32==side)
+                .map(|i|panel_polygon(panels[i]).0).collect::<Vec<_>>();
+            let mut meshes=vec![raptor_fixed_wing_border(side)];
+            for piece in fixed_wing_with(Aircraft::F22,side,raptor_detail::wing(side),panels) {
+                meshes.push(solid(&piece,Vec3::Y*0.045));
+            }
+            for mesh in meshes {
+                let Some(bevy::mesh::VertexAttributeValues::Float32x3(points))=mesh.attribute(Mesh::ATTRIBUTE_POSITION) else{panic!("positions");};
+                assert!(points.iter().all(|p|Vec3::from_array(*p).is_finite()));
+                let indices=mesh.indices().unwrap().iter().collect::<Vec<_>>();
+                for tri in indices.chunks_exact(3) {
+                    let center=(Vec3::from_array(points[tri[0]])+Vec3::from_array(points[tri[1]])+Vec3::from_array(points[tri[2]]))/3.;
+                    assert!(!cuts.iter().any(|&cut|inside(center,cut)),"fixed wing/finish overlaps moving surface at {center}");
+                }
+            }
+            let index=if side<0.{2}else{6};
+            let cut=panel_polygon(panels[index]).0;
+            assert!(inside(Vec3::new(side*6.6,-0.04,4.64),cut),"outer trailing wedge must belong to the aileron");
+        }
+    }
 }
 fn quad(v: &mut Vec<Vec3>, i: &mut Vec<u32>, q: [Vec3; 4]) {
     let n = v.len() as u32;
@@ -614,6 +816,57 @@ fn part(
     c.entity(root).add_child(e);
     e
 }
+
+/// Give flexing geometry a unique handle and preserve its rest positions.
+/// It must not be included in the immutable-geometry deduplication pass.
+fn flexible_part(
+    c: &mut Commands, m: &mut Assets<Mesh>, root: Entity, shape: Mesh,
+    mat: Handle<StandardMaterial>, t: Transform, surface: usize, origin: Vec3, panel: Option<usize>,
+) -> Entity {
+    use bevy::mesh::VertexAttributeValues;
+    let positions = match shape.attribute(Mesh::ATTRIBUTE_POSITION) {
+        Some(VertexAttributeValues::Float32x3(v)) => v.clone(),
+        _ => Vec::new(),
+    };
+    let normals = match shape.attribute(Mesh::ATTRIBUTE_NORMAL) {
+        Some(VertexAttributeValues::Float32x3(v)) => v.clone(),
+        _ => vec![[0., 1., 0.]; positions.len()],
+    };
+    let e = c.spawn((
+        Mesh3d(m.add(shape)), MeshMaterial3d(mat), t, Visibility::Inherited,
+        FlexibleMesh { surface, panel, origin, positions, normals },
+        bevy::camera::visibility::NoFrustumCulling,
+    )).id();
+    c.entity(root).add_child(e);
+    e
+}
+
+// The border meshes contain long, thin triangles. Add spanwise samples so
+// they follow the same curved surface as the tessellated painted skin.
+fn subdivide_border(source: Mesh) -> Mesh {
+    use bevy::mesh::VertexAttributeValues;
+    let (Some(VertexAttributeValues::Float32x3(points)), Some(indices)) =
+        (source.attribute(Mesh::ATTRIBUTE_POSITION), source.indices()) else { return source; };
+    let indices = indices.iter().collect::<Vec<_>>();
+    let mut vertices = Vec::new();
+    let mut triangles = Vec::new();
+    for triangle in indices.chunks_exact(3) {
+        let p = [triangle[0], triangle[1], triangle[2]].map(|i| Vec3::from_array(points[i]));
+        let n = 5;
+        let at = |i: usize, j: usize| p[0] + (p[1]-p[0]) * (i as f32 / n as f32)
+            + (p[2]-p[0]) * (j as f32 / n as f32);
+        for i in 0..n { for j in 0..n-i {
+            let mut push = |v: [Vec3; 3]| {
+                let base = vertices.len() as u32;
+                vertices.extend(v);
+                triangles.extend([base, base+1, base+2]);
+            };
+            push([at(i,j), at(i+1,j), at(i,j+1)]);
+            if i+j+1<n { push([at(i+1,j), at(i+1,j+1), at(i,j+1)]); }
+        }}
+    }
+    mesh(vertices, triangles)
+}
 fn box_part(
     c: &mut Commands,
     m: &mut Assets<Mesh>,
@@ -689,6 +942,7 @@ pub fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    asset_server: Option<Res<AssetServer>>,
 ) {
     let f22_detail=raptor_finish::Detail::new(&mut images);
     let captive_missile=material(&mut mats,Color::WHITE,0.15);
@@ -702,6 +956,12 @@ pub fn setup(
             .spawn((Root(a), Transform::default(), Visibility::Hidden))
             .id();
         let spec = a.spec();
+        if a == Aircraft::Hornet {
+            if let Some(server) = asset_server.as_deref() {
+                hornet::setup(&mut c, &mut meshes, &mut mats, &mut images, server, root);
+                continue;
+            }
+        }
         let skin = material(
             &mut mats,
             match a {
@@ -754,16 +1014,20 @@ pub fn setup(
             }
             let wing_pieces = if a==Aircraft::F22 {fixed_wing_with(a,side,raptor_detail::wing(side),raptor_detail::panels())}else{fixed_wing(a,side)};
             for piece in wing_pieces {
-                part(
+                let shape = finish(a,solid(&piece, Vec3::Y * 0.045));
+                if a==Aircraft::F22 { flexible_part(
+                    &mut c, &mut meshes, root, shape, skin.clone(), Transform::default(),
+                    structural_surface(side,0), Vec3::ZERO, None,
+                ); } else { part(
                     &mut c,
                     &mut meshes,
                     root,
-                    finish(a,solid(&piece, Vec3::Y * 0.045)),
+                    shape,
                     skin.clone(),
                     Transform::default(),
-                );
+                ); }
             }
-            if a==Aircraft::F22 {part(&mut c,&mut meshes,root,raptor_detail::border(&raptor_detail::wing(side),Vec3::Y),ram_border.clone(),Transform::default());}
+            if a==Aircraft::F22 {flexible_part(&mut c,&mut meshes,root,subdivide_border(raptor_fixed_wing_border(side)),ram_border.clone(),Transform::default(),structural_surface(side,0),Vec3::ZERO,None);}
             let l = spec.length as f32;
             let lex = [
                 Vec3::new(side * 0.55, 0.22, -l * 0.30),
@@ -774,15 +1038,18 @@ pub fn setup(
             if a!=Aircraft::F22 {part(&mut c,&mut meshes,root,solid(&lex, Vec3::Y * 0.06),skin.clone(),Transform::default());}
             let (original_fin, thickness) = fin(a, side);
             let fin = if a==Aircraft::F22 {raptor_detail::fin(side)}else{original_fin.to_vec()};
-            part(
+            let fin_shape=finish(a,solid(&fin, thickness));
+            if a==Aircraft::F22 { flexible_part(
+                &mut c,&mut meshes,root,fin_shape,skin.clone(),Transform::default(),structural_surface(side,1),Vec3::ZERO,None,
+            ); } else { part(
                 &mut c,
                 &mut meshes,
                 root,
-                finish(a,solid(&fin, thickness)),
+                fin_shape,
                 skin.clone(),
                 Transform::default(),
-            );
-            if a==Aircraft::F22 {part(&mut c,&mut meshes,root,raptor_detail::border(&fin,thickness.normalize()),ram_border.clone(),Transform::default());}
+            ); }
+            if a==Aircraft::F22 {flexible_part(&mut c,&mut meshes,root,subdivide_border(raptor_detail::border(&fin,thickness.normalize())),ram_border.clone(),Transform::default(),structural_surface(side,1),Vec3::ZERO,None);}
             // Intake lips and inset black ducts; Su-27 has widely separated engines.
             let x = if a == Aircraft::Su27 { 1.45 } else { 1.0 };
             let z = -l * 0.10;
@@ -823,6 +1090,7 @@ pub fn setup(
                 Transform::from_translation(pos),
             );
             c.entity(lens).insert(Lens(a));
+            if a==Aircraft::F22 {c.entity(lens).insert((FlexibleAnchor{surface:structural_surface(side,0),position:pos,rotation:Quat::IDENTITY}, Visibility::Inherited));}
             let e = c
                 .spawn((
                     PointLight {
@@ -837,6 +1105,7 @@ pub fn setup(
                 ))
                 .id();
             c.entity(root).add_child(e);
+            if a==Aircraft::F22 {c.entity(e).insert((FlexibleAnchor{surface:structural_surface(side,0),position:pos,rotation:Quat::IDENTITY}, Visibility::Inherited));}
         }
         for (i, p) in a
             .panels()
@@ -848,16 +1117,19 @@ pub fn setup(
             let render_panel=if a==Aircraft::F22{raptor_detail::panels()[i]}else{p};
             let (poly, thick) = if a==Aircraft::F22{raptor_detail::surface_polygon(i)}else{let(p,t)=panel_polygon(render_panel);(p.to_vec(),t)};
             let local = poly.iter().map(|v| *v - render_panel.center.as_vec3()).collect::<Vec<_>>();
-            let e = part(
+            let shape=if a==Aircraft::F22{raptor_mesh::paint_at(solid(&local,thick),render_panel.center.as_vec3())}else{solid(&local,thick)};
+            let e = if a==Aircraft::F22 {flexible_part(
+                &mut c,&mut meshes,root,shape,skin.clone(),Transform::from_translation(render_panel.center.as_vec3()),panel_structure(i),render_panel.center.as_vec3(),Some(i),
+            )} else {part(
                 &mut c,
                 &mut meshes,
                 root,
-                if a==Aircraft::F22{raptor_mesh::paint_at(solid(&local,thick),render_panel.center.as_vec3())}else{solid(&local,thick)},
+                shape,
                 skin.clone(),
                 Transform::from_translation(render_panel.center.as_vec3()),
-            );
+            )};
             c.entity(e).insert(Moving(a, i));
-            if a==Aircraft::F22 {part(&mut c,&mut meshes,e,raptor_detail::border(&local,p.normal.as_vec3()),ram_border.clone(),Transform::default());}
+            if a==Aircraft::F22 {flexible_part(&mut c,&mut meshes,e,subdivide_border(raptor_detail::border(&local,p.normal.as_vec3())),ram_border.clone(),Transform::default(),panel_structure(i),render_panel.center.as_vec3(),Some(i));}
             if i == 9 || i == 10 {
                 let paint = material(
                     &mut mats,
@@ -901,6 +1173,13 @@ pub fn setup(
             c.entity(e).insert(Scar(a, i));
         }
         if a==Aircraft::F22 {raptor_mesh::details(&mut c,&mut meshes,&mut mats,&f22_detail,root,skin.clone(),edge.clone(),black.clone(),silver.clone());raptor_detail::dorsal_details(&mut c,&mut meshes,&mut mats,root);}
+        if a == Aircraft::Hornet {
+            // The hook is a visual control for now; carrier arrestment is a later milestone.
+            let pivot = c.spawn((ArrestingHook, Transform::from_xyz(0., -0.58, 5.4), Visibility::Inherited)).id();
+            c.entity(root).add_child(pivot);
+            tube(&mut c, &mut meshes, pivot, edge.clone(), Vec3::ZERO, Vec3::new(0., -0.02, 2.0), 0.065);
+            tube(&mut c, &mut meshes, pivot, silver.clone(), Vec3::new(0., -0.02, 2.0), Vec3::new(0., -0.20, 2.20), 0.09);
+        }
         for (i, at) in a.engine_positions().iter().enumerate().take(spec.engines) {
             let at=if a==Aircraft::F22{raptor_detail::engine_origin(*at)}else{*at};
             if spec.engines == 2 && a!=Aircraft::F22 {
@@ -1341,6 +1620,10 @@ pub fn setup(
 pub fn update(
     f: Res<Flight>,
     time: Res<Time>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    flex: Query<(&FlexibleMesh, &Mesh3d)>,
+    mut previous_flex: Local<[Option<(u64,u64)>; crate::structural::SURFACE_COUNT]>,
+    mut previous_panel: Local<[Option<(u64,u64)>; 11]>,
     mut parts: Query<
         (
             Option<&Root>,
@@ -1355,6 +1638,7 @@ pub fn update(
             Option<&Scar>,
             Option<&Store>,
             Option<&WeaponDoor>,
+            (Option<&FlexibleAnchor>, Option<&FlexibleMesh>),
             &mut Transform,
             &mut Visibility,
         ),
@@ -1371,10 +1655,63 @@ pub fn update(
             With<Scar>,
             With<Store>,
             With<WeaponDoor>,
+            With<FlexibleAnchor>,
+            With<FlexibleMesh>,
         )>,
     >,
     mut lamps: Query<(&Lamp, &mut PointLight)>,
+    mut hooks: Query<&mut Transform, (With<ArrestingHook>, Without<Root>, Without<Moving>, Without<Leg>, Without<Tire>, Without<Door>, Without<Nozzle>, Without<Petal>, Without<Plume>, Without<LiftDoor>, Without<Scar>, Without<Store>, Without<WeaponDoor>, Without<FlexibleAnchor>, Without<FlexibleMesh>)>,
 ) {
+    if f.aircraft == Aircraft::Hornet && f.vehicle == Vehicle::Gripen {
+        let target = if f.systems.hook_down { 0.65 } else { 0.0 };
+        for mut hook in &mut hooks {
+            let desired = Quat::from_rotation_x(target);
+            hook.rotation = hook.rotation.slerp(desired, (time.delta_secs() * 2.5).clamp(0., 1.));
+        }
+    }
+    let actual_angles=super::angles(&f);
+    if f.aircraft==Aircraft::F22 && f.vehicle==Vehicle::Gripen && !f.crashed {
+        let config=crate::structural::Config::f22();
+        let states=f.structure.surfaces.map(|s|(s.bend.to_bits(),s.twist.to_bits()));
+        let panel_states=f.structure.panel_modes.map(|s|(s.bend.to_bits(),s.twist.to_bits()));
+        let panel_maps:[Option<_>;11]=std::array::from_fn(panel_physics_map);
+        for (part, handle) in &flex {
+            if previous_flex[part.surface]==Some(states[part.surface])
+                && part.panel.is_none_or(|i|previous_panel[i]==Some(panel_states[i])) {continue;}
+            let Some(mesh)=meshes.get_mut(&handle.0) else { continue; };
+            let origin=part.origin.as_dvec3();
+            // Meshes attached to a hinge are expressed in the hinge's
+            // deformed frame; fixed meshes use aircraft body coordinates.
+            let hinged=part.origin!=Vec3::ZERO;
+            let base=if hinged {f.structure.deform_point(&config,part.surface,origin)} else {DVec3::ZERO};
+            let inverse=if hinged {f.structure.frame_rotation(&config,part.surface,origin).inverse()} else {bevy::math::DQuat::IDENTITY};
+            if let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions))=mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+                for (out,p) in positions.iter_mut().zip(&part.positions) {
+                    let point=origin+DVec3::from_array(p.map(|x|x as f64));
+                    let mut deformed=f.structure.deform_point(&config,part.surface,point);
+                    if let Some(panel)=part.panel {
+                        let sample=panel_maps[panel].map_or(point,|(v,p,m)|p+m*(point-v));
+                        let displacement=f.structure.deform_panel_point(&config,panel,sample)-sample;
+                        deformed+=f.structure.frame_rotation(&config,part.surface,point)*displacement;
+                    }
+                    *out=(inverse*(deformed-base)).as_vec3().to_array();
+                }
+            }
+            if let Some(bevy::mesh::VertexAttributeValues::Float32x3(normals))=mesh.attribute_mut(Mesh::ATTRIBUTE_NORMAL) {
+                for ((out,p),n) in normals.iter_mut().zip(&part.positions).zip(&part.normals) {
+                    let point=origin+DVec3::from_array(p.map(|x|x as f64));
+                    let panel_rotation=part.panel.map_or(bevy::math::DQuat::IDENTITY,|i|{
+                        let sample=panel_maps[i].map_or(point,|(v,p,m)|p+m*(point-v));
+                        f.structure.panel_frame_rotation(&config,i,sample)
+                    });
+                    let normal=inverse*f.structure.frame_rotation(&config,part.surface,point)*panel_rotation*DVec3::from_array(n.map(|x|x as f64));
+                    *out=normal.normalize_or_zero().as_vec3().to_array();
+                }
+            }
+        }
+        *previous_flex=states.map(Some);
+        *previous_panel=panel_states.map(Some);
+    }
     for (
         root,
         moving,
@@ -1388,6 +1725,7 @@ pub fn update(
         scar,
         store,
         bay_door,
+        (anchor, flexible),
         mut t,
         mut v,
     ) in &mut parts
@@ -1412,13 +1750,43 @@ pub fn update(
                 continue;
             }
             let p = a.panels()[*i];
-            let angle=crate::control_surfaces::effective_angle(&f.damage,*i,super::panel_angle(*a,*i,p,f.surface,f.flaps,f.airbrake,f.alpha));
-            t.rotation = if *a==Aircraft::F22{raptor_detail::surface_rotation(*i,angle)}else{super::surface_rotation(*a,*i,angle).as_quat()};
+            let angle=if *a==Aircraft::F22 {actual_angles[*i]}else{
+                crate::control_surfaces::effective_angle(&f.damage,*i,super::panel_angle(*a,*i,p,f.surface,f.flaps,f.airbrake,f.alpha))
+            };
+            if *a==Aircraft::F22 {
+                let origin=raptor_detail::panels()[*i].center;
+                let config=crate::structural::Config::f22();
+                let surface=panel_structure(*i);
+                t.translation=f.structure.deform_point(&config,surface,origin).as_vec3();
+                t.rotation=f.structure.frame_rotation(&config,surface,origin).as_quat()*raptor_detail::surface_rotation(*i,angle);
+            } else {
+                t.rotation=super::surface_rotation(*a,*i,angle).as_quat();
+            }
             *v = if f.damage.surface_state[*i] == crate::combat::damage::SurfaceState::Detached {
                 Visibility::Hidden
             } else {
                 Visibility::Inherited
             };
+            continue;
+        }
+        if let Some(anchor)=anchor {
+            if f.aircraft==Aircraft::F22 {
+                let config=crate::structural::Config::f22();
+                let p=anchor.position.as_dvec3();
+                t.translation=f.structure.deform_point(&config,anchor.surface,p).as_vec3();
+                t.rotation=f.structure.frame_rotation(&config,anchor.surface,p).as_quat()*anchor.rotation;
+                if anchor.surface == crate::structural::LEFT_WING || anchor.surface == crate::structural::RIGHT_WING {
+                    let side = usize::from(anchor.surface == crate::structural::RIGHT_WING);
+                    *v = if f.damage.wing_broken[side] { Visibility::Hidden } else { Visibility::Inherited };
+                }
+            }
+            continue;
+        }
+        if let Some(flexible) = flexible {
+            if flexible.panel.is_none() && (flexible.surface == crate::structural::LEFT_WING || flexible.surface == crate::structural::RIGHT_WING) {
+                let side = usize::from(flexible.surface == crate::structural::RIGHT_WING);
+                *v = if f.damage.wing_broken[side] { Visibility::Hidden } else { Visibility::Inherited };
+            }
             continue;
         }
         if let Some(Leg(a, i)) = leg {
@@ -1589,11 +1957,14 @@ pub fn update(
         }
     }
     for (Lamp(a, kind), mut lamp) in &mut lamps {
-        let intensity = if *a == f.aircraft && f.lights && f.battery {
+        let enabled = *a != Aircraft::Hornet || match *kind {0=>f.systems.hornet_nav_lights,1=>f.systems.hornet_strobe_lights,_=>f.systems.hornet_landing_light && f.gear_extension>0.95};
+        let intensity = if *a == f.aircraft && f.lights && f.battery && enabled {
             if *kind == 0 {
                 900.
-            } else {
+            } else if *kind == 1 {
                 (time.elapsed_secs() * 2.).sin().max(0.) * 2000.
+            } else {
+                1800.
             }
         } else {
             0.
@@ -1607,10 +1978,14 @@ pub fn gauges(
     f: Res<Flight>,
     mut q: Query<(&Gauge, &mut Transform), Without<FanSpin>>,
     mut fans: Query<(&FanSpin, &mut Transform), Without<Gauge>>,
-    mut lenses: Query<(&Lens, &mut Visibility)>,
+    mut lenses: Query<(&Lens, Option<&FlexibleAnchor>, &mut Visibility)>,
 ) {
-    for (Lens(a), mut v) in &mut lenses {
-        v.set_if_neq(if *a == f.aircraft && f.lights && f.battery {
+    for (Lens(a), anchor, mut v) in &mut lenses {
+        let broken = *a == Aircraft::F22 && anchor.is_some_and(|anchor| {
+            (anchor.surface == crate::structural::LEFT_WING && f.damage.wing_broken[0]) ||
+            (anchor.surface == crate::structural::RIGHT_WING && f.damage.wing_broken[1])
+        });
+        v.set_if_neq(if *a == f.aircraft && f.lights && f.battery && !broken && (*a!=Aircraft::Hornet || f.systems.hornet_nav_lights) {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -1648,7 +2023,7 @@ mod plume_tests {
         super::super::select(&mut f, Aircraft::F22);
         f.spool = 1.; f.throttle = 1.; f.thrust = 312000.; f.engine = true;
         f.systems.nozzle = [0.2, -0.1];
-        app.add_plugins(MinimalPlugins).insert_resource(f).add_systems(Update, update);
+        app.add_plugins(MinimalPlugins).init_resource::<Assets<Mesh>>().insert_resource(f).add_systems(Update, update);
         let a = app.world_mut().spawn((Plume(Aircraft::F22, 0, 2), Transform::default(), Visibility::Inherited)).id();
         let b = app.world_mut().spawn((Plume(Aircraft::F22, 1, 2), Transform::default(), Visibility::Inherited)).id();
         let mut poses = Vec::new();

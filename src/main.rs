@@ -1,33 +1,35 @@
 // Release builds launch as a normal Windows game; development builds keep console logs.
-#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 
 mod aero_fx;
-mod aircraft;
-mod hangar;
-mod start_screen;
-mod atmospheric_render;
-mod benchmark;
 mod aerodynamics;
+mod aircraft;
 mod aircraft_detail;
 mod airframe;
+mod atmospheric_render;
+mod benchmark;
+mod celestial;
 mod cockpit;
 mod cockpit_controls;
 mod cockpit_labels;
-mod celestial;
 mod collision;
+mod carrier;
 mod combat;
 mod control_surfaces;
+mod crew;
 mod display_upload;
 mod earth;
 mod earth_gpu;
-mod terrain_ready;
-mod mesh_reuse;
-mod render_batch;
 mod flight_study;
 mod gear;
+mod hangar;
 mod instruments;
 mod lunar;
 mod map;
+mod mesh_reuse;
 mod navball;
 mod optimization_study;
 mod orbit;
@@ -35,12 +37,16 @@ mod performance;
 mod physics;
 mod plume_motion;
 mod propulsion;
+mod render_batch;
 mod render_cache;
 mod skin_damage;
 mod sound;
 mod space;
 mod spacecraft_detail;
+mod start_screen;
+mod structural;
 mod terrain;
+mod terrain_ready;
 mod warp;
 mod world;
 use bevy::{
@@ -223,7 +229,9 @@ enum FlightStage { Controls, Simulation, World, Camera, Presentation, Interface,
 fn main() {
     if std::env::args().any(|a|a=="--export-f22-nozzle"){aircraft::visual::raptor_detail::export_nozzle_preview();return;}
     if std::env::args().any(|a|a=="--study-f22"){aircraft::raptor::study();return;}
+    if std::env::args().any(|a|a=="--study-f22-fbw"){aircraft::raptor::fbw::study();return;}
     if std::env::args().any(|a|a=="--study-f22-roll"){aircraft::raptor::roll_study();return;}
+    if std::env::args().any(|a|a=="--study-missile-release"){combat::guidance::release_study();return;}
     if std::env::args().any(|a|a=="--study-fleet"){aircraft::study();return;}
     if std::env::args().any(|a| a == "--study-lunar") {
         space::study();
@@ -983,6 +991,34 @@ fn main() {
                 if mode=="belly-gear" {initial_flight.gear=true;initial_flight.gear_extension=1.;initial_flight.gear_door=0.;}
             }
             if mode=="external"{initial_flight.systems.external_stores=true;}
+            if a==aircraft::Aircraft::Hornet&&mode.starts_with("stabilator-") {
+                initial_flight.hornet.initialized=true;
+                let angle=if mode.ends_with("up"){0.3}else{-0.3};
+                initial_flight.hornet.angles[0]=angle;initial_flight.hornet.angles[4]=angle;
+                initial_flight.engine=false;initial_flight.thrust=0.;initial_flight.paused=true;
+                initial_view.simple=true;
+            }
+
+            if a==aircraft::Aircraft::F22 && mode=="wing-break-left" {
+                initial_flight.paused=true;
+                initial_view.yaw=2.8;initial_view.pitch=-0.8;initial_view.zoom=0.6;
+                initial_flight.damage.wing_broken[0]=true;
+                initial_flight.damage.wings[0]=0.;
+                for i in [1,2,9] {initial_flight.damage.surface_state[i]=combat::damage::SurfaceState::Detached;initial_flight.damage.surfaces[i]=0.;}
+                initial_view.aero_debug=true;
+            }
+            // A deliberately exaggerated static pose for checking mesh seams,
+            // hinge attachments, and collision mapping; not a flight prediction.
+            if a==aircraft::Aircraft::F22 && mode=="flex-test" {
+                initial_flight.paused=true;
+                initial_view.yaw=0.35;initial_view.pitch=-0.12;initial_view.zoom=0.40;
+                initial_flight.structure.surfaces[structural::LEFT_WING].bend=0.55;
+                initial_flight.structure.surfaces[structural::RIGHT_WING].bend=0.55;
+                initial_flight.structure.surfaces[structural::LEFT_TAIL].bend=0.16;
+                initial_flight.structure.surfaces[structural::RIGHT_TAIL].bend=0.16;
+                initial_flight.structure.surfaces[structural::LEFT_FIN].bend=0.10;
+                initial_flight.structure.surfaces[structural::RIGHT_FIN].bend=0.10;
+            }
             if mode=="highalpha"{initial_flight.orientation*=bevy::math::DQuat::from_rotation_x(0.8);initial_flight.surface.x=0.65;initial_flight.systems.nozzle=[-13_f64.to_radians();2];}
             if mode=="hover"{initial_flight.systems.conversion=1.;initial_flight.systems.conversion_target=true;initial_flight.systems.nozzle=[std::f64::consts::FRAC_PI_2;2];initial_flight.spool=1.;initial_flight.thrust=190000.;}
             if mode=="bays"{initial_flight.systems.bays=1.;}
@@ -1006,6 +1042,11 @@ fn main() {
                     if std::env::var_os("NORD_BAY_RAIL").is_some(){initial_flight.systems.main_stroke[0]=launcher;}
                 }
                 if mode=="detail-plan-top" {initial_flight.systems.bays=0.;initial_flight.systems.side_bays=default();}
+                if mode.starts_with("detail-wing-") {
+                    initial_flight.systems.bays=0.;initial_flight.systems.side_bays=default();
+                    initial_flight.surface=if mode.contains("neutral")||mode.contains("flaps"){DVec3::ZERO}else{DVec3::new(0.,0.,0.8)};
+                    initial_flight.flaps=if mode.contains("flaps"){0.8}else{0.};
+                }
                 if mode.starts_with("detail-reference-") && !mode.ends_with("4") {
                     initial_flight.systems.side_bays=default();
                 }
@@ -1047,9 +1088,13 @@ fn main() {
             }
             if mode.starts_with("exhaust-") {
                 initial_flight.engine=mode!="exhaust-off";
-                initial_flight.spool=if mode=="exhaust-idle"{0.25}else if mode=="exhaust-off"{0.}else{1.};
+                initial_flight.spool=if mode.starts_with("exhaust-idle"){0.25}else if mode.starts_with("exhaust-mid"){0.55}else if mode.starts_with("exhaust-military"){0.85}else if mode=="exhaust-off"{0.}else{1.};
                 initial_flight.throttle=initial_flight.spool;initial_flight.thrust=if initial_flight.engine{312000.*initial_flight.spool}else{0.};
                 if mode=="exhaust-vector"{initial_flight.systems.nozzle=[-0.25,0.25];}
+                if mode.contains("night") {initial_environment.day_phase=std::f64::consts::PI;}
+                if mode.contains("partial") {initial_flight.spool=0.94;initial_flight.throttle=0.94;}
+                if mode.contains("single") {initial_flight.systems.engine_on[0]=false;}
+                if mode.contains("motion") {initial_flight.elapsed=2.375;}
             }
             if mode.starts_with("nozzle-burner-") {
                 initial_flight.engine=mode!="nozzle-burner-off";initial_flight.spool=if mode=="nozzle-burner-idle"{0.25}else{1.};
@@ -1064,6 +1109,36 @@ fn main() {
             if mode=="ground"{initial_flight=Flight::runway();aircraft::select(&mut initial_flight,a);initial_flight.paused=true;}
             if mode=="damage"{initial_flight.damage.surface_state[0]=combat::damage::SurfaceState::Jammed(0.4);initial_flight.damage.surface_state[6]=combat::damage::SurfaceState::Detached;initial_flight.damage.surfaces[6]=0.;initial_flight.damage.fire=0.6;let mut fx=std::mem::take(&mut combat.fx);let mut pose=initial_flight.clone();pose.velocity=DVec3::ZERO;for _ in 0..7{fx.advance(&combat,&pose,1./60.);}combat.fx=fx;}
         }
+    }
+    if let Ok(mode)=std::env::var("NORD_CARRIER_CAPTURE") {
+        initial_environment.wind_enabled=false;
+        let arrest=mode.starts_with("arrest")||mode=="relaunch";
+        initial_flight=carrier::scenario(mode!="approach"&&!arrest);
+        if arrest {
+            initial_flight.orientation=carrier::rotation(0.)*bevy::math::DQuat::from_rotation_y(0.14)*bevy::math::DQuat::from_rotation_x(0.03);
+            let clear=collision::wheel_clearance(&initial_flight);
+            initial_flight.position=carrier::world(DVec3::new(carrier::lane(125.),carrier::DECK+clear+0.6,125.),0.);
+            initial_flight.velocity=carrier::velocity(0.)+carrier::rotation(0.)*DVec3::new(-9.8,-3.,-70.);
+            let duration=if mode=="arrest-mid"{1.5}else{6.};
+            for _ in 0..(duration*240.)as usize {simulate(&mut initial_flight,&initial_environment,1./240.);}
+            assert!(!initial_flight.crashed&&initial_flight.carrier.arrested,"carrier capture arrest failed: {}",initial_flight.status);
+        }
+        if mode.starts_with("launch-")||mode=="relaunch" {
+            if mode=="relaunch"{carrier::attach(&mut initial_flight);}
+            initial_flight.throttle=1.;
+            for _ in 0..960{simulate(&mut initial_flight,&initial_environment,1./240.);}
+            carrier::launch(&mut initial_flight);
+            let mut released=0;
+            for i in 0..1440 {
+                simulate(&mut initial_flight,&initial_environment,1./240.);
+                if mode=="launch-mid"&&i>=312 {break;}
+                if initial_flight.carrier.launch.is_none(){released+=1;initial_flight.controls.x=if released<300{0.5}else{0.};if released>=600{break;}}
+            }
+            assert!(!initial_flight.crashed,"carrier capture launch failed: {}",initial_flight.status);
+        }
+        println!("Carrier capture {mode}: status={} altitude={} ship_velocity={:?} pitch={} rates={:?} hook={:?} payout={} absorbed_J={}",initial_flight.status,initial_flight.altitude(),initial_flight.velocity-carrier::velocity(initial_flight.elapsed),initial_flight.pitch(),initial_flight.rates,carrier::hook_point(&initial_flight),initial_flight.carrier.arrest_distance,initial_flight.hornet.cable_energy);
+        initial_flight.paused=true;initial_view.help=false;initial_view.scenario=if mode=="approach"{11}else{12};initial_view.index=0;
+        initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
     }
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
     let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
@@ -1150,19 +1225,30 @@ fn main() {
         )
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_plugins(performance::PerformancePlugin)
+        .add_plugins(aircraft::visual::hornet::HeatPlugin)
         .add_plugins(earth_gpu::EarthGpuPlugin)
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
         .add_plugins(terrain_ready::TerrainReadyPlugin)
-        .add_systems(PostStartup, (mesh_reuse::share,render_batch::build).chain())
+        .add_systems(
+            PostStartup,
+            (mesh_reuse::share, render_batch::build).chain(),
+        )
         .add_plugins(sound::FlightAudioPlugin)
+        .add_plugins(crew::CrewPlugin)
         .add_plugins(display_upload::DisplayUploadPlugin)
         .insert_resource(atmospheric_render::TransitionRun::configured())
-        .add_systems(PreUpdate, benchmark::neutral_inputs.after(bevy::input::InputSystems).before(bevy::ui::UiSystems::Focus))
+        .add_systems(
+            PreUpdate,
+            benchmark::neutral_inputs
+                .after(bevy::input::InputSystems)
+                .before(bevy::ui::UiSystems::Focus),
+        )
         .add_systems(PostStartup, benchmark_ablation)
         .add_systems(
             Startup,
             (
                 setup_world,
+                carrier::setup,
                 setup_view,
                 setup_ui,
                 setup_destruction,
@@ -1232,7 +1318,7 @@ fn main() {
                 )
                     .chain().in_set(FlightStage::Camera),
                 (
-                    (gear::update,aircraft::visual::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
+                    (gear::update,aircraft::visual::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,carrier::visual,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
                     (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
@@ -1331,8 +1417,11 @@ fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<Vi
         "release"
     };
     let resolution=windows.iter().next().map(|w|[w.physical_width(),w.physical_height()]);
+    // Read actual flight time even when GPU/CPU profiling is disabled. The
+    // FPS-only path deliberately skips the performance counters on Metal.
+    let simulated_seconds = f.elapsed - benchmark.start_sim.unwrap();
     let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
-        "simulated_seconds":performance::simulated_seconds(),"simulation_rate":performance::simulated_seconds()/(elapsed-warmup),"over_25_ms":frames.iter().filter(|&&t|t>25.).count(),"over_50_ms":frames.iter().filter(|&&t|t>50.).count(),"measurements":performance::report(&diagnostics),
+        "simulated_seconds":simulated_seconds,"simulation_rate":simulated_seconds/(elapsed-warmup),"over_25_ms":frames.iter().filter(|&&t|t>25.).count(),"over_50_ms":frames.iter().filter(|&&t|t>50.).count(),"measurements":performance::report(&diagnostics),
         "workers":{"compute":bevy::tasks::ComputeTaskPool::get().thread_num(),"async_compute":bevy::tasks::AsyncComputeTaskPool::get().thread_num(),"io":bevy::tasks::IoTaskPool::get().thread_num()},
         "note":"Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed"});
     std::fs::write(
@@ -1435,22 +1524,32 @@ fn setup_view(
         bevy::light::NotShadowReceiver,
     ));
 }
-fn spawn_text(c: &mut Commands, text: &str, size: f32, color: Color, node: Node, tag: u8) {
-    c.spawn((
-        Text::new(text),
-        TextFont {
-            font_size: size,
-            ..default()
-        },
-        TextColor(color),
-        TextShadow {
-            offset: Vec2::new(1.0, 1.0),
-            color: Color::srgba(0.0, 0.025, 0.03, 0.9),
-        },
-        node,
-        Hud(tag),
-        ZIndex(20),
-    ));
+fn spawn_text(c: &mut Commands, text: &str, size: f32, color: Color, mut node: Node, tag: u8) {
+    if tag == 7 {
+        node.padding = UiRect::all(px(10));
+        node.border_radius = BorderRadius::all(px(5));
+    }
+    let entity = c
+        .spawn((
+            Text::new(text),
+            TextFont {
+                font_size: size,
+                ..default()
+            },
+            TextColor(color),
+            TextShadow {
+                offset: Vec2::new(1.0, 1.0),
+                color: Color::srgba(0.0, 0.025, 0.03, 0.9),
+            },
+            node,
+            Hud(tag),
+            ZIndex(20),
+        ))
+        .id();
+    if tag == 7 {
+        c.entity(entity)
+            .insert(BackgroundColor(Color::srgba(0.025, 0.038, 0.052, 0.90)));
+    }
 }
 fn setup_ui(mut c: Commands, mut fonts: ResMut<Assets<Font>>) {
     c.insert_resource(UiFont(fonts.add(
@@ -1712,13 +1811,16 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
             f
         }
         9 | 10 => space::scenario(scenario),
+        11 | 12 => carrier::scenario(scenario==12),
         _ => Flight::spacecraft(),
     };
     f.best_landing = best;
-    if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
+    let aircraft=if matches!(scenario,11|12){aircraft::Aircraft::Hornet}else{aircraft};
+    if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11|12) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
     if aircraft==aircraft::Aircraft::F22{f.systems.external_stores=external_stores;}
     v.generation = v.generation.wrapping_add(1);
     v.scenario = scenario;
+    if matches!(scenario,11|12){v.help=false;}
     v.index = 0;
     v.map = false;
     v.map_target = 0;
@@ -1849,7 +1951,7 @@ fn input(
     if keys.just_pressed(KeyCode::KeyP) || keys.just_pressed(KeyCode::Escape) {
         f.paused = !f.paused;
     }
-    if keys.just_pressed(KeyCode::KeyC) {
+    if keys.just_pressed(KeyCode::KeyC) && !(f.carrier.active && (keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight))) {
         v.restore_camera();
         v.index = (v.index + 1) % 4;
         if v.index == 3 {
@@ -1874,7 +1976,14 @@ fn input(
         }
     }
     if keys.just_pressed(KeyCode::KeyH) && !(keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)) {
-        v.help = !v.help;
+        let hornet = f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet;
+        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        if hornet && !shift {
+            f.systems.hook_down = !f.systems.hook_down;
+            f.status = if f.systems.hook_down { "HOOK DOWN" } else { "HOOK UP" }.into();
+        } else if !hornet || shift {
+            v.help = !v.help;
+        }
     }
     if keys.just_pressed(KeyCode::F1) {
         v.simple = !v.simple;
@@ -1882,10 +1991,24 @@ fn input(
     if keys.just_pressed(KeyCode::KeyV) && v.scenario < 5 {
         v.guide = !v.guide;
     }
-    if keys.just_pressed(KeyCode::KeyG) {
-        f.gear = !f.gear;
+    let carrier_alt=keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight);
+    if f.carrier.active && keys.just_pressed(KeyCode::Enter) {carrier::launch(&mut f);}
+    if f.carrier.active && carrier_alt && keys.just_pressed(KeyCode::KeyC) {carrier::attach(&mut f);}
+    if f.carrier.active && carrier_alt && keys.just_pressed(KeyCode::KeyG) {f.carrier.guidance=!f.carrier.guidance;}
+    if keys.just_pressed(KeyCode::KeyG) && !(f.carrier.active&&carrier_alt) {f.gear=!f.gear;}
+    let hornet = f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet;
+    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    if hornet && alt && keys.just_pressed(KeyCode::KeyO) {
+        if f.systems.hornet_canopy_target || (f.landed && f.velocity.length() < 3.) {
+            f.systems.hornet_canopy_target = !f.systems.hornet_canopy_target;
+        } else { f.status = "CANOPY: PARK AIRCRAFT FIRST".into(); }
     }
-    if keys.just_pressed(KeyCode::KeyF) {
+    if hornet && alt && keys.just_pressed(KeyCode::KeyF) {
+        if f.systems.hornet_wing_target || (f.landed && f.velocity.length() < 3.) {
+            f.systems.hornet_wing_target = !f.systems.hornet_wing_target;
+        } else { f.status = "WING FOLD: PARK AIRCRAFT FIRST".into(); }
+    }
+    if keys.just_pressed(KeyCode::KeyF) && !(hornet && alt) {
         f.flaps = if f.flaps < 0.2 {
             0.55
         } else if f.flaps < 0.8 {
@@ -1921,11 +2044,17 @@ fn input(
             f.thrust = 0.0;
         }
     }
-    if keys.just_pressed(KeyCode::KeyL) {
+    if keys.just_pressed(KeyCode::KeyL) && !(hornet && alt) {
         e.day_phase = (e.day_phase + 0.30).rem_euclid(std::f64::consts::TAU);
     }
     if keys.just_pressed(KeyCode::KeyI) {
-        f.lights = !f.lights;
+        let shift=keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight);
+        if hornet && alt && shift { f.systems.hornet_strobe_lights = !f.systems.hornet_strobe_lights; }
+        else if hornet && alt { f.systems.hornet_nav_lights = !f.systems.hornet_nav_lights; }
+        else { f.lights = !f.lights; }
+    }
+    if hornet && alt && keys.just_pressed(KeyCode::KeyL) {
+        f.systems.hornet_landing_light = !f.systems.hornet_landing_light;
     }
     if keys.just_pressed(KeyCode::KeyM) {
         v.toggle_map(&f);
@@ -1947,7 +2076,9 @@ fn input(
             f.throttle = (f.throttle - dt * 0.25).max(0.0);
         }
     }
-    if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+    if (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
+        && (!(f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet)
+            || (!alt && !keys.pressed(KeyCode::KeyH))) {
         f.autopilot = false;
         f.throttle = 1.0;
     }
@@ -2212,7 +2343,9 @@ fn update_camera(
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
         if mode.starts_with("detail-") {
             let s=if mode.contains("left"){-1.}else{1.};
-            let (at,offset)=if mode.starts_with("detail-reference-") {
+            let (at,offset)=if mode=="detail-hornet-seat" {
+                (Vec3::new(0.,0.95,-4.1),Vec3::new(2.5,0.45,0.2))
+            }else if mode.starts_with("detail-reference-") {
                 match mode.as_str() {
                     "detail-reference-1"=>(Vec3::new(0.,-0.05,-3.8),Vec3::new(0.,-0.10,-29.)),
                     "detail-reference-2"=>(Vec3::new(0.,0.,-2.0),Vec3::new(-12.,9.,-17.)),
@@ -2222,6 +2355,8 @@ fn update_camera(
                 }
             }else if mode=="detail-plan-top" {
                 (Vec3::new(0.,0.,-0.2),Vec3::new(0.,32.,0.001))
+            }else if mode.starts_with("detail-wing-") {
+                (Vec3::new(s*4.5,-0.04,5.1),Vec3::new(s*3.4,1.9,3.8))
             }else if mode.starts_with("detail-mainbay") {
                 (Vec3::new(0.,-0.6,0.),if mode.contains("under"){Vec3::new(0.,-11.,0.001)}else{Vec3::new(s*5.,-6.,-3.5)})
             }else if mode.contains("inlet") {
@@ -2270,7 +2405,15 @@ fn update_camera(
         if mode=="nozzle-side" {target=pos+rot*Vec3::new(0.,0.,6.7);p=target+rot*Vec3::new(5.0,2.2,3.0);up_view=rot*Vec3::Y;}
         if mode=="nozzle-down-under" {target=pos+rot*Vec3::new(0.,0.,7.3);p=target+rot*Vec3::new(2.4,-3.5,4.0);up_view=rot*Vec3::Y;}
         if mode.starts_with("nozzle-burner-") {target=pos+rot*Vec3::new(0.93,-0.12,7.0);p=target+rot*Vec3::new(0.05,0.04,4.5);up_view=rot*Vec3::Y;}
+        if mode.starts_with("stabilator-") {target=pos+rot*Vec3::new(0.,0.25,6.0);p=target+rot*Vec3::new(10.,1.3,5.);up_view=rot*Vec3::Y;}
         if mode.starts_with("exhaust-") {target=pos+rot*Vec3::new(0.,0.,10.2);p=target+rot*Vec3::new(7.5,1.2,5.5);up_view=rot*Vec3::Y;}
+        if mode.starts_with("exhaust-") && mode.ends_with("rear") {target=pos+rot*Vec3::new(0.,0.48,8.202);p=target+rot*Vec3::new(0.,0.,5.0);up_view=rot*Vec3::Y;}
+    }
+    if std::env::var_os("NORD_CARRIER_CAPTURE").is_some() {
+        let ship=carrier::origin(f.elapsed);target=local(ship,&f)+Vec3::Y*20.;
+        let basis=local_rot(carrier::rotation(f.elapsed),&f);
+        p=target+basis*Vec3::new(260.,150.,260.);up_view=basis*Vec3::Y;
+        if std::env::var("NORD_CARRIER_CAPTURE").as_deref()!=Ok("approach") {target=local(f.position,&f);p=target+basis*Vec3::new(28.,12.,30.);}
     }
     if let Some(missile) = v
         .missile_follow
@@ -2730,6 +2873,10 @@ fn update_hud(
                     f.fuel
                 )
             }
+            7 if f.carrier.active => {
+                let p=carrier::relative(f.position,f.elapsed);
+                format!("NIMITZ / CARRIER OPERATIONS\nSHIP SPEED 25 kt / DECK {:.1} m\nRANGE {:.2} km / RELATIVE SPEED {:.0} kt\nHOOK {} / ALT+G GUIDANCE {}",carrier::DECK,(p.x*p.x+p.z*p.z).sqrt()/1000.,(f.velocity-carrier::velocity(f.elapsed)).length()*1.94384,if f.systems.hook_down {"DOWN"}else{"UP"},if f.carrier.guidance {"ON"}else{"OFF"})
+            }
             7 => format!(
                 "RUNWAY 19  /  SÅTENÄS\nRANGE {:.2} km   /   CROSS TRACK {:+.0} m\nrho {:.3} kg/m3   T {:.0} K   P {:.0} hPa\nWIND {:.1} m/s   BEST LANDING {:.0}",
                 ((f.position.z - 1000.0).powi(2) + f.position.x.powi(2)).sqrt() / 1000.0,
@@ -2748,21 +2895,23 @@ fn update_hud(
                 }
             }
             9 => {
-                if v.help && f.vehicle == Vehicle::Spacecraft {
+                if v.help && f.carrier.active {
+                    "CARRIER / F/A-18F\nH hook · G gear · Z/X throttle · Shift full\nEnter catapult launch when attached at full power\nAlt+C return to catapult once stopped on deck\nAlt+G approach guidance · Shift+H close help".into()
+                } else if v.help && f.vehicle == Vehicle::Spacecraft {
                     "SPACEFLIGHT  W/S pitch · Q/E roll · A/D yaw\nPOWER  Shift full · Ctrl cut · Z/X adjust\nSTAGING  Space (throttle off) · G landing legs\nGUIDANCE  F7 SAS mode · T assist · M map\nREENTRY  K arm parachutes · N infinite fuel\nWARP  , / . rate · / normal time\nVIEW  C camera · Home recenter · R restart\nPAUSE  P · H help · 9 audio · 0 mute".into()
                 } else if v.help && v.scenario >= 5 {
                     format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nCANNON   U fire · {}\nDEFENSE   V flare + chaff · Backspace chaff\nVIEW   C camera · 2 aircraft · 6 missile / 7 return · R restart\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute", if v.index == 3 { "aim large circle at target" } else { "align cross with gun pipper" })
                 } else if v.help && v.scenario == 4 {
                     "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
                 } else if v.help {
-                    "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · H help\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Shift+H help · H hook · Alt+O canopy · Alt+F wing fold" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
                 } else {
                     String::new()
                 }
             }
             11 => {
                 if v.aero_debug {
-                    format!(
+                    let mut text = format!(
                         "AERO / CL {:.3}  CD {:.3}  ATTACHED FLOW {:.0}%\nDRAG / PARASITE {:.3}  INDUCED {:.3}  WAVE {:.3}  SURFACES {:.3}",
                         f.aero_coeff.lift,
                         f.aero_coeff.drag,
@@ -2771,7 +2920,12 @@ fn update_hud(
                         f.aero_coeff.induced,
                         f.aero_coeff.wave,
                         f.aero_coeff.control_drag
-                    )
+                    );
+                    if f.aircraft == aircraft::Aircraft::F22 && f.vehicle == Vehicle::Gripen {
+                        let wing = |i: usize| if f.damage.wing_broken[i] { "BROKEN".to_string() } else { format!("{:+.1} MPa", f.damage.wing_stress[i] / 1e6) };
+                        text.push_str(&format!("\nWING ROOT STRESS / L {}  R {}  / LIMIT 300 MPa", wing(0), wing(1)));
+                    }
+                    text
                 } else {
                     String::new()
                 }
@@ -2784,6 +2938,11 @@ fn update_hud(
                 }
             }
         };
+        let updated = if tag.0 == 9 && v.help && v.scenario >= 4 && f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet {
+            let mut text = updated.replace("HELP   H", "HELP   Shift+H");
+            text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");
+            text
+        } else { updated };
         if t.0 != updated {
             t.0 = updated;
         }
@@ -2893,6 +3052,9 @@ fn capture_visual_check(
     suns: Query<(&Transform, &GlobalTransform, &Visibility, &ViewVisibility), With<SunBody>>,
     cameras: Query<&Transform, With<FlightCamera>>,
 ) {
+    if std::env::var("NORD_CREW_CAPTURE").is_ok_and(|m|m.contains("gallery")) {
+        return;
+    }
     let Some(mode) = &preview.0 else {
         return;
     };
@@ -2935,6 +3097,94 @@ fn capture_visual_check(
 #[cfg(test)]
 mod camera_input_tests {
     use super::*;
+    #[test]
+    fn hornet_canopy_and_fold_require_a_parked_aircraft() {
+        let mut app=scene(false);
+        {
+            let mut f=app.world_mut().resource_mut::<Flight>();
+            f.aircraft=aircraft::Aircraft::Hornet;
+            f.landed=true;
+            f.airspeed=0.;
+        }
+        {
+            let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(KeyCode::AltLeft); keys.press(KeyCode::KeyO); keys.press(KeyCode::KeyF);
+        }
+        app.update();
+        let f=app.world().resource::<Flight>();
+        assert!(f.systems.hornet_canopy_target && f.systems.hornet_wing_target);
+        let flaps=f.flaps;
+        {
+            let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all(); keys.press(KeyCode::AltLeft); keys.press(KeyCode::KeyO); keys.press(KeyCode::KeyF);
+        }
+        app.world_mut().resource_mut::<Flight>().landed=false;
+        app.update();
+        let f=app.world().resource::<Flight>();
+        assert!(!f.systems.hornet_canopy_target && !f.systems.hornet_wing_target);
+        assert_eq!(f.flaps,flaps);
+        {
+            let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all(); keys.press(KeyCode::AltLeft); keys.press(KeyCode::KeyO); keys.press(KeyCode::KeyF);
+        }
+        app.update();
+        let f=app.world().resource::<Flight>();
+        assert!(!f.systems.hornet_canopy_target && !f.systems.hornet_wing_target);
+    }
+    #[test]
+    fn hornet_light_shortcuts_do_not_change_master_power_or_daylight() {
+        let mut app=scene(false);
+        app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::Hornet;
+        let phase=app.world().resource::<Environment>().day_phase;
+        {
+            let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(KeyCode::AltLeft); keys.press(KeyCode::KeyI); keys.press(KeyCode::KeyL);
+        }
+        app.update();
+        let f=app.world().resource::<Flight>();
+        assert!(f.lights && !f.systems.hornet_nav_lights && !f.systems.hornet_landing_light);
+        assert_eq!(app.world().resource::<Environment>().day_phase,phase);
+        {
+            let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all(); keys.press(KeyCode::AltLeft); keys.press(KeyCode::ShiftLeft); keys.press(KeyCode::KeyI);
+        }
+        app.update();
+        let f=app.world().resource::<Flight>();
+        assert!(!f.systems.hornet_strobe_lights && !f.systems.hornet_nav_lights);
+        assert!(f.throttle < 1.);
+    }
+    #[test]
+    fn hornet_hook_and_help_keys_do_not_change_other_aircraft_bindings() {
+        let mut app = scene(false);
+        app.world_mut().resource_mut::<Flight>().aircraft = aircraft::Aircraft::Hornet;
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyH);
+        app.update();
+        assert!(app.world().resource::<Flight>().systems.hook_down);
+        assert!(app.world().resource::<ViewState>().help);
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(KeyCode::ShiftLeft);
+            keys.press(KeyCode::KeyH);
+        }
+        app.update();
+        assert!(app.world().resource::<Flight>().systems.hook_down);
+        assert!(!app.world().resource::<ViewState>().help);
+        assert!(app.world().resource::<Flight>().throttle < 1.0);
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(KeyCode::ShiftLeft);
+            keys.press(KeyCode::KeyZ);
+        }
+        app.update();
+        assert_eq!(app.world().resource::<Flight>().throttle, 1.0);
+        let mut other = scene(false);
+        other.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyH);
+        other.update();
+        assert!(!other.world().resource::<ViewState>().help);
+        assert!(!other.world().resource::<Flight>().systems.hook_down);
+    }
     #[test]
     fn restart_key_preserves_scenario_and_selected_aircraft() {
         for aircraft in [aircraft::Aircraft::Gripen, aircraft::Aircraft::F22] {
@@ -3108,6 +3358,19 @@ mod camera_input_tests {
         assert_eq!(view.index, 0);
         assert!(!app.world().resource::<Flight>().paused);
     }
+    #[test]
+    fn hornet_shift_alone_sets_full_throttle_on_both_shift_keys() {
+        for key in [KeyCode::ShiftLeft, KeyCode::ShiftRight] {
+            let mut app = scene(false);
+            { let mut f=app.world_mut().resource_mut::<Flight>();
+              f.aircraft=aircraft::Aircraft::Hornet; f.throttle=0.3; f.autopilot=true; }
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+            app.update();
+            assert_eq!(app.world().resource::<Flight>().throttle,1.);
+            assert!(!app.world().resource::<Flight>().autopilot);
+        }
+    }
+
     #[test]
     fn throttle_shortcuts_work_while_paused_and_cut_has_priority() {
         let mut app = scene(false);

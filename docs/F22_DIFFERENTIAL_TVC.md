@@ -1,5 +1,9 @@
 # F-22 differential vectoring and stabilator authority — October 19, 2026
 
+The [26 October flight-model revision](F22_FLIGHT_MODEL_V2.md) retains differential
+pitch-axis vectoring and replaces the blanket stabilator boost with independent
+surface travel/rate limits and updated aerodynamic/control calibration.
+
 **Superseded control-sign details:** the subsequent
 [roll-control correction](F22_ROLL_CONTROL_FIX.md) fixes the conflicting
 stabilator/nozzle signs and the direct-mode mapping described below. Its

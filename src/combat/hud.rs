@@ -277,9 +277,15 @@ pub fn draw(
     >,
     mut captions: Query<(&Caption, &mut Node, &mut Text, &mut TextColor), Without<Stroke>>,
     mut ink: Local<Ink>,
+    crew: Option<Res<crate::crew::Crew>>,
+    panel_sizes: (
+        Query<&ComputedNode, With<super::CombatPanel>>,
+        Query<&ComputedNode, With<super::dogfight::DefensePanel>>,
+    ),
 ) {
     ink.0.clear();
     let mut labels: [Option<(Vec2, String, Color)>; 4] = [None, None, None, None];
+    let mut threat_docked = false;
     let active = combat.active
         && v.index != 3
         && combat.bvr.is_none()
@@ -433,11 +439,25 @@ pub fn draw(
             {
                 ink.cross(p, GREEN);
             }
-            let centre = if v.simple {
-                Vec2::new(size.x - 110.0, 150.0)
-            } else {
-                Vec2::new(size.x - 245.0, size.y - 425.0)
-            };
+            let portrait =
+                crate::crew::layout::portrait_bounds(crew.as_deref(), &f, &v, &combat, size);
+            let weapon_height = panel_sizes
+                .0
+                .iter()
+                .next()
+                .map_or(132., |p| (p.size().y * p.inverse_scale_factor()).max(132.));
+            let defense_height = panel_sizes
+                .1
+                .iter()
+                .next()
+                .map_or(164., |p| (p.size().y * p.inverse_scale_factor()).max(164.));
+            let (centre, warning_position, docked) = crate::crew::layout::threat_positions(
+                size,
+                v.simple,
+                portrait,
+                crate::crew::layout::COMBAT_TOP + weapon_height + 12. + defense_height,
+            );
+            threat_docked = docked;
             let (count, range, _, kind) = combat.threats(&f);
             if !v.simple || count > 0 {
                 ink.ring(centre, 34.0, 1.0, DIM);
@@ -460,7 +480,7 @@ pub fn draw(
             }
             if !v.simple || count > 0 {
                 labels[2] = Some((
-                    centre + Vec2::new(-85.0, 46.0),
+                    warning_position,
                     if let Some(kind) = kind {
                         format!(
                             "{} INBOUND  {:.1} km\n{}",
@@ -528,6 +548,12 @@ pub fn draw(
     for (tag, mut node, mut text, mut color) in &mut captions {
         if node.display != Display::None {
             node.display = Display::None;
+        }
+        if tag.0 == 2 {
+            let width = if threat_docked { px(170) } else { Val::Auto };
+            if node.width != width {
+                node.width = width;
+            }
         }
         if let Some((p, t, c)) = &labels[tag.0] {
             node.display = Display::Flex;

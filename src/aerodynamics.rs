@@ -11,6 +11,8 @@ pub struct FlowState {
     pub lag_beta: f64,
     pub vortex_lift: f64,
     pub attached: f64,
+    /// Independent F-22 wing separation histories; unused by other airframes.
+    pub wing_attached: [f64; 2],
 }
 impl Default for FlowState {
     fn default() -> Self {
@@ -19,6 +21,7 @@ impl Default for FlowState {
             lag_beta: 0.0,
             vortex_lift: 0.0,
             attached: 1.0,
+            wing_attached: [1.; 2],
         }
     }
 }
@@ -83,7 +86,7 @@ pub fn evaluate(c: Conditions, state: &mut FlowState, dt: f64) -> Coefficients {
     evaluate_geometry(c,state,dt,false)
 }
 pub fn evaluate_raptor(c:Conditions,state:&mut FlowState,dt:f64)->Coefficients {
-    evaluate_geometry(c,state,dt,true)
+    crate::aircraft::raptor::flight_model::aero(c,state,dt)
 }
 fn evaluate_geometry(c:Conditions,state:&mut FlowState,dt:f64,raptor:bool)->Coefficients {
     let chord=if raptor{78./13.56}else{CHORD};let span=if raptor{13.56}else{SPAN};

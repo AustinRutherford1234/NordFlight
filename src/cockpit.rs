@@ -1,6 +1,6 @@
 //! Code-native cockpit interiors and low-cost live instrument textures.
-mod raptor_interior;
 pub(crate) mod coverage;
+pub(crate) mod raptor_interior;
 use crate::{orbit::Orbit, physics::*};
 use bevy::{
     asset::RenderAssetUsages,

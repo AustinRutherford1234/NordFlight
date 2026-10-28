@@ -2,6 +2,7 @@
 //! inertias and control laws are deliberately tunable gameplay estimates.
 pub mod visual;
 pub mod raptor;
+pub mod hornet;
 pub mod bays;
 pub mod main_bay;
 use crate::physics::*;
@@ -31,7 +32,7 @@ impl Aircraft {
             Self::Su27 => "SU-27SM FLANKER",
             Self::F35B => "F-35B LIGHTNING II",
             Self::F22 => "F-22A RAPTOR",
-            Self::Hornet => "F/A-18E SUPER HORNET",
+            Self::Hornet => "F/A-18F SUPER HORNET",
         }
     }
     pub fn slug(self) -> &'static str {
@@ -40,10 +41,11 @@ impl Aircraft {
             Self::Su27 => "su27",
             Self::F35B => "f35b",
             Self::F22 => "f22",
-            Self::Hornet => "fa18e",
+            Self::Hornet => "fa18f",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
+        if s == "fa18e" { return Some(Self::Hornet); }
         Self::ALL.into_iter().find(|a| a.slug() == s)
     }
     pub fn spec(self) -> Spec {
@@ -111,7 +113,7 @@ impl Aircraft {
                 inertia: DVec3::new(220000., 290000., 65000.),
                 g: 9.,
                 alpha: 1.05,
-                limit_mach: 2.55,
+                limit_mach: 2.35,
                 gun: 480,
                 gun_interval: 0.02,
                 ammo: [2, 6],
@@ -378,6 +380,16 @@ impl Panel {
 }
 #[derive(Clone)]
 pub struct Systems {
+    pub raptor: raptor::flight_model::Dynamics,
+    /// Arresting hook command; Hornet dynamics integrate its physical angle.
+    pub hook_down: bool,
+    pub hornet_canopy_target: bool,
+    pub hornet_canopy: f64,
+    pub hornet_wing_target: bool,
+    pub hornet_wing_fold: f64,
+    pub hornet_nav_lights: bool,
+    pub hornet_strobe_lights: bool,
+    pub hornet_landing_light: bool,
     pub external_stores: bool,
     pub engine_on: [bool; 2],
     pub manual_bays: bool,
@@ -397,6 +409,15 @@ pub struct Systems {
 impl Default for Systems {
     fn default() -> Self {
         Self {
+            raptor: default(),
+            hook_down: false,
+            hornet_canopy_target: false,
+            hornet_canopy: 0.,
+            hornet_wing_target: false,
+            hornet_wing_fold: 0.,
+            hornet_nav_lights: true,
+            hornet_strobe_lights: true,
+            hornet_landing_light: true,
             external_stores: false,
             engine_on: [true; 2],
             manual_bays: false,
@@ -416,9 +437,23 @@ impl Default for Systems {
     }
 }
 pub fn select(f: &mut Flight, aircraft: Aircraft) {
+    if f.carrier.active && aircraft!=Aircraft::Hornet {f.status="CARRIER MODE REQUIRES F/A-18F".into();return;}
+    for side in 0..2 {
+        if f.damage.wing_broken[side] {
+            f.damage.wings[side] = 1.;
+            for i in if side == 0 { [1, 2, 9] } else { [5, 6, 10] } {
+                f.damage.surface_state[i] = crate::combat::damage::SurfaceState::Operational;
+                f.damage.surfaces[i] = 1.;
+            }
+        }
+    }
     f.aircraft = aircraft;
     f.damage.aircraft = aircraft;
+    f.damage.wing_broken = [false; 2];
+    f.damage.wing_stress = [0.; 2];
     f.systems = Systems::default();
+    f.structure = Default::default();
+    f.hornet = Default::default();
     if f.vehicle == Vehicle::Spacecraft {
         return;
     }
@@ -447,6 +482,13 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
             0.
         };
     }
+    if aircraft==Aircraft::Hornet&&!f.landed {
+        let gamma=(f.vertical_speed()/f.airspeed.max(1.)).clamp(-0.3,0.3).asin();
+        if let Some(trim)=hornet::trim::solve(f,f.altitude(),f.airspeed,gamma,0.) {
+            f.orientation*=bevy::math::DQuat::from_rotation_x(trim.alpha+gamma-f.pitch());
+            hornet::trim::apply(f,trim);
+        }
+    }
     f.status = format!(
         "{} / T FBW / F6 HANGAR{}",
         aircraft.name(),
@@ -458,6 +500,10 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
     );
 }
 pub fn angles(f: &Flight) -> [f64; SURFACES] {
+    if f.aircraft == Aircraft::Hornet && f.hornet.initialized {return f.hornet.angles;}
+    if f.aircraft == Aircraft::F22 && f.systems.raptor.actuators_initialized {
+        return std::array::from_fn(|i| crate::control_surfaces::effective_angle(&f.damage, i, f.systems.raptor.angles[i]));
+    }
     if f.aircraft == Aircraft::Gripen {
         crate::control_surfaces::angles(f.surface, f.flaps, f.airbrake)
     } else {
@@ -478,7 +524,8 @@ pub fn surface_rotation(a:Aircraft,i:usize,angle:f64)->bevy::math::DQuat {
 }
 fn panel_angle(a:Aircraft,i:usize,p:Panel,actuator:DVec3,flaps:f64,brake:bool,alpha:f64)->f64 {
     let flaps=if a==Aircraft::F22&&(i==9||i==10){flaps.max(((alpha.abs()-0.03)*1.6).clamp(0.,1.))}else{flaps};
-    p.angle(actuator,flaps,brake)
+    let angle = p.angle(actuator,flaps,brake);
+    if a == Aircraft::F22 { raptor::flight_model::limit_angle(i, angle) } else { angle }
 }
 pub fn count(a: Aircraft) -> usize {
     if a == Aircraft::Gripen {
@@ -506,25 +553,17 @@ pub fn stores_mass(f: &Flight) -> f64 {
 }
 fn store_unit_mass(a:Aircraft,i:usize)->f64{if a==Aircraft::F22{if i<2{84.37}else{152.}}else{160.}}
 pub fn jet_output(a: Aircraft, power: f64, rho: f64, mach: f64) -> (f64, f64) {
+    if a == Aircraft::F22 { return raptor::flight_model::engine(power, rho, mach); }
     let s = a.spec();
     let lapse = (rho / 1.225).max(0.).powf(0.62) * (1. + 0.32 * mach * mach)
         / (1. + 0.16 * mach * mach * mach);
-    let smooth = |a: f64, b: f64| {
-        let t = ((mach - a) / (b - a)).clamp(0., 1.);
-        t * t * (3. - 2. * t)
-    };
-    // F-22 installed-engine tuning: retain military-power supercruise and
-    // stronger augmented thrust with inlet ram compression. The high-Mach
-    // recovery loss produces a powered-flight ceiling rather than clamping
-    // velocity. These are game-envelope parameters, not an F119 engine deck.
-    let (augmentation, recovery) = if a == Aircraft::F22 {
-        (1. + 3.4 * smooth(0.9, 2.5), 1. - 0.9 * smooth(2.5, 2.7))
-    } else { (1., 1.) };
+    let (augmentation, recovery) = (1., 1.);
     let wet = (s.wet - s.dry) * ((power - 0.88) / 0.12).clamp(0., 1.) * lapse
         * augmentation * recovery;
     ((s.dry * (power / 0.88).clamp(0., 1.)) * lapse * recovery + wet, wet)
 }
 pub fn mass_center(f: &Flight) -> DVec3 {
+    if f.aircraft == Aircraft::F22 { return raptor::flight_model::center(f); }
     if f.aircraft == Aircraft::Gripen {
         return DVec3::ZERO;
     }
@@ -540,6 +579,17 @@ pub fn mass_center(f: &Flight) -> DVec3 {
 pub fn station(a: Aircraft, i: usize) -> DVec3 {
     let s = a.spec();
     let side = if i % 2 == 0 { -1. } else { 1. };
+    if a == Aircraft::Hornet {
+        // Match the imported model's tip rails, outer and inner pylons,
+        // then the two fuselage shoulder stations. Also used at release.
+        let (span, height, aft) = match i / 2 {
+            0 => (6.48, 0.12, 2.15),
+            1 => (4.40, -0.48, 1.45),
+            2 => (3.46, -0.55, 1.30),
+            _ => (2.28, -0.52, 1.10),
+        };
+        return DVec3::new(side * span, height, aft);
+    }
     if a == Aircraft::F22 {
         return if i < 2 {
             DVec3::new(side * 1.72, -0.40, -0.6)
@@ -569,6 +619,7 @@ pub fn store_drag(f:&Flight)->f64 {
     if f.aircraft==Aircraft::F22 {
         let external=if f.systems.external_stores{f.systems.stores[6..8].iter().filter(|on|**on).count()}else{0};
         external as f64*0.0025+if f.systems.external_stores{0.0012}else{0.}+f.systems.bays*0.008
+            + f.systems.side_bays.iter().map(|b| 0.0018*b.door+0.0009*b.launcher).sum::<f64>()
     }else{stores_mass(f)/160.*0.0018}
 }
 pub fn launch_station(f: &Flight, kind: crate::combat::Weapon, ammo: [u8; 2]) -> DVec3 {
@@ -625,29 +676,82 @@ pub fn panel_loads(
     brake: bool,
     d: &AircraftDamage,
 ) -> crate::control_surfaces::Loads {
+    panel_loads_angles(a,air,rates,rho,mach,actuator,flaps,brake,d,None,None)
+}
+/// Evaluate a command against a frozen elastic shape. FBW may call this many
+/// times per step; it must never advance the structural state itself.
+pub fn panel_loads_structural(
+    a: Aircraft, air: DVec3, rates: DVec3, rho: f64, mach: f64,
+    actuator: DVec3, flaps: f64, brake: bool, d: &AircraftDamage,
+    structure: &crate::structural::State,
+) -> crate::control_surfaces::Loads {
+    panel_loads_angles(a,air,rates,rho,mach,actuator,flaps,brake,d,None,Some(structure))
+}
+pub fn actual_panel_loads(f: &Flight, air: DVec3, rho: f64) -> crate::control_surfaces::Loads {
+    panel_loads_angles(f.aircraft, air, f.rates, rho, f.mach, f.surface, f.flaps, f.airbrake, &f.damage,
+        Some(&f.systems.raptor.angles),Some(&f.structure))
+}
+pub fn raptor_structural_surface(i: usize) -> Option<usize> {
+    use crate::structural::{LEFT_FIN, LEFT_TAIL, LEFT_WING, RIGHT_FIN, RIGHT_TAIL, RIGHT_WING};
+    match i {
+        0 => Some(LEFT_TAIL), 4 => Some(RIGHT_TAIL),
+        1 | 2 | 9 => Some(LEFT_WING), 5 | 6 | 10 => Some(RIGHT_WING),
+        3 => Some(LEFT_FIN), 7 => Some(RIGHT_FIN), _ => None,
+    }
+}
+/// Some legacy aerodynamic panel centers coincide with the hinge, even though
+/// the resultant pressure acts over the panel. Sample its elastic response
+/// at least 45% of the estimated chord from the hinge, without changing the
+/// legacy rigid-body force application point.
+pub fn raptor_panel_flex_sample(i: usize, point: DVec3) -> DVec3 {
+    let Some(c) = crate::structural::f22_config().panels.get(i).copied().flatten() else {return point;};
+    point + c.span * ((0.45 - c.span_fraction(point)).max(0.) * c.length)
+}
+fn panel_loads_angles(
+    a: Aircraft, air: DVec3, rates: DVec3, rho: f64, mach: f64,
+    actuator: DVec3, flaps: f64, brake: bool, d: &AircraftDamage,
+    actual: Option<&[f64; SURFACES]>, structure: Option<&crate::structural::State>,
+) -> crate::control_surfaces::Loads {
     let mut result = crate::control_surfaces::Loads::default();
+    let config = if a == Aircraft::F22 && structure.is_some() {Some(crate::structural::f22_config())} else {None};
     for (i, p) in a.panels().into_iter().enumerate() {
         if p.area == 0. || d.surface_state[i] == crate::combat::damage::SurfaceState::Detached {
             continue;
         }
-        let v = air + rates.cross(p.center);
+        let structural_surface = if a == Aircraft::F22 {raptor_structural_surface(i)} else {None};
+        let angle = crate::control_surfaces::effective_angle(d, i, actual.map_or_else(
+            || panel_angle(a,i,p,actuator,flaps,brake,(-air.y).atan2(-air.z)), |v| v[i]));
+        let hinge = if a == Aircraft::F22 {surface_rotation(a,i,angle)} else {bevy::math::DQuat::IDENTITY};
+        let elastic = structure.zip(structural_surface).zip(config);
+        let panel_sample = if elastic.is_some() {raptor_panel_flex_sample(i,p.center)} else {p.center};
+        let frame = elastic.map_or(bevy::math::DQuat::IDENTITY, |((state, surface),config)| state.frame_rotation(config,surface,p.center));
+        let panel_frame = elastic.map_or(bevy::math::DQuat::IDENTITY, |((state,_),config)| state.panel_frame_rotation(config,i,panel_sample));
+        let center = elastic.map_or(p.center, |((state,surface),config)| {
+            let parent = state.deform_point(config,surface,p.center);
+            parent + frame * (hinge * (state.deform_panel_point(config,i,panel_sample)-panel_sample))
+        });
+        let base_normal = frame * (panel_frame * p.normal);
+        let elastic_velocity = elastic.map_or(DVec3::ZERO, |((state,surface),config)| {
+            state.point_velocity(config,surface,p.center)
+                + frame * (hinge * state.panel_point_velocity(config,i,panel_sample))
+        });
+        let v = air + rates.cross(center) + elastic_velocity;
         let speed = v.length();
         if speed < 0.01 {
             continue;
         }
         let flow = v / speed;
-        let incidence = (-v.dot(p.normal)).atan2(-v.z);
-        let angle = crate::control_surfaces::effective_angle(d, i, panel_angle(a,i,p,actuator,flaps,brake,(-air.y).atan2(-air.z)));
+        let incidence = (-v.dot(base_normal)).atan2(-v.z);
         let polar = |x: f64| {
             let attached = (1. - ((x.abs() - 0.30) / 0.6).clamp(0., 1.)).powi(2);
             ((attached * 2.4 + (1. - attached) * 0.85) * (2. * x).sin()) / (1. + 0.12 * mach * mach)
         };
         let cl = polar(incidence - angle) - polar(incidence);
-        let lift = (p.normal - flow * p.normal.dot(flow)).normalize_or_zero();
+        let lift = (base_normal - flow * base_normal.dot(flow)).normalize_or_zero();
         let lift_delta=if a==Aircraft::F22 {
-            let rotation=surface_rotation(a,i,angle);let normal=rotation*p.normal;
-            let mut chord=p.normal.cross(p.axis()).normalize_or_zero();if chord.z>0.{chord=-chord;}
-            let before=(-v.dot(p.normal)).atan2(v.dot(chord));
+            let rotation=frame*hinge*frame.conjugate();let normal=rotation*base_normal;
+            let mut chord=p.normal.cross(p.axis()).normalize_or_zero();if chord.z>0.{chord=-chord;}let chord=frame*(panel_frame*chord);
+            let before=(-v.dot(base_normal)).atan2(v.dot(chord));
             let after=(-v.dot(normal)).atan2(v.dot(rotation*chord));
             let rotated=(normal-flow*normal.dot(flow)).normalize_or_zero();
             rotated*polar(after)-lift*polar(before)
@@ -667,11 +771,13 @@ pub fn panel_loads(
         } else {
             d.surfaces[i]
         };
-        let effectiveness = if a==Aircraft::F22 && (i==0 || i==4) {raptor::STABILATOR_EFFECTIVENESS}else{1.};
+        let effectiveness = if a==Aircraft::F22 {
+            match i {0|4=>raptor::STABILATOR_EFFECTIVENESS,2|6=>raptor::AILERON_EFFECTIVENESS,_=>1.}
+        }else{1.};
         let force = (lift_delta - flow * cd) * (0.5 * rho * speed * speed * p.area * health * effectiveness);
         let load = &mut result.surfaces[i];
         load.force = force;
-        load.moment = p.center.cross(force);
+        load.moment = center.cross(force);
         load.deflection = angle;
         load.attached = (1. - incidence.abs() / 1.4).clamp(0., 1.);
         result.force += force;
@@ -683,6 +789,12 @@ pub fn panel_loads(
 /// orientation changes are used for vectoring or hover control.
 pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3, f64) {
     let s = f.aircraft.spec();
+    if f.aircraft == Aircraft::Hornet && f.damage.hydraulics > 0.12 {
+        let canopy = if f.systems.hornet_canopy_target { 1. } else { 0. };
+        let wing = if f.systems.hornet_wing_target { 1. } else { 0. };
+        f.systems.hornet_canopy += (canopy-f.systems.hornet_canopy).clamp(-dt/3.2,dt/3.2);
+        f.systems.hornet_wing_fold += (wing-f.systems.hornet_wing_fold).clamp(-dt/5.,dt/5.);
+    }
     if f.aircraft == Aircraft::F22 {
         let powered=f.damage.hydraulics>0.12 && !f.crashed;
         main_bay::advance(&mut f.systems,powered,dt);
@@ -706,7 +818,7 @@ pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3
     let dry = s.dry * (f.spool / 0.88).clamp(0., 1.);
     let burner = (s.wet - s.dry) * ((f.spool - 0.88) / 0.12).clamp(0., 1.) * (1. - conv);
     let installed = if f.aircraft == Aircraft::F22 {
-        jet_output(f.aircraft, f.spool, rho, mach).0
+        raptor::flight_model::installed_at(f, rho, mach).0
     } else { ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse };
     let running = f.engine && (f.fuel > 0. || f.infinite_fuel);
     let mut force = DVec3::ZERO;
@@ -719,7 +831,7 @@ pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3
         .take(s.engines)
     {
         let desired = if f.aircraft == Aircraft::F22 {
-            raptor::nozzle_target(i, f.surface)
+            raptor::nozzle_target(i, raptor::flight_model::nozzle_command(f))
         } else if f.aircraft == Aircraft::F35B {
             conv * std::f64::consts::FRAC_PI_2
         } else {

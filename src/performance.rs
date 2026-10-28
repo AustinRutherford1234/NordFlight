@@ -205,6 +205,7 @@ pub fn report(diagnostics: &DiagnosticsStore) -> serde_json::Value {
         .map(|d| (d.path().as_str().to_owned(), serde_json::json!(d.average())))
         .collect();
     serde_json::json!({"cpu_spans":spans,"render_diagnostics":render,
+        "profiled_simulated_seconds":simulated_seconds(),
         "environment_filter_cache_hits_misses_writes_bypasses":bevy::pbr::generate::environment_filter_cache_counts(),
         "environment_slices_captured_published_cancelled_max_frames":bevy::pbr::generate::environment_slice_counts(),
         "upload_bytes":UPLOAD_BYTES.load(Relaxed),"upload_calls":UPLOAD_CALLS.load(Relaxed),
@@ -308,9 +309,17 @@ fn capture_sequence(
     f: Res<crate::physics::Flight>,
     view: Res<crate::ViewState>,
     mut sequence: ResMut<FrameSequence>,
+    real: Res<Time<Real>>,
 ) {
-    let start = *sequence.start.get_or_insert(f.elapsed);
-    if sequence.count >= 32 || f.elapsed - start < sequence.count as f64 * 2. {
+    // Paused scenes have a frozen simulation clock; space their captures by
+    // wall time instead so static poses can still be recorded.
+    let clock = if f.paused {
+        real.elapsed_secs_f64()
+    } else {
+        f.elapsed
+    };
+    let start = *sequence.start.get_or_insert(clock);
+    if sequence.count >= 32 || clock - start < sequence.count as f64 * 2. {
         return;
     }
     let stem = sequence.folder.join(format!("frame-{:03}", sequence.count));

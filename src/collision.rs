@@ -36,6 +36,7 @@ pub fn destroy(f: &mut Flight, cause: &str, normal: DVec3) {
     f.rates += DVec3::new(0.3, -0.15, 0.4);
 }
 pub fn wheel_clearance(f: &Flight) -> f64 {
+    if f.aircraft==crate::aircraft::Aircraft::Hornet && f.gear_extension>0.98 {return (0..3).map(|i|{let(p,r)=crate::aircraft::hornet::wheel(i);-(f.orientation*p).dot(f.up())+r}).fold(0.,f64::max);}
     if f.gear_extension < 0.98 {
         return 0.6;
     }
@@ -151,12 +152,12 @@ pub fn suspension(f: &mut Flight, dt: f64) -> (DVec3, DVec3) {
         let body = gear_pose(f, i, false).1;
         let arm = f.orientation * body;
         let p = f.position + arm;
-        let gap = p.length() - RADIUS - terrain_height(p.x, p.z).max(0.0) - WHEEL_RADIUS;
+        let gap = p.length() - RADIUS - crate::carrier::ground(f,p) - WHEEL_RADIUS;
         if gap > 0.0 {
             continue;
         }
-        let velocity = f.velocity + f.orientation * f.rates.cross(body);
-        let surface_normal = crate::terrain::normal(p);
+        let velocity = f.velocity-crate::carrier::ground_velocity(f,p) + f.orientation * f.rates.cross(body);
+        let surface_normal = crate::carrier::normal(f,p);
         let vn = velocity.dot(surface_normal);
         let compression = (-gap).clamp(0.0, GEAR_TRAVEL);
         f.gear_compression[i] = compression;
@@ -184,7 +185,7 @@ pub fn wheel_contact(f: &Flight) -> bool {
                 return false;
             }
             let p = f.position + f.orientation * gear_pose(f, i, false).1;
-            p.length() - RADIUS - terrain_height(p.x, p.z).max(0.) <= WHEEL_RADIUS
+            p.length() - RADIUS - crate::carrier::ground(f,p) <= WHEEL_RADIUS
         })
 }
 /// Slab test gives the first time of impact, including segments longer than a building.
@@ -344,7 +345,7 @@ pub fn check_airframe(f: &mut Flight, previous: DVec3, previous_rotation: bevy::
                 }
                 for vertex in &hull.vertices {
                     let p = center + q * (hinge * *vertex + offset);
-                    if p.length() - RADIUS < terrain_height(p.x, p.z).max(0.0) + 0.015
+                    if p.length() - RADIUS < crate::carrier::ground(f,p) + 0.015
                         && first_hit.is_none_or(|hit| time < hit.0)
                     {
                         first_hit = Some((time, p.normalize()));
@@ -427,7 +428,7 @@ mod tests {
                         if above_flat_ground(hull, f.position, f.orientation, hinge, offset) {
                             assert!(hull.vertices.iter().all(|v| {
                                 let p = f.position + f.orientation * (hinge * *v + offset);
-                                p.length() - RADIUS > terrain_height(p.x, p.z).max(0.) + 0.015
+                                p.length() - RADIUS > crate::carrier::ground(&f,p) + 0.015
                             }));
                         }
                     }

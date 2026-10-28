@@ -15,6 +15,9 @@ use std::{
 const RATE: u32 = 48_000;
 const VOICES: usize = 32;
 const EMITTERS: usize = 8;
+const DREAM_COCKPIT_REDUCTION: f32 = 0.95;
+const DREAM_MELODY_LEVEL: f32 = 0.44;
+const DREAM_PAD_LEVEL: f32 = 0.16;
 // Mono 48 kHz signed little-endian PCM; provenance in assets/audio/README.md.
 const CANNON_PCM: &[u8] = include_bytes!("../assets/audio/a10-cannon-body.pcm");
 
@@ -39,6 +42,7 @@ pub enum Kind {
     Switch,
     Ignition,
     Boom,
+    Chatter,
 }
 #[derive(Clone, Copy)]
 pub struct Event {
@@ -147,6 +151,7 @@ struct Controls {
     warning: u8,
     lock: f32,
     heat: bool,
+    dream: f32,
     settings: Settings,
     paused: bool,
     epoch: u64,
@@ -165,6 +170,7 @@ impl Default for Controls {
             warning: 0,
             lock: 0.,
             heat: true,
+            dream: 0.,
             settings: Settings::default(),
             paused: true,
             epoch: 0,
@@ -197,6 +203,26 @@ impl Default for Packet {
 }
 #[derive(Resource, Clone, Default)]
 pub(crate) struct Bridge(Arc<Mutex<Packet>>);
+/// A short presentation voice, mixed through the ordinary volume/mute controls.
+pub(crate) fn crew_chatter(bridge: &Bridge, gain: f32, pitch: f32) {
+    if let Ok(mut packet) = bridge.0.try_lock() {
+        if packet.events.len() < 64 {
+            packet.events.push_back(Trigger {
+                player: false,
+                kind: Kind::Chatter,
+                gain,
+                pan: 0.,
+                pitch,
+            });
+        }
+    }
+}
+/// Presentation-only dream music, mixed through the normal master and mute.
+pub(crate) fn dream_music(bridge: &Bridge, gain: f32, paused: bool) {
+    if let Ok(mut packet) = bridge.0.try_lock() {
+        packet.controls.dream = if paused { 0. } else { gain.clamp(0., 1.) };
+    }
+}
 struct Pending {
     remaining: f64,
     trigger: Trigger,
@@ -337,16 +363,16 @@ fn supersonic_gain(source: DVec3, velocity: DVec3, listener: DVec3, sound: f64) 
 fn schedule(
     scene: &mut Scene,
     event: Event,
-    f: &Flight,
+    _f: &Flight,
     cockpit: bool,
     listener: DVec3,
     velocity: DVec3,
     right: DVec3,
 ) {
-    let (_, _, _, c) = atmosphere(f.altitude());
+    let (_, _, density, c) = atmosphere(listener.length() - RADIUS);
     let (mut gain, pan, pitch) =
         spatial(event.position, event.velocity, listener, velocity, right, c);
-    let air = atmosphere_gain(f.density, false);
+    let air = atmosphere_gain(density, false);
     let structural = event.own && cockpit;
     gain *= if structural { 0.7 } else { air };
     if structural {
@@ -388,12 +414,23 @@ pub fn update(
     cameras: Query<&Transform, With<FlightCamera>>,
 ) {
     let _measure = crate::performance::span(7);
-    if menu.is_some_and(|m|m.open) {
-        if let Ok(mut packet)=bridge.0.try_lock() {
-            packet.controls=Controls {paused:false,settings:*settings,apu:0.12,..default()};
+    if menu.is_some_and(|m| m.open) {
+        if let Ok(mut packet) = bridge.0.try_lock() {
+            // Keep menu clicks, but do not run an APU/engine loop on the home screen.
+            packet.controls = Controls {
+                paused: false,
+                settings: *settings,
+                ..default()
+            };
             for e in combat.audio_events.drain(..) {
-                if matches!(e.kind,Kind::Switch) {
-                    packet.events.push_back(Trigger {kind:Kind::Switch,gain:0.12,pan:0.,pitch:1.,player:false});
+                if matches!(e.kind, Kind::Switch) {
+                    packet.events.push_back(Trigger {
+                        kind: Kind::Switch,
+                        gain: 0.12,
+                        pan: 0.,
+                        pitch: 1.,
+                        player: false,
+                    });
                 }
             }
             packet.events.truncate(8);
@@ -407,6 +444,22 @@ pub fn update(
     let listener = world::render_origin(&f) + world::frame(&f) * camera.translation.as_dvec3();
     let right = world::frame(&f) * (camera.rotation * Vec3::X).as_dvec3();
     let dt = (f.elapsed - scene.elapsed).max(0.);
+    let same_camera = scene.camera_view == v.index
+        && scene.camera_map == v.map
+        && scene.camera_follow == v.follow_identity();
+    let observer_velocity = v
+        .aircraft_follow
+        .and_then(|id| combat.targets.get(id))
+        .filter(|t| t.alive)
+        .map(|t| t.velocity)
+        .or_else(|| {
+            v.missile_follow
+                .and_then(|follow| combat.render_missile(follow.missile))
+                .filter(|m| m.alive)
+                .map(|m| m.velocity)
+        })
+        .unwrap_or(f.velocity);
+    let (_, _, listener_density, sound) = atmosphere(listener.length() - RADIUS);
     let reset = !scene.initialized
         || scene.generation != v.generation
         || scene.vehicle != Some(f.vehicle)
@@ -420,10 +473,15 @@ pub fn update(
         scene.dead = std::array::from_fn(|i| combat.targets.get(i).is_none_or(|t| !t.alive));
         combat.audio_events.clear();
     }
-    let listener_velocity = if !reset && dt > 1e-6 {
+    if !reset && !same_camera {
+        // Queued arrivals and playing transients belong to the previous observer.
+        scene.epoch = scene.epoch.wrapping_add(1);
+        scene.pending.clear();
+    }
+    let listener_velocity = if !reset && same_camera && dt > 1e-6 {
         ((listener - scene.listener) / dt).clamp_length_max(2000.)
     } else {
-        f.velocity
+        observer_velocity
     };
     let mut controls = Controls {
         cockpit,
@@ -434,30 +492,35 @@ pub fn update(
     };
     if combat.cannon_firing(&f) {
         let muzzle = f.position + f.orientation * DVec3::new(0.40, -0.10, -6.0);
-        let (_, _, _, c) = atmosphere(f.altitude());
-        let (gain, pan, pitch) = spatial(muzzle, f.velocity, listener, listener_velocity, right, c);
+        let (gain, pan, pitch) = spatial(
+            muzzle,
+            f.velocity,
+            listener,
+            listener_velocity,
+            right,
+            sound,
+        );
         controls.cannon = Some(Trigger {
             kind: Kind::Cannon,
             player: true,
             gain: if cockpit {
                 0.7
             } else {
-                gain * atmosphere_gain(f.density, false)
+                gain * atmosphere_gain(listener_density, false)
             },
             pan: if cockpit { 0. } else { pan },
             pitch,
         });
     }
-    if f.density < 1e-6 && !cockpit {
+    if listener_density < 1e-6 && !cockpit {
         controls.settings.master = 0.;
     }
     if v.map {
         controls.settings.engines *= 0.25;
         controls.settings.effects *= 0.25;
     }
-    let air = atmosphere_gain(f.density, false);
-    let audible = atmosphere_gain(f.density, cockpit);
-    let (_, _, _, sound) = atmosphere(f.altitude());
+    let air = atmosphere_gain(listener_density, false);
+    let audible = atmosphere_gain(listener_density, cockpit);
     let (gain, pan, doppler) = spatial(
         f.position,
         f.velocity,
@@ -600,7 +663,7 @@ pub fn update(
             cannon.gain *= exterior;
         }
     }
-    if f.battery && !f.crashed && audible > 0. {
+    if !v.following() && !v.map && f.battery && !f.crashed && audible > 0. {
         controls.warning = if combat.threats(&f).0 > 0 {
             3
         } else if f.stall() && !f.landed {
@@ -731,9 +794,6 @@ pub fn update(
     // Observers hear a boom when crossing another aircraft's shock cone, even
     // inside a cockpit. Own-aircraft booms remain external-camera only.
     // View switches and first becoming supersonic are not observer crossings.
-    let same_camera = scene.camera_view == v.index
-        && scene.camera_map == v.map
-        && scene.camera_follow == v.follow_identity();
     for i in 0..12 {
         let source = if i == 0 {
             (f.vehicle == Vehicle::Gripen && !f.crashed).then_some((f.position, f.velocity))
@@ -839,6 +899,7 @@ impl Voice {
             Kind::Boom => 0.8,
             Kind::Launch | Kind::Ignition => 1.2,
             Kind::Cannon => 0.16,
+            Kind::Chatter => 0.75,
             Kind::Touchdown => 0.65,
             _ => 0.25,
         };
@@ -878,6 +939,7 @@ pub struct Mixer {
     envelope: f32,
     cabin_low: f32,
     cabin_filter: [f32; 2],
+    dream_gain: f32,
     energy: f64,
 }
 impl Mixer {
@@ -903,6 +965,7 @@ impl Mixer {
             envelope: 0.,
             cabin_low: 0.,
             cabin_filter: [0.; 2],
+            dream_gain: 0.,
             energy: 0.,
         }
     }
@@ -1112,6 +1175,21 @@ impl Mixer {
                     125.,
                 ),
                 Kind::Switch => (white * 0.3, remaining.powi(10), 1.),
+                Kind::Chatter => {
+                    // Three rounded, irregular syllables: a small radio-like
+                    // canine warble rather than words or an engine loop.
+                    let syllable = (age * 5.1).fract();
+                    let envelope = (std::f32::consts::PI * syllable).sin().max(0.).powi(2);
+                    let vowel = self.tone(v.phase)
+                        + self.tone(v.phase * 2.) * 0.32
+                        + self.tone(v.phase * 3.) * 0.14
+                        + v.noise * 0.15;
+                    (
+                        vowel * 0.45,
+                        envelope * remaining.sqrt(),
+                        195. + (age * 21.).sin() * 55. + syllable * 70.,
+                    )
+                }
             };
             v.phase = (v.phase + frequency * v.pitch / RATE as f32).fract();
             if v.kind == Kind::Cannon {
@@ -1174,6 +1252,25 @@ impl Mixer {
         } * self.controls.settings.alerts;
         left += warning;
         right += warning;
+        self.dream_gain += (self.controls.dream - self.dream_gain) * (1. / (RATE as f32 * 0.15));
+        if self.dream_gain > 0.00001 {
+            // A soft sustained chord sits behind the music-box melody, including
+            // the black hold after the photos disappear. Existing ambience is
+            // gently lowered so the quiet music remains audible.
+            let duck = 1. - DREAM_COCKPIT_REDUCTION * self.dream_gain;
+            left *= duck; right *= duck;
+            let notes = [261.63, 329.63, 392.0, 329.63, 293.66, 349.23, 440.0, 349.23];
+            let phase = (t * 1.25).fract();
+            let note = notes[((t * 1.25) as usize) % notes.len()];
+            let envelope = (phase * 12.).min(1.) * (-phase * 3.).exp();
+            let music = (self.tone(t * note) + 0.25 * self.tone(t * note * 2.))
+                * envelope * DREAM_MELODY_LEVEL;
+            let pad = (self.tone(t * 130.8125) + self.tone(t * 164.8125) * 0.65
+                + self.tone(t * 196.0) * 0.45) * DREAM_PAD_LEVEL;
+            let gain = self.dream_gain * self.controls.settings.effects;
+            left += (music + pad) * gain;
+            right += (music + pad * 0.96) * gain;
+        }
         // Bounded soft saturation adds cinematic weight without digital clipping.
         let limit = |x: f32| {
             let x = x * self.envelope;
@@ -1529,6 +1626,43 @@ pub fn study() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dream_music_is_audible_and_obeys_mute() {
+        assert!((1. - DREAM_COCKPIT_REDUCTION - 0.05).abs() < 1e-6);
+        assert!(DREAM_MELODY_LEVEL > 0.15 && DREAM_PAD_LEVEL > 0.055);
+        let bridge = Bridge::default();
+        { let mut p = bridge.0.lock().unwrap(); p.controls.paused = false; p.controls.dream = 1.; }
+        let mut mixer = Mixer::new(bridge.0.clone());
+        let energy: f64 = (0..RATE).map(|_| {let (l,r)=mixer.stereo(); mixer.frame += 1; (l*l+r*r) as f64}).sum();
+        assert!(energy > 0.01);
+        { let mut p = bridge.0.lock().unwrap(); p.controls.settings.muted = true; }
+        for _ in 0..RATE { mixer.stereo(); mixer.frame += 1; }
+        let (l,r) = mixer.stereo();
+        assert!(l.abs() + r.abs() < 0.0001);
+    }
+    #[test]
+    fn dream_reduces_existing_sound_to_five_percent() {
+        let render = |dream: f32| {
+            let bridge = Bridge::default();
+            {
+                let mut packet = bridge.0.lock().unwrap();
+                packet.controls.paused = false;
+                packet.controls.dream = dream;
+                packet.controls.settings.effects = 0.; // Isolate the existing engine mix.
+                packet.controls.sources[0] = Emitter { gain: 0.2, pitch: 1., ..default() };
+            }
+            let mut mixer = Mixer::new(bridge.0.clone());
+            let mut energy = 0.;
+            for frame in 0..RATE * 3 {
+                let (l,r) = mixer.stereo();
+                mixer.frame += 1;
+                if frame >= RATE * 2 { energy += (l*l + r*r) as f64; }
+            }
+            energy.sqrt()
+        };
+        let ratio = render(1.) / render(0.);
+        assert!((ratio - 0.05).abs() < 0.01, "non-music level ratio {ratio}");
+    }
     #[test]
     fn held_cannon_survives_slow_simulation_and_camera_changes_then_releases() {
         let (b, mut m) = mixer();
@@ -2086,6 +2220,77 @@ mod tests {
             .add_systems(Update, update);
         a.world_mut().spawn((FlightCamera, camera));
         a
+    }
+    #[test]
+    fn aircraft_and_missile_camera_switches_relocate_audio_without_doppler_spikes() {
+        let f = crate::combat::flight();
+        let mut combat = Combat::default();
+        combat.start(&f, 1);
+        combat.lock = 1.;
+        assert!(combat.fire(&f));
+        // The motor ignites after release in the simulation.
+        combat.missiles[0].gnc.thrust = 10_000.;
+        combat.targets.truncate(1);
+        let mut a = scene(f.clone());
+        a.world_mut().insert_resource(combat);
+        a.world_mut().insert_resource(crate::warp::Warp::default());
+        a.world_mut().init_resource::<ButtonInput<KeyCode>>();
+        a.add_systems(Update, crate::combat::camera_controls.before(update));
+        a.update();
+        let initial = a.world().resource::<Bridge>().0.lock().unwrap().controls;
+        for key in [KeyCode::Digit2, KeyCode::Digit6, KeyCode::Digit7] {
+            // Place the camera at the same trailing offset as a following view.
+            let (position, velocity) = {
+                let c = a.world().resource::<Combat>();
+                match key {
+                    KeyCode::Digit2 => (c.targets[0].position, c.targets[0].velocity),
+                    KeyCode::Digit6 => (c.missiles[0].position, c.missiles[0].velocity),
+                    _ => (f.position, f.velocity),
+                }
+            };
+            let listener = position - velocity.normalize() * 30.;
+            let mut query = a
+                .world_mut()
+                .query_filtered::<&mut Transform, With<FlightCamera>>();
+            query.single_mut(a.world_mut()).unwrap().translation = world::local(listener, &f);
+            {
+                let mut keys = a.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+                keys.reset_all();
+                keys.press(key);
+            }
+            a.world_mut().resource_mut::<Flight>().elapsed += 0.01;
+            a.update();
+            let controls = a.world().resource::<Bridge>().0.lock().unwrap().controls;
+            assert!((a.world().resource::<Scene>().listener - listener).length() < 1.);
+            if key == KeyCode::Digit2 {
+                assert!(controls.sources[1].gain > initial.sources[1].gain * 5.);
+                let throttle = a.world().resource::<Combat>().targets[0].throttle as f32;
+                assert!((controls.sources[1].pitch - (0.5 + throttle)).abs() < 0.001);
+            }
+            if key == KeyCode::Digit6 {
+                assert!((controls.sources[4].pitch - 1.6).abs() < 0.001);
+            }
+            if key != KeyCode::Digit7 {
+                assert_eq!(controls.warning, 0);
+                assert_eq!(controls.lock, 0.);
+            }
+        }
+    }
+    #[test]
+    fn exterior_atmosphere_follows_camera_instead_of_player_altitude() {
+        let f = Flight::runway();
+        let mut a = scene(f.clone());
+        a.update();
+        let initial = a.world().resource::<Bridge>().0.lock().unwrap().controls;
+        assert!(initial.settings.master > 0.);
+        let listener = f.position.normalize() * (RADIUS + 250_000.);
+        let mut query = a
+            .world_mut()
+            .query_filtered::<&mut Transform, With<FlightCamera>>();
+        query.single_mut(a.world_mut()).unwrap().translation = world::local(listener, &f);
+        a.update();
+        let controls = a.world().resource::<Bridge>().0.lock().unwrap().controls;
+        assert_eq!(controls.settings.master, 0.);
     }
     #[test]
     fn camera_angle_mutes_supersonic_exterior_but_preserves_cockpit_and_blasts() {
