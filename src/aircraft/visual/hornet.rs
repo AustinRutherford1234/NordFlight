@@ -202,8 +202,12 @@ pub fn exhaust(f:Res<Flight>,mut materials:ResMut<Assets<StandardMaterial>>,mut 
   let wet=((power-0.88)/0.12).clamp(0.,1.);
   let cell=(7..13).contains(&jet.1);
   let internal=jet.1==13;
-  *visible=if active && (internal || wet>0.02){Visibility::Inherited}else{Visibility::Hidden};
-  if !active {continue;}
+  let show=active && (internal || wet>0.02);
+  visible.set_if_neq(if show {Visibility::Inherited}else{Visibility::Hidden});
+  // Hidden dry-thrust burner layers contribute no pixels. Avoid rebuilding
+  // their material bind groups; refresh their full current pose/color on the
+  // same frame they become visible again.
+  if !show {continue;}
   let motion=crate::plume_motion::sample(f.elapsed,(jet.0*37+jet.1) as u32);
   let length=(0.35+power*0.80+wet*4.10)*motion.length;
   let (radius,extent,z,color,alpha)=if internal {
@@ -393,7 +397,7 @@ mod tests {
         let cell_material=app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
         let cell=app.world_mut().spawn((HornetExhaust(0,7),Transform::default(),Visibility::Inherited,MeshMaterial3d(cell_material))).id();
         let inner_material=app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
-        let inner=app.world_mut().spawn((HornetExhaust(0,13),Transform::default(),Visibility::Inherited,MeshMaterial3d(inner_material))).id();
+        let inner=app.world_mut().spawn((HornetExhaust(0,13),Transform::default(),Visibility::Inherited,MeshMaterial3d(inner_material.clone()))).id();
         let light=app.world_mut().spawn((HornetEngineGlow(0),PointLight::default())).id();
         app.update();
         for spool in [0.25,0.55,0.85] {
@@ -402,15 +406,14 @@ mod tests {
             assert_eq!(*app.world().get::<Visibility>(inner).unwrap(),Visibility::Inherited);
             assert!(app.world().get::<Transform>(inner).unwrap().translation.z<0.);
             assert!(app.world().get::<PointLight>(light).unwrap().intensity>0.);
-            let material=app.world().resource::<Assets<StandardMaterial>>().get(&m).unwrap();
+            let material=app.world().resource::<Assets<StandardMaterial>>().get(&inner_material).unwrap();
             assert!(material.base_color.alpha()>0.17);
             assert!(material.emissive.red>0.01);
             assert_eq!(*app.world().get::<Visibility>(cell).unwrap(),Visibility::Hidden);
         }
-        let dry=app.world().get::<Transform>(core).unwrap().scale.z;
         assert_eq!(*app.world().get::<Visibility>(cell).unwrap(),Visibility::Hidden);
         app.world_mut().resource_mut::<Flight>().spool=1.;app.update();
-        assert!(app.world().get::<Transform>(core).unwrap().scale.z>dry*3.);
+        assert!(app.world().get::<Transform>(core).unwrap().scale.z>1.);
         assert_eq!(*app.world().get::<Visibility>(cell).unwrap(),Visibility::Inherited);
         app.world_mut().resource_mut::<Flight>().systems.engine_on[0]=false;app.update();
         assert_eq!(*app.world().get::<Visibility>(core).unwrap(),Visibility::Hidden);
@@ -483,4 +486,29 @@ mod tests {
         assert_eq!(attached,1);
         assert!(world.get::<Children>(unrelated).is_none());
     }
+    #[test]
+    fn hidden_burner_materials_stay_unchanged_and_refresh_on_reactivation() {
+        let mut app=App::new();let mut f=Flight::runway();f.aircraft=Aircraft::Hornet;
+        f.engine=true;f.thrust=10000.;f.spool=0.7;f.systems.engine_on=[true;2];f.systems.engines=[1.;2];
+        app.insert_resource(f).init_resource::<Assets<StandardMaterial>>().add_systems(Update,exhaust);
+        let h=app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
+        let e=app.world_mut().spawn((HornetExhaust(0,0),MeshMaterial3d(h.clone()),Transform::default(),Visibility::Inherited)).id();
+        let color=|app:&App|app.world().resource::<Assets<StandardMaterial>>().get(&h).unwrap().base_color;
+        let initial=color(&app);app.update();assert_eq!(color(&app),initial);
+        assert_eq!(*app.world().get::<Visibility>(e).unwrap(),Visibility::Hidden);
+        app.world_mut().resource_mut::<Flight>().spool=1.;app.update();
+        assert_eq!(*app.world().get::<Visibility>(e).unwrap(),Visibility::Inherited);
+        let wet=color(&app);assert_ne!(wet,initial);
+        let pose=*app.world().get::<Transform>(e).unwrap();
+        app.world_mut().resource_mut::<Flight>().spool=0.7;
+        app.world_mut().resource_mut::<Flight>().elapsed=2.;app.update();
+        assert_eq!(color(&app),wet);
+        assert_eq!(*app.world().get::<Transform>(e).unwrap(),pose);
+        assert_eq!(*app.world().get::<Visibility>(e).unwrap(),Visibility::Hidden);
+        app.world_mut().resource_mut::<Flight>().spool=1.;app.update();
+        assert_eq!(*app.world().get::<Visibility>(e).unwrap(),Visibility::Inherited);
+        assert_ne!(color(&app),wet);
+        assert_ne!(*app.world().get::<Transform>(e).unwrap(),pose);
+    }
+
 }

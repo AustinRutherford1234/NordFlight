@@ -245,7 +245,7 @@ pub fn setup(mut c: Commands) {
             p.spawn((Text::new(""),Label(2),TextFont{font_size:14.0,..default()},TextColor(Color::srgb(1.0,0.7,0.3))));
             p.spawn((Button,Action(5),Node{padding:UiRect::all(px(12)),min_height:px(42),..default()},BackgroundColor(Color::srgb(0.08,0.13,0.18))))
                 .with_children(|b|{b.spawn((Text::new(""),Label(3),TextFont{font_size:16.0,..default()},TextColor(Color::WHITE)));});
-            p.spawn((Text::new("One configured step per frame; no realtime catch-up.\nTimestep range: 0.001–0.05 seconds. Enter saves."),TextFont{font_size:14.0,..default()},TextColor(Color::srgb(0.7,0.85,0.9))));
+            p.spawn((Text::new("Flight follows real time; slow motion uses the warp rate.\nPhysics interval: 0.001–0.05 seconds (internally ≤1/120 s). Enter saves."),TextFont{font_size:14.0,..default()},TextColor(Color::srgb(0.7,0.85,0.9))));
         });
 }
 pub fn controls(
@@ -389,7 +389,7 @@ pub fn ui(
                 if warp.editing && warp.edit_timestep {
                     format!("TIMESTEP / {}▏ seconds", warp.buffer)
                 } else {
-                    format!("TIMESTEP / {:.6} seconds per frame", warp.timestep)
+                    format!("PHYSICS INTERVAL / {:.6} seconds", warp.timestep)
                 }
             }
             _ => warp.message.clone(),

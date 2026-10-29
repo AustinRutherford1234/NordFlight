@@ -2846,16 +2846,16 @@ mod tests {
         assert!(!f.crashed);
     }
     #[test]
-    fn integrated_step_obeys_configured_time_and_pause_for_targets_and_missiles() {
+    fn integrated_step_shares_wall_time_and_pause_with_targets_and_missiles() {
         let f = flight();
         let mut c = Combat::default();
         c.start(&f, 1);
         c.lock = 1.0;
         assert!(c.fire(&f));
         let mut warp = crate::warp::Warp::default();
-        warp.timestep = 0.01;
+        warp.timestep = 0.005;
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
+        app.init_resource::<Time<bevy::time::Real>>()
             .insert_resource(f)
             .insert_resource(c)
             .insert_resource(Environment::default())
@@ -2863,6 +2863,7 @@ mod tests {
             .insert_resource(crate::SimClock::default())
             .add_systems(Update, crate::step);
         for _ in 0..5 {
+            app.world_mut().resource_mut::<Time<bevy::time::Real>>().advance_by(std::time::Duration::from_millis(10));
             app.update();
         }
         assert!((app.world().resource::<Combat>().missiles[0].age - 0.05).abs() < 1e-9);

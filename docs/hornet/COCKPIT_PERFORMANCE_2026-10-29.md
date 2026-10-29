@@ -2,6 +2,8 @@
 
 ## Outcome
 
+Subsequent timing correction and additional approved diagnostics: [Cockpit timing fix](COCKPIT_TIMING_FIX_2026-10-29.md). The results below describe the earlier state.
+
 Implemented the two approved updates: identical rear display repeaters share their front display's live texture/material, and the ejection visual system skips inactive work, hiding actors once when the sequence resets. Aircraft geometry, rendering quality, and flight fidelity are unchanged.
 
 The paired check measured a **6.8% reduction in the cockpit CPU span**, but **no meaningful overall frame-rate improvement**. The severe cockpit-only slowdown reported by the pilot is **not resolved or fully reproduced**. The worst frame-time percentile did not improve. These are measured housekeeping improvements, not a claim that the cockpit lag is fixed.

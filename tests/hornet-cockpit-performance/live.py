@@ -6,7 +6,7 @@ import json
 import hashlib
 
 root = Path(__file__).resolve().parents[2]
-folder = Path(__file__).resolve().parent / 'live'
+folder = Path(__file__).resolve().parent / (sys.argv[1] if len(sys.argv) > 1 else 'live')
 folder.mkdir(exist_ok=True)
 sys.path.insert(0, str(root / 'tests/optimization3'))
 from run import isolated, run, command

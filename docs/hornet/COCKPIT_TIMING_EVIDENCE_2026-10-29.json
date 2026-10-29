@@ -1,0 +1,2233 @@
+{
+  "matrix_before_timing_change": {
+    "cockpit": {
+      "resolution": [
+        2880,
+        1800
+      ],
+      "quality": false,
+      "frames": 1763,
+      "sample_seconds": 30.009353375000003,
+      "mean_fps": 58.74305024712826,
+      "mean_ms": 17.023290343165087,
+      "p50_ms": 16.824208,
+      "p95_ms": 27.131459,
+      "p99_ms": 28.934583,
+      "simulated_seconds": 29.36666666666798,
+      "simulation_rate": 0.9785837868513546,
+      "over_25_ms": 367,
+      "over_50_ms": 0,
+      "cpu_spans": {
+        "simulation": {
+          "calls": 1762,
+          "mean_ms": 0.16701709761634506,
+          "total_ms": 294.284126
+        },
+        "aircraft_physics": {
+          "calls": 7048,
+          "mean_ms": 0.04087589741770715,
+          "total_ms": 288.093325
+        },
+        "collision": {
+          "calls": 7048,
+          "mean_ms": 0.0004499703461975028,
+          "total_ms": 3.171391
+        },
+        "cockpit": {
+          "calls": 1762,
+          "mean_ms": 2.7827096515323495,
+          "total_ms": 4903.134406
+        },
+        "asset_prepare_wall": {
+          "calls": 1762,
+          "mean_ms": 0.6563808768444949,
+          "total_ms": 1156.543105
+        },
+        "display_flush": {
+          "calls": 1762,
+          "mean_ms": 0.2709591293984109,
+          "total_ms": 477.429986
+        }
+      },
+      "material_modifications": 51360,
+      "material_modifications_per_frame": 29.148694665153236,
+      "upload_bytes": 1065847788,
+      "upload_calls": 2105,
+      "all_sampled_states_airborne_unpaused_uncrashed": true,
+      "first_last_state": [
+        {
+          "agl_m": 138.61934744380414,
+          "alpha_rad": 0.1316241688807642,
+          "altitude_m": 138.61934744380414,
+          "camera": 3,
+          "carrier_relative_m": [
+            241.17700918041723,
+            138.34588553161626,
+            1851.043239517409
+          ],
+          "crashed": false,
+          "entities": 12161,
+          "instruments_frozen": false,
+          "landed": false,
+          "meshes": 2022,
+          "paused": false,
+          "simulation_s": 6.4166666666666226,
+          "speed_mps": 84.8482769866155,
+          "throttle": 0.2837848624160306,
+          "wall_s": 10.315189291
+        },
+        {
+          "agl_m": 76.70309096947312,
+          "alpha_rad": 0.09512208439527725,
+          "altitude_m": 76.70309096947312,
+          "camera": 3,
+          "carrier_relative_m": [
+            -38.19624708271463,
+            76.69375504868144,
+            -342.78388426568677
+          ],
+          "crashed": false,
+          "entities": 12158,
+          "instruments_frozen": false,
+          "landed": false,
+          "meshes": 2019,
+          "paused": false,
+          "simulation_s": 35.08333333333429,
+          "speed_mps": 94.34317841156977,
+          "throttle": 0.2837848624160306,
+          "wall_s": 39.593020625
+        }
+      ]
+    },
+    "external": {
+      "resolution": [
+        2880,
+        1800
+      ],
+      "quality": false,
+      "frames": 1963,
+      "sample_seconds": 30.007218334,
+      "mean_fps": 65.40888803254391,
+      "mean_ms": 15.288442138053993,
+      "p50_ms": 8.81925,
+      "p95_ms": 26.444167,
+      "p99_ms": 26.823583000000003,
+      "simulated_seconds": 32.70000000000621,
+      "simulation_rate": 1.0897377969538458,
+      "over_25_ms": 720,
+      "over_50_ms": 0,
+      "cpu_spans": {
+        "simulation": {
+          "calls": 1962,
+          "mean_ms": 0.16857288532110093,
+          "total_ms": 330.740001
+        },
+        "aircraft_physics": {
+          "calls": 7848,
+          "mean_ms": 0.04124309365443425,
+          "total_ms": 323.675799
+        },
+        "collision": {
+          "calls": 7848,
+          "mean_ms": 0.0004627543323139653,
+          "total_ms": 3.631696
+        },
+        "cockpit": {
+          "calls": 0,
+          "mean_ms": 0.0,
+          "total_ms": 0.0
+        },
+        "asset_prepare_wall": {
+          "calls": 1962,
+          "mean_ms": 0.5277639016309887,
+          "total_ms": 1035.472775
+        },
+        "display_flush": {
+          "calls": 1962,
+          "mean_ms": 0.03364872171253823,
+          "total_ms": 66.018792
+        }
+      },
+      "material_modifications": 57024,
+      "material_modifications_per_frame": 29.06422018348624,
+      "upload_bytes": 24499948,
+      "upload_calls": 428,
+      "all_sampled_states_airborne_unpaused_uncrashed": true,
+      "first_last_state": [
+        {
+          "agl_m": 129.65719860978425,
+          "alpha_rad": 0.12647647600783746,
+          "altitude_m": 129.65719860978425,
+          "camera": 1,
+          "carrier_relative_m": [
+            212.6480609086166,
+            129.4419570542302,
+            1642.3898624796323
+          ],
+          "crashed": false,
+          "entities": 12152,
+          "instruments_frozen": false,
+          "landed": false,
+          "meshes": 2013,
+          "paused": false,
+          "simulation_s": 9.316666666666459,
+          "speed_mps": 86.00799522333104,
+          "throttle": 0.2837848624160306,
+          "wall_s": 10.537490459
+        },
+        {
+          "agl_m": 69.61223487835377,
+          "alpha_rad": 0.0887300009349618,
+          "altitude_m": 69.61223487835377,
+          "camera": 1,
+          "carrier_relative_m": [
+            -94.10757304081868,
+            69.55575534365016,
+            -843.0977675686969
+          ],
+          "crashed": false,
+          "entities": 12161,
+          "instruments_frozen": false,
+          "landed": false,
+          "meshes": 2022,
+          "paused": false,
+          "simulation_s": 41.20000000000582,
+          "speed_mps": 95.82953731871969,
+          "throttle": 0.2837848624160306,
+          "wall_s": 39.773471959
+        }
+      ]
+    },
+    "frozen-instruments": {
+      "resolution": [
+        2880,
+        1800
+      ],
+      "quality": false,
+      "frames": 1199,
+      "sample_seconds": 30.015963417000002,
+      "mean_fps": 39.900231617267124,
+      "mean_ms": 25.062511155129297,
+      "p50_ms": 27.288834,
+      "p95_ms": 34.108042,
+      "p99_ms": 34.803208000000005,
+      "simulated_seconds": 19.966666666665535,
+      "simulation_rate": 0.6652015925418242,
+      "over_25_ms": 600,
+      "over_50_ms": 1,
+      "cpu_spans": {
+        "simulation": {
+          "calls": 1198,
+          "mean_ms": 0.1900759632721202,
+          "total_ms": 227.711004
+        },
+        "aircraft_physics": {
+          "calls": 4792,
+          "mean_ms": 0.046494324499165275,
+          "total_ms": 222.800803
+        },
+        "collision": {
+          "calls": 4792,
+          "mean_ms": 0.00047529507512520866,
+          "total_ms": 2.277614
+        },
+        "cockpit": {
+          "calls": 1198,
+          "mean_ms": 0.0001508489148580968,
+          "total_ms": 0.180717
+        },
+        "asset_prepare_wall": {
+          "calls": 1198,
+          "mean_ms": 0.5767006944908181,
+          "total_ms": 690.887432
+        },
+        "display_flush": {
+          "calls": 1198,
+          "mean_ms": 0.05277783388981636,
+          "total_ms": 63.227845
+        }
+      },
+      "material_modifications": 35000,
+      "material_modifications_per_frame": 29.215358931552586,
+      "upload_bytes": 14244044,
+      "upload_calls": 435,
+      "all_sampled_states_airborne_unpaused_uncrashed": true,
+      "first_last_state": [
+        {
+          "agl_m": 141.70106607023627,
+          "alpha_rad": 0.13347673264758983,
+          "altitude_m": 141.70106607023627,
+          "camera": 3,
+          "carrier_relative_m": [
+            250.32211372329584,
+            141.40760807571726,
+            1917.4628227120065
+          ],
+          "crashed": false,
+          "entities": 12261,
+          "instruments_frozen": true,
+          "landed": false,
+          "meshes": 2122,
+          "paused": false,
+          "simulation_s": 5.483333333333342,
+          "speed_mps": 84.46287131120839,
+          "throttle": 0.2837848624160306,
+          "wall_s": 10.466757
+        },
+        {
+          "agl_m": 92.44208527728915,
+          "alpha_rad": 0.10574953442437686,
+          "altitude_m": 92.44208527728915,
+          "camera": 3,
+          "carrier_relative_m": [
+            56.96818899903077,
+            92.42589502806238,
+            450.614893244808
+          ],
+          "crashed": false,
+          "entities": 12158,
+          "instruments_frozen": true,
+          "landed": false,
+          "meshes": 2019,
+          "paused": false,
+          "simulation_s": 25.116666666665562,
+          "speed_mps": 91.51456261347997,
+          "throttle": 0.2837848624160306,
+          "wall_s": 39.999675208
+        }
+      ]
+    }
+  },
+  "earlier_live_before": {
+    "resolution": [
+      2880,
+      1800
+    ],
+    "quality": false,
+    "frames": 1198,
+    "sample_seconds": 30.000292207999998,
+    "mean_fps": 39.911580580003914,
+    "mean_ms": 25.055384564273798,
+    "p50_ms": 26.26225,
+    "p95_ms": 34.399291999999996,
+    "p99_ms": 35.174749999999996,
+    "simulated_seconds": 19.94999999999887,
+    "simulation_rate": 0.6649935227857189,
+    "over_25_ms": 599,
+    "over_50_ms": 1,
+    "cpu_spans": {
+      "simulation": {
+        "calls": 1197,
+        "mean_ms": 0.18116719548872182,
+        "total_ms": 216.857133
+      },
+      "aircraft_physics": {
+        "calls": 4788,
+        "mean_ms": 0.044212420008354215,
+        "total_ms": 211.689067
+      },
+      "collision": {
+        "calls": 4788,
+        "mean_ms": 0.0004832245196324144,
+        "total_ms": 2.313679
+      },
+      "cockpit": {
+        "calls": 1197,
+        "mean_ms": 3.3206090200501253,
+        "total_ms": 3974.768997
+      },
+      "asset_prepare_wall": {
+        "calls": 1197,
+        "mean_ms": 0.7551170685045948,
+        "total_ms": 903.875131
+      },
+      "display_flush": {
+        "calls": 1197,
+        "mean_ms": 0.36378115538847117,
+        "total_ms": 435.446043
+      }
+    },
+    "material_modifications": 34972,
+    "material_modifications_per_frame": 29.216374269005847,
+    "upload_bytes": 792641056,
+    "upload_calls": 1695,
+    "all_sampled_states_airborne_unpaused_uncrashed": true,
+    "first_last_state": [
+      {
+        "agl_m": 142.88463254645467,
+        "alpha_rad": 0.134202110363929,
+        "altitude_m": 142.88463254645467,
+        "camera": 3,
+        "carrier_relative_m": [
+          253.74591658577955,
+          142.58352310913924,
+          1942.2758332794413
+        ],
+        "crashed": false,
+        "entities": 12350,
+        "landed": false,
+        "meshes": 2211,
+        "paused": false,
+        "simulation_s": 5.133333333333362,
+        "speed_mps": 84.31666158458206,
+        "throttle": 0.2837848624160306,
+        "wall_s": 10.1342755
+      },
+      {
+        "agl_m": 93.18745918106288,
+        "alpha_rad": 0.10619702498246102,
+        "altitude_m": 93.18745918106288,
+        "camera": 3,
+        "carrier_relative_m": [
+          60.86396774748573,
+          93.16894816200376,
+          481.8365278095055
+        ],
+        "crashed": false,
+        "entities": 12158,
+        "landed": false,
+        "meshes": 2019,
+        "paused": false,
+        "simulation_s": 24.716666666665585,
+        "speed_mps": 91.39070497266843,
+        "throttle": 0.2837848624160306,
+        "wall_s": 39.584649375
+      }
+    ]
+  },
+  "updated_live": {
+    "resolution": [
+      2880,
+      1800
+    ],
+    "quality": false,
+    "frames": 1198,
+    "sample_seconds": 30.000570959,
+    "mean_fps": 39.91164894598758,
+    "mean_ms": 25.055341646076805,
+    "p50_ms": 27.647875,
+    "p95_ms": 34.137,
+    "p99_ms": 34.451792000000005,
+    "simulated_seconds": 30.00000000000359,
+    "simulation_rate": 0.9999809683956618,
+    "over_25_ms": 599,
+    "over_50_ms": 2,
+    "cpu_spans": {
+      "simulation": {
+        "calls": 1197,
+        "mean_ms": 0.2746797518796993,
+        "total_ms": 328.791663
+      },
+      "aircraft_physics": {
+        "calls": 7200,
+        "mean_ms": 0.04483175944444444,
+        "total_ms": 322.788668
+      },
+      "collision": {
+        "calls": 7200,
+        "mean_ms": 0.0004412463888888889,
+        "total_ms": 3.176974
+      },
+      "cockpit": {
+        "calls": 1197,
+        "mean_ms": 3.3512800125313285,
+        "total_ms": 4011.482175
+      },
+      "asset_prepare_wall": {
+        "calls": 1197,
+        "mean_ms": 0.7048659206349206,
+        "total_ms": 843.724507
+      },
+      "display_flush": {
+        "calls": 1197,
+        "mean_ms": 0.35194244360902255,
+        "total_ms": 421.275105
+      }
+    },
+    "material_modifications": 4402,
+    "material_modifications_per_frame": 3.6775271512113616,
+    "upload_bytes": 875015688,
+    "upload_calls": 1718,
+    "all_sampled_states_airborne_unpaused_uncrashed": true,
+    "first_last_state": [
+      {
+        "agl_m": 132.22057774756104,
+        "alpha_rad": 0.12791931506059673,
+        "altitude_m": 132.22057774756104,
+        "camera": 3,
+        "carrier_relative_m": [
+          221.10719120393946,
+          131.98873453156602,
+          1704.4996721317323
+        ],
+        "crashed": false,
+        "entities": 12328,
+        "instruments_frozen": false,
+        "landed": false,
+        "meshes": 2189,
+        "paused": false,
+        "simulation_s": 8.458333333333174,
+        "speed_mps": 85.67035816507797,
+        "throttle": 0.2837848624160306,
+        "wall_s": 10.284600417
+      },
+      {
+        "agl_m": 73.30908736586571,
+        "alpha_rad": 0.09229266755207362,
+        "altitude_m": 73.30908736586571,
+        "camera": 3,
+        "carrier_relative_m": [
+          -63.38784866098988,
+          73.28376238040634,
+          -564.5145320195023
+        ],
+        "crashed": false,
+        "entities": 12161,
+        "instruments_frozen": false,
+        "landed": false,
+        "meshes": 2022,
+        "paused": false,
+        "simulation_s": 37.808333333336456,
+        "speed_mps": 95.02930481836086,
+        "throttle": 0.2837848624160306,
+        "wall_s": 39.635001667
+      }
+    ],
+    "simulation_timing": {
+      "max_frame_wall_s": 0.1,
+      "max_physics_step_s": 0.008333333333333333,
+      "max_steps_per_frame": 256,
+      "mode": "bounded_wall_clock",
+      "remainder_s": 0.005037332666667362,
+      "whole_run_dropped_simulated_s": 0.0,
+      "whole_run_dropped_wall_s": 1.7872002930000002
+    }
+  },
+  "gpu_before": {
+    "distinct_frame_labels": 282,
+    "note": "Active event intervals grouped by GPU channel. Channels and nested intervals can overlap; these totals are not frame wall time. Profiled capture is not an uninstrumented FPS run.",
+    "events": {
+      "main_opaque_pass_3d:main_opaque_pass_3d [Fragment]": {
+        "total_active_ms": 1310.3216129999994,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 4.583041
+      },
+      "main_transparent_pass_3d:main_transparent_pass_3d [Fragment]": {
+        "total_active_ms": 1061.4217919999996,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 3.863896
+      },
+      "lightprobe_radiance_map:lightprobe_radiance_map [Compute]": {
+        "total_active_ms": 398.028212,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 1.3733955
+      },
+      "render_sky:render_sky [Fragment]": {
+        "total_active_ms": 382.6348410000002,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 1.3283749999999999
+      },
+      "lightprobe_irradiance_map:lightprobe_irradiance_map [Compute]": {
+        "total_active_ms": 361.40099599999996,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 1.225917
+      },
+      "main_opaque_pass_3d:main_opaque_pass_3d [Vertex]": {
+        "total_active_ms": 351.0962590000004,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 1.227208
+      },
+      "shadow_directional_light_0_cascade_0:shadow_directional_light_0_cascade_0 [Vertex]": {
+        "total_active_ms": 309.27700400000015,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 1.090916
+      },
+      "fxaa:fxaa [Fragment]": {
+        "total_active_ms": 275.69396099999994,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.9828330000000001
+      },
+      "bloom_upsampling_final_pass:bloom_upsampling_final_pass [Fragment]": {
+        "total_active_ms": 226.46896199999995,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.795666
+      },
+      "shadow_directional_light_0_cascade_1:shadow_directional_light_0_cascade_1 [Vertex]": {
+        "total_active_ms": 176.4049179999999,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.478625
+      },
+      "tonemapping:tonemapping [Fragment]": {
+        "total_active_ms": 171.13762199999988,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.6101875
+      },
+      "upscaling:upscaling [Fragment]": {
+        "total_active_ms": 133.05024699999998,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.45847899999999997
+      },
+      "atmosphere_luts:atmosphere_luts [Compute]": {
+        "total_active_ms": 92.45787899999998,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.2455
+      },
+      "bloom_downsampling_first_pass:bloom_downsampling_first_pass [Fragment]": {
+        "total_active_ms": 91.18291,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.315
+      },
+      "shadow_directional_light_1_cascade_0:shadow_directional_light_1_cascade_0 [Vertex]": {
+        "total_active_ms": 78.09959399999998,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.2764375
+      },
+      "(wgpu internal) Pre Pass:Blit Command 0 [Compute]": {
+        "total_active_ms": 73.25920499999998,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.23733300000000002
+      },
+      "shadow_directional_light_0_cascade_1:shadow_directional_light_0_cascade_1 [Fragment]": {
+        "total_active_ms": 58.660536000000015,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.1295
+      },
+      "Command Buffer 29:Blit Command 0 [Compute]": {
+        "total_active_ms": 42.674827999999984,
+        "frames_with_event": 47,
+        "median_ms_per_observed_frame": 0.836833
+      },
+      "bloom_upsampling_pass:bloom_upsampling_pass [Fragment]": {
+        "total_active_ms": 28.42261599999991,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.100791
+      },
+      "lightprobe_copy:lightprobe_copy [Compute]": {
+        "total_active_ms": 25.92541799999999,
+        "frames_with_event": 46,
+        "median_ms_per_observed_frame": 0.546958
+      },
+      "shadow_directional_light_0_cascade_0:shadow_directional_light_0_cascade_0 [Fragment]": {
+        "total_active_ms": 21.842007000000002,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.072125
+      },
+      "(wgpu internal) PendingWrites:Blit Command 0 [Compute]": {
+        "total_active_ms": 20.567163999999988,
+        "frames_with_event": 279,
+        "median_ms_per_observed_frame": 0.059125
+      },
+      "ui:ui [Fragment]": {
+        "total_active_ms": 20.561799999999998,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.0719165
+      },
+      "bloom_downsampling_pass:bloom_downsampling_pass [Vertex]": {
+        "total_active_ms": 19.726191999999987,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.06875200000000001
+      },
+      "shadow_directional_light_1_cascade_0:shadow_directional_light_1_cascade_0 [Fragment]": {
+        "total_active_ms": 19.69467499999999,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.058166999999999996
+      },
+      "bloom_upsampling_pass:bloom_upsampling_pass [Vertex]": {
+        "total_active_ms": 18.957687999999973,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.068375
+      },
+      "bloom_downsampling_pass:bloom_downsampling_pass [Fragment]": {
+        "total_active_ms": 18.217037000000037,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.06375
+      },
+      "main_indirect_parameters_building:main_indirect_parameters_building [Compute]": {
+        "total_active_ms": 17.442417000000003,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.0613125
+      },
+      "lightprobe_downsampling_first_pass:lightprobe_downsampling_first_pass [Compute]": {
+        "total_active_ms": 17.166333,
+        "frames_with_event": 46,
+        "median_ms_per_observed_frame": 0.3586875
+      },
+      "(wgpu internal) Pre Pass:Compute Command 1 [Compute]": {
+        "total_active_ms": 15.662541000000031,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.039791
+      },
+      "environment_pass:environment_pass [Compute]": {
+        "total_active_ms": 15.100627999999997,
+        "frames_with_event": 46,
+        "median_ms_per_observed_frame": 0.3227295
+      },
+      "early_mesh_preprocessing:early_mesh_preprocessing [Compute]": {
+        "total_active_ms": 13.326111,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.0450415
+      },
+      "early_prepass_indirect_parameters_building:early_prepass_indirect_parameters_building [Compute]": {
+        "total_active_ms": 9.084629999999999,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.0312085
+      },
+      "Command Buffer 3:Blit Command 0 [Compute]": {
+        "total_active_ms": 7.715910000000002,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.0267915
+      },
+      "Command Buffer 14:Blit Command 0 [Compute]": {
+        "total_active_ms": 6.884086000000001,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.023083
+      },
+      "upscaling:upscaling [Vertex]": {
+        "total_active_ms": 6.0138699999999945,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.020416
+      },
+      "main_transparent_pass_3d:main_transparent_pass_3d [Vertex]": {
+        "total_active_ms": 5.737828999999997,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.0204585
+      },
+      "ui:ui [Vertex]": {
+        "total_active_ms": 5.112661000000001,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.017125
+      },
+      "GPU Execution [Compute]": {
+        "total_active_ms": 4.9646230000000005,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 4.9646230000000005
+      },
+      "fxaa:fxaa [Vertex]": {
+        "total_active_ms": 4.34175,
+        "frames_with_event": 279,
+        "median_ms_per_observed_frame": 0.01525
+      },
+      "render_sky:render_sky [Vertex]": {
+        "total_active_ms": 4.210328999999999,
+        "frames_with_event": 280,
+        "median_ms_per_observed_frame": 0.014792
+      },
+      "tonemapping:tonemapping [Vertex]": {
+        "total_active_ms": 3.861179,
+        "frames_with_event": 279,
+        "median_ms_per_observed_frame": 0.013291
+      },
+      "bloom_upsampling_final_pass:bloom_upsampling_final_pass [Vertex]": {
+        "total_active_ms": 3.8134130000000006,
+        "frames_with_event": 281,
+        "median_ms_per_observed_frame": 0.012959
+      },
+      "GPU Execution [Vertex]": {
+        "total_active_ms": 3.3407080000000002,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 3.3407080000000002
+      },
+      "bloom_downsampling_first_pass:bloom_downsampling_first_pass [Vertex]": {
+        "total_active_ms": 3.01308,
+        "frames_with_event": 279,
+        "median_ms_per_observed_frame": 0.011125
+      },
+      "GPU Execution [Fragment]": {
+        "total_active_ms": 1.471126,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 1.471126
+      },
+      "lightprobe_downsampling_second_pass:lightprobe_downsampling_second_pass [Compute]": {
+        "total_active_ms": 0.369294,
+        "frames_with_event": 46,
+        "median_ms_per_observed_frame": 0.0081455
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e129 [Vertex]": {
+        "total_active_ms": 0.11725,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.11725
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398f11 [Vertex]": {
+        "total_active_ms": 0.10375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.10375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392343 [Vertex]": {
+        "total_active_ms": 0.099208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.099208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399ec8 [Vertex]": {
+        "total_active_ms": 0.088,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.088
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c531 [Vertex]": {
+        "total_active_ms": 0.08675,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.08675
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d81f [Vertex]": {
+        "total_active_ms": 0.084625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.084625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563945da [Vertex]": {
+        "total_active_ms": 0.083375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.083375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639674f [Vertex]": {
+        "total_active_ms": 0.083042,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.083042
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639921c [Vertex]": {
+        "total_active_ms": 0.082625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.082625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391be4 [Vertex]": {
+        "total_active_ms": 0.082084,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.082084
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396979 [Vertex]": {
+        "total_active_ms": 0.081667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.081667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399fd0 [Vertex]": {
+        "total_active_ms": 0.081333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.081333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393d78 [Vertex]": {
+        "total_active_ms": 0.079375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.079375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a72b [Vertex]": {
+        "total_active_ms": 0.078375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.078375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638def6 [Vertex]": {
+        "total_active_ms": 0.077708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.077708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563908ff [Vertex]": {
+        "total_active_ms": 0.077416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.077416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563931fb [Vertex]": {
+        "total_active_ms": 0.077208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.077208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395bc1 [Vertex]": {
+        "total_active_ms": 0.077041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.077041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c255 [Vertex]": {
+        "total_active_ms": 0.077,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.077
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563944d1 [Vertex]": {
+        "total_active_ms": 0.0765,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0765
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638fd5f [Vertex]": {
+        "total_active_ms": 0.076416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.076416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b29e [Vertex]": {
+        "total_active_ms": 0.076292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.076292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563971dc [Vertex]": {
+        "total_active_ms": 0.076208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.076208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c899 [Vertex]": {
+        "total_active_ms": 0.075667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.075667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ed42 [Vertex]": {
+        "total_active_ms": 0.075416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.075416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395467 [Vertex]": {
+        "total_active_ms": 0.074917,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.074917
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638bc66 [Vertex]": {
+        "total_active_ms": 0.07475,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.07475
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638cbe7 [Vertex]": {
+        "total_active_ms": 0.074292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.074292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c8a0 [Vertex]": {
+        "total_active_ms": 0.074209,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.074209
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391ad8 [Vertex]": {
+        "total_active_ms": 0.074083,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.074083
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a84a [Vertex]": {
+        "total_active_ms": 0.073583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.073583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638bb43 [Vertex]": {
+        "total_active_ms": 0.07325,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.07325
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638fe73 [Vertex]": {
+        "total_active_ms": 0.073125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.073125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399ba8 [Vertex]": {
+        "total_active_ms": 0.07275,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.07275
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396858 [Vertex]": {
+        "total_active_ms": 0.072583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.072583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393c69 [Vertex]": {
+        "total_active_ms": 0.0725,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0725
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d39d [Vertex]": {
+        "total_active_ms": 0.072167,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.072167
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56394b10 [Vertex]": {
+        "total_active_ms": 0.071875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391cee [Vertex]": {
+        "total_active_ms": 0.071709,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071709
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639589f [Vertex]": {
+        "total_active_ms": 0.071708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395cd8 [Vertex]": {
+        "total_active_ms": 0.071625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639caa9 [Vertex]": {
+        "total_active_ms": 0.071541,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071541
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639943e [Vertex]": {
+        "total_active_ms": 0.071458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563941a2 [Vertex]": {
+        "total_active_ms": 0.071292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392dc3 [Vertex]": {
+        "total_active_ms": 0.071166,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.071166
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398bed [Vertex]": {
+        "total_active_ms": 0.070625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.070625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638adeb [Vertex]": {
+        "total_active_ms": 0.070417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.070417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563988d5 [Vertex]": {
+        "total_active_ms": 0.070417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.070417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563902aa [Vertex]": {
+        "total_active_ms": 0.070208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.070208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563930f4 [Vertex]": {
+        "total_active_ms": 0.06975,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06975
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563948f5 [Vertex]": {
+        "total_active_ms": 0.069708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.069708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391597 [Vertex]": {
+        "total_active_ms": 0.069417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.069417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638dcaf [Vertex]": {
+        "total_active_ms": 0.069416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.069416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a4ec [Vertex]": {
+        "total_active_ms": 0.069167,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.069167
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639aa5a [Vertex]": {
+        "total_active_ms": 0.068959,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068959
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392016 [Vertex]": {
+        "total_active_ms": 0.068875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393a57 [Vertex]": {
+        "total_active_ms": 0.06875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396216 [Vertex]": {
+        "total_active_ms": 0.068708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395aae [Vertex]": {
+        "total_active_ms": 0.068667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b029 [Vertex]": {
+        "total_active_ms": 0.068583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563946e3 [Vertex]": {
+        "total_active_ms": 0.068542,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068542
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396639 [Vertex]": {
+        "total_active_ms": 0.068375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396ca9 [Vertex]": {
+        "total_active_ms": 0.068125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639409a [Vertex]": {
+        "total_active_ms": 0.068084,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.068084
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f3a7 [Vertex]": {
+        "total_active_ms": 0.06725,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06725
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ba29 [Vertex]": {
+        "total_active_ms": 0.067208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.067208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e8f6 [Vertex]": {
+        "total_active_ms": 0.067083,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.067083
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397700 [Vertex]": {
+        "total_active_ms": 0.066708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391066 [Vertex]": {
+        "total_active_ms": 0.066625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393737 [Vertex]": {
+        "total_active_ms": 0.0665,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0665
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639288e [Vertex]": {
+        "total_active_ms": 0.066416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396325 [Vertex]": {
+        "total_active_ms": 0.066334,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066334
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390194 [Vertex]": {
+        "total_active_ms": 0.066291,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066291
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563904c9 [Vertex]": {
+        "total_active_ms": 0.066125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399982 [Vertex]": {
+        "total_active_ms": 0.066125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.066125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395edd [Vertex]": {
+        "total_active_ms": 0.065917,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065917
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398063 [Vertex]": {
+        "total_active_ms": 0.065708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b090 [Vertex]": {
+        "total_active_ms": 0.065542,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065542
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392238 [Vertex]": {
+        "total_active_ms": 0.065458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563959a6 [Vertex]": {
+        "total_active_ms": 0.065416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638acc6 [Vertex]": {
+        "total_active_ms": 0.065041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ea0b [Vertex]": {
+        "total_active_ms": 0.065041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.065041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638cf3c [Vertex]": {
+        "total_active_ms": 0.064958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.064958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a863 [Vertex]": {
+        "total_active_ms": 0.064791,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.064791
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390f54 [Vertex]": {
+        "total_active_ms": 0.064625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.064625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563906d9 [Vertex]": {
+        "total_active_ms": 0.0645,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0645
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b8f0 [Vertex]": {
+        "total_active_ms": 0.064375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.064375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399763 [Vertex]": {
+        "total_active_ms": 0.064333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.064333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c307 [Vertex]": {
+        "total_active_ms": 0.06425,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06425
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c577 [Vertex]": {
+        "total_active_ms": 0.06425,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06425
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c783 [Vertex]": {
+        "total_active_ms": 0.06425,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06425
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395796 [Vertex]": {
+        "total_active_ms": 0.064125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.064125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563943ca [Vertex]": {
+        "total_active_ms": 0.063834,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.063834
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639cbb1 [Vertex]": {
+        "total_active_ms": 0.063792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.063792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397d57 [Vertex]": {
+        "total_active_ms": 0.063417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.063417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a951 [Vertex]": {
+        "total_active_ms": 0.063041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.063041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639849b [Vertex]": {
+        "total_active_ms": 0.063,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.063
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390b2b [Vertex]": {
+        "total_active_ms": 0.062459,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.062459
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f905 [Vertex]": {
+        "total_active_ms": 0.062375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.062375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639340b [Vertex]": {
+        "total_active_ms": 0.062042,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.062042
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563970d3 [Vertex]": {
+        "total_active_ms": 0.062,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.062
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e017 [Vertex]": {
+        "total_active_ms": 0.061583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a3d4 [Vertex]": {
+        "total_active_ms": 0.061541,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061541
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d5cd [Vertex]": {
+        "total_active_ms": 0.061541,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061541
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399a97 [Vertex]": {
+        "total_active_ms": 0.061417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396b8c [Vertex]": {
+        "total_active_ms": 0.061292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563929a1 [Vertex]": {
+        "total_active_ms": 0.06125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393f91 [Vertex]": {
+        "total_active_ms": 0.06125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563985a2 [Vertex]": {
+        "total_active_ms": 0.061209,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061209
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ce27 [Vertex]": {
+        "total_active_ms": 0.061208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563974f6 [Vertex]": {
+        "total_active_ms": 0.061083,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061083
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c145 [Vertex]": {
+        "total_active_ms": 0.061042,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061042
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563987a7 [Vertex]": {
+        "total_active_ms": 0.061041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.061041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563972e3 [Vertex]": {
+        "total_active_ms": 0.060292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.060292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638db87 [Vertex]": {
+        "total_active_ms": 0.06025,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.06025
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638fc51 [Vertex]": {
+        "total_active_ms": 0.059833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639394d [Vertex]": {
+        "total_active_ms": 0.059833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639ad75 [Vertex]": {
+        "total_active_ms": 0.059542,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059542
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56394e38 [Vertex]": {
+        "total_active_ms": 0.059292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059292
+      },
+      "(wgpu internal) Transit:Blit Command 0 [Compute]": {
+        "total_active_ms": 0.05925,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.05925
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639610a [Vertex]": {
+        "total_active_ms": 0.059208,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059208
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c46f [Vertex]": {
+        "total_active_ms": 0.059125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398e00 [Vertex]": {
+        "total_active_ms": 0.059,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.059
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563916a1 [Vertex]": {
+        "total_active_ms": 0.058917,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.058917
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396fcc [Vertex]": {
+        "total_active_ms": 0.058792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.058792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a410 [Vertex]": {
+        "total_active_ms": 0.058792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.058792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392aba [Vertex]": {
+        "total_active_ms": 0.058625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.058625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639828a [Vertex]": {
+        "total_active_ms": 0.058125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.058125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ee57 [Vertex]": {
+        "total_active_ms": 0.058042,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.058042
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639254f [Vertex]": {
+        "total_active_ms": 0.057959,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.057959
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397f59 [Vertex]": {
+        "total_active_ms": 0.057792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.057792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390d35 [Vertex]": {
+        "total_active_ms": 0.057417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.057417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b484 [Vertex]": {
+        "total_active_ms": 0.057209,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.057209
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398392 [Vertex]": {
+        "total_active_ms": 0.057083,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.057083
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397b3f [Vertex]": {
+        "total_active_ms": 0.057,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.057
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639ac6a [Vertex]": {
+        "total_active_ms": 0.056667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.056667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b900 [Vertex]": {
+        "total_active_ms": 0.056417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.056417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396eae [Vertex]": {
+        "total_active_ms": 0.056333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.056333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391176 [Vertex]": {
+        "total_active_ms": 0.056292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.056292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639568f [Vertex]": {
+        "total_active_ms": 0.056292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.056292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395360 [Vertex]": {
+        "total_active_ms": 0.05525,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.05525
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395054 [Vertex]": {
+        "total_active_ms": 0.053833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.053833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f5ba [Vertex]": {
+        "total_active_ms": 0.053708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.053708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392676 [Vertex]": {
+        "total_active_ms": 0.053291,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.053291
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639bb0b [Vertex]": {
+        "total_active_ms": 0.052667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.052667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563947ec [Vertex]": {
+        "total_active_ms": 0.052375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.052375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b6d4 [Vertex]": {
+        "total_active_ms": 0.052125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.052125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a1ff [Vertex]": {
+        "total_active_ms": 0.052,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.052
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392bc1 [Vertex]": {
+        "total_active_ms": 0.051792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.051792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d95a [Vertex]": {
+        "total_active_ms": 0.049958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.049958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639ab63 [Vertex]": {
+        "total_active_ms": 0.049084,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.049084
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399327 [Vertex]": {
+        "total_active_ms": 0.04875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.04875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399dbf [Vertex]": {
+        "total_active_ms": 0.048541,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.048541
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638abaa [Vertex]": {
+        "total_active_ms": 0.04775,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.04775
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396532 [Vertex]": {
+        "total_active_ms": 0.046958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.046958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638dde0 [Vertex]": {
+        "total_active_ms": 0.046417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.046417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639277d [Vertex]": {
+        "total_active_ms": 0.045084,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.045084
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c366 [Vertex]": {
+        "total_active_ms": 0.045042,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.045042
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56394f42 [Vertex]": {
+        "total_active_ms": 0.043416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.043416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399018 [Vertex]": {
+        "total_active_ms": 0.042416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.042416
+      },
+      "(wgpu internal) :Blit Command 0 [Compute]": {
+        "total_active_ms": 0.042292,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.042292
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ef61 [Vertex]": {
+        "total_active_ms": 0.041834,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.041834
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b367 [Vertex]": {
+        "total_active_ms": 0.041125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.041125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399870 [Vertex]": {
+        "total_active_ms": 0.0405,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0405
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563918ac [Vertex]": {
+        "total_active_ms": 0.040166,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.040166
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a2b0 [Vertex]": {
+        "total_active_ms": 0.039875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.039875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393610 [Vertex]": {
+        "total_active_ms": 0.038833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.038833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c41e [Vertex]": {
+        "total_active_ms": 0.038333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.038333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639be15 [Vertex]": {
+        "total_active_ms": 0.038167,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.038167
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563973eb [Vertex]": {
+        "total_active_ms": 0.037875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.037875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391f08 [Vertex]": {
+        "total_active_ms": 0.037166,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.037166
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399648 [Vertex]": {
+        "total_active_ms": 0.036959,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.036959
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563903b8 [Vertex]": {
+        "total_active_ms": 0.035709,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.035709
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638be8a [Vertex]": {
+        "total_active_ms": 0.035416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.035416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639557b [Vertex]": {
+        "total_active_ms": 0.035375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.035375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397923 [Vertex]": {
+        "total_active_ms": 0.035041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.035041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b7e8 [Vertex]": {
+        "total_active_ms": 0.035041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.035041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638af0f [Vertex]": {
+        "total_active_ms": 0.035,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.035
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b143 [Vertex]": {
+        "total_active_ms": 0.034833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.034833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390086 [Vertex]": {
+        "total_active_ms": 0.034667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.034667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b5a5 [Vertex]": {
+        "total_active_ms": 0.0345,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0345
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395ff6 [Vertex]": {
+        "total_active_ms": 0.0345,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0345
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391378 [Vertex]": {
+        "total_active_ms": 0.034291,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.034291
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638da6d [Vertex]": {
+        "total_active_ms": 0.034041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.034041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638cd0c [Vertex]": {
+        "total_active_ms": 0.033458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.033458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e59c [Vertex]": {
+        "total_active_ms": 0.032792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.032792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d4b5 [Vertex]": {
+        "total_active_ms": 0.03275,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.03275
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563942af [Vertex]": {
+        "total_active_ms": 0.03275,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.03275
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c99e [Vertex]": {
+        "total_active_ms": 0.032667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.032667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638eb2e [Vertex]": {
+        "total_active_ms": 0.032083,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.032083
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638bfa6 [Vertex]": {
+        "total_active_ms": 0.032041,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.032041
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e35d [Vertex]": {
+        "total_active_ms": 0.031916,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.031916
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638fb38 [Vertex]": {
+        "total_active_ms": 0.031833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.031833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639bf1f [Vertex]": {
+        "total_active_ms": 0.031708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.031708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b5d8 [Vertex]": {
+        "total_active_ms": 0.031333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.031333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392126 [Vertex]": {
+        "total_active_ms": 0.030875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390e49 [Vertex]": {
+        "total_active_ms": 0.030834,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030834
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f4b9 [Vertex]": {
+        "total_active_ms": 0.030833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393846 [Vertex]": {
+        "total_active_ms": 0.030667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390a13 [Vertex]": {
+        "total_active_ms": 0.030583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563907f0 [Vertex]": {
+        "total_active_ms": 0.0305,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0305
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638fa2d [Vertex]": {
+        "total_active_ms": 0.030458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f191 [Vertex]": {
+        "total_active_ms": 0.030375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395256 [Vertex]": {
+        "total_active_ms": 0.030375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b6df [Vertex]": {
+        "total_active_ms": 0.030375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.030375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c034 [Vertex]": {
+        "total_active_ms": 0.03025,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.03025
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397816 [Vertex]": {
+        "total_active_ms": 0.03,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.03
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a0f0 [Vertex]": {
+        "total_active_ms": 0.03,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.03
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397a36 [Vertex]": {
+        "total_active_ms": 0.029959,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029959
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397c4e [Vertex]": {
+        "total_active_ms": 0.029958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a306 [Vertex]": {
+        "total_active_ms": 0.029667,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029667
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f061 [Vertex]": {
+        "total_active_ms": 0.029583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398ae5 [Vertex]": {
+        "total_active_ms": 0.029583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e248 [Vertex]": {
+        "total_active_ms": 0.029542,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029542
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563989dc [Vertex]": {
+        "total_active_ms": 0.029333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d04c [Vertex]": {
+        "total_active_ms": 0.029084,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029084
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639bc13 [Vertex]": {
+        "total_active_ms": 0.029,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029
+      },
+      "GPU Execution (Clear) (gripen-flight-profile (10410)) 0x5639ccba [Vertex]": {
+        "total_active_ms": 0.029,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.029
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398178 [Vertex]": {
+        "total_active_ms": 0.028625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.028625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b9f9 [Vertex]": {
+        "total_active_ms": 0.028584,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.028584
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393302 [Vertex]": {
+        "total_active_ms": 0.028458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.028458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f7f7 [Vertex]": {
+        "total_active_ms": 0.028333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.028333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a733 [Vertex]": {
+        "total_active_ms": 0.028125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.028125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e7d7 [Vertex]": {
+        "total_active_ms": 0.028042,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.028042
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392ecd [Vertex]": {
+        "total_active_ms": 0.027625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.027625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c0d4 [Vertex]": {
+        "total_active_ms": 0.027459,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.027459
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56397e52 [Vertex]": {
+        "total_active_ms": 0.027458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.027458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563919c6 [Vertex]": {
+        "total_active_ms": 0.027416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.027416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399ca4 [Vertex]": {
+        "total_active_ms": 0.027375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.027375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392fd6 [Vertex]": {
+        "total_active_ms": 0.027,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.027
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e6c4 [Vertex]": {
+        "total_active_ms": 0.026958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.026958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a51f [Vertex]": {
+        "total_active_ms": 0.026833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.026833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638cacd [Vertex]": {
+        "total_active_ms": 0.026708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.026708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d161 [Vertex]": {
+        "total_active_ms": 0.026666,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.026666
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393b60 [Vertex]": {
+        "total_active_ms": 0.026417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.026417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638e47e [Vertex]": {
+        "total_active_ms": 0.026333,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.026333
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d287 [Vertex]": {
+        "total_active_ms": 0.025958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.025958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c1da [Vertex]": {
+        "total_active_ms": 0.025916,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.025916
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639af80 [Vertex]": {
+        "total_active_ms": 0.025459,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.025459
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56398ce8 [Vertex]": {
+        "total_active_ms": 0.025458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.025458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b4c2 [Vertex]": {
+        "total_active_ms": 0.02525,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.02525
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c767 [Vertex]": {
+        "total_active_ms": 0.025125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.025125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b190 [Vertex]": {
+        "total_active_ms": 0.025,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.025
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399113 [Vertex]": {
+        "total_active_ms": 0.024833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a97c [Vertex]": {
+        "total_active_ms": 0.024625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396da4 [Vertex]": {
+        "total_active_ms": 0.024583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56394d12 [Vertex]": {
+        "total_active_ms": 0.024458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b7e8 [Vertex]": {
+        "total_active_ms": 0.024417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396420 [Vertex]": {
+        "total_active_ms": 0.024417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56396a74 [Vertex]": {
+        "total_active_ms": 0.024417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56395dd3 [Vertex]": {
+        "total_active_ms": 0.024,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.024
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ff7c [Vertex]": {
+        "total_active_ms": 0.023917,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023917
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563975f9 [Vertex]": {
+        "total_active_ms": 0.023875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638aa90 [Vertex]": {
+        "total_active_ms": 0.023792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391482 [Vertex]": {
+        "total_active_ms": 0.023791,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023791
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638ec34 [Vertex]": {
+        "total_active_ms": 0.02375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.02375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563917a4 [Vertex]": {
+        "total_active_ms": 0.023625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639ae78 [Vertex]": {
+        "total_active_ms": 0.023625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638a5f9 [Vertex]": {
+        "total_active_ms": 0.023542,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023542
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638d707 [Vertex]": {
+        "total_active_ms": 0.023417,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023417
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638bd72 [Vertex]": {
+        "total_active_ms": 0.023375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c64a [Vertex]": {
+        "total_active_ms": 0.023375,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.023375
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f6d4 [Vertex]": {
+        "total_active_ms": 0.022875,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022875
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638c9b5 [Vertex]": {
+        "total_active_ms": 0.022709,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022709
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563949f8 [Vertex]": {
+        "total_active_ms": 0.022708,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022708
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391271 [Vertex]": {
+        "total_active_ms": 0.022666,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022666
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56394c0b [Vertex]": {
+        "total_active_ms": 0.022625,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022625
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639514f [Vertex]": {
+        "total_active_ms": 0.022583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56399541 [Vertex]": {
+        "total_active_ms": 0.022583,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022583
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56390c26 [Vertex]": {
+        "total_active_ms": 0.022458,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022458
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56391e01 [Vertex]": {
+        "total_active_ms": 0.022416,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022416
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392446 [Vertex]": {
+        "total_active_ms": 0.022334,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022334
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638b24f [Vertex]": {
+        "total_active_ms": 0.022125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x563905d0 [Vertex]": {
+        "total_active_ms": 0.022083,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.022083
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393e73 [Vertex]": {
+        "total_active_ms": 0.021834,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.021834
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56393506 [Vertex]": {
+        "total_active_ms": 0.021833,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.021833
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639c674 [Vertex]": {
+        "total_active_ms": 0.021792,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.021792
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639869d [Vertex]": {
+        "total_active_ms": 0.021584,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.021584
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639a622 [Vertex]": {
+        "total_active_ms": 0.021542,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.021542
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639b3a3 [Vertex]": {
+        "total_active_ms": 0.0215,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.0215
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5639bd0e [Vertex]": {
+        "total_active_ms": 0.021125,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.021125
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x56392cbc [Vertex]": {
+        "total_active_ms": 0.020958,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.020958
+      },
+      "no_camera_clear_pass:no_camera_clear_pass (Clear) (gripen-flight-profile (10410)) 0x5638f292 [Vertex]": {
+        "total_active_ms": 0.020166,
+        "frames_with_event": 1,
+        "median_ms_per_observed_frame": 0.020166
+      }
+    }
+  },
+  "gpu_resources_before": {
+    "note": "Metal resource creation turnover, not resident memory or general CPU malloc counts. Texture-view events may have zero bytes. Window edges can include partial frames.",
+    "observed_opaque_frames": 281,
+    "allocation_events": 34559,
+    "allocated_bytes": 4444618752,
+    "window_s": [
+      0.412640041,
+      6.461630083
+    ],
+    "events_per_observed_frame": 122.98576512455516,
+    "by_label": {
+      "Buffer:(wgpu internal) Staging": {
+        "events": 22328,
+        "bytes": 2919579648,
+        "events_per_observed_frame": 79.45907473309609
+      },
+      "Buffer:material uniform data 0": {
+        "events": 8080,
+        "bytes": 1059061760,
+        "events_per_observed_frame": 28.754448398576514
+      },
+      "Buffer:Unlabeled": {
+        "events": 2743,
+        "bytes": 359284736,
+        "events_per_observed_frame": 9.761565836298933
+      },
+      "Buffer:LineGizmo Position Buffer": {
+        "events": 282,
+        "bytes": 36962304,
+        "events_per_observed_frame": 1.00355871886121
+      },
+      "Buffer:LineGizmo Color Buffer": {
+        "events": 282,
+        "bytes": 36962304,
+        "events_per_observed_frame": 1.00355871886121
+      },
+      "Texture:point_light_shadow_map_array_texture_view": {
+        "events": 227,
+        "bytes": 0,
+        "events_per_observed_frame": 0.8078291814946619
+      },
+      "Texture:directional_light_shadow_map_array_texture_view": {
+        "events": 227,
+        "bytes": 0,
+        "events_per_observed_frame": 0.8078291814946619
+      },
+      "Texture:Unlabeled": {
+        "events": 140,
+        "bytes": 0,
+        "events_per_observed_frame": 0.498220640569395
+      },
+      "Buffer:LineGizmo Strip Position Buffer": {
+        "events": 125,
+        "bytes": 16384000,
+        "events_per_observed_frame": 0.44483985765124556
+      },
+      "Buffer:LineGizmo Strip Color Buffer": {
+        "events": 125,
+        "bytes": 16384000,
+        "events_per_observed_frame": 0.44483985765124556
+      }
+    }
+  },
+  "drawable_waits_before": {
+    "count": 276,
+    "median_ms": 8.444728999999999,
+    "p95_ms": 25.452875,
+    "max_ms": 26.408792,
+    "note": "Waiting for a drawable; scheduling, VSync and backpressure can contribute. Not a GPU pass duration."
+  },
+  "note": "Single sequential diagnostic cases, not confidence intervals. Different frame-dependent trajectories before the timing fix. GPU channel intervals overlap and are not additive; allocation bytes are resource turnover, not resident memory."
+}

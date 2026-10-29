@@ -42,6 +42,7 @@ mod propulsion;
 mod render_batch;
 mod render_cache;
 mod skin_damage;
+mod sim_clock;
 mod sound;
 mod space;
 mod spacecraft_detail;
@@ -65,6 +66,7 @@ use bevy::{
     window::{PresentMode, WindowResolution},
 };
 use physics::*;
+use sim_clock::SimClock;
 use world::*;
 
 #[derive(Resource)]
@@ -221,10 +223,6 @@ struct SunBody;
 struct SkyProfile(Atmosphere);
 #[derive(Resource)]
 struct UiFont(Handle<Font>);
-#[derive(Resource, Default)]
-struct SimClock {
-    accumulator: f64,
-}
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum FlightStage { Controls, Simulation, World, Camera, Presentation, Interface, Capture }
@@ -1457,7 +1455,7 @@ fn benchmark_ablation(
         }
     }
 }
-fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<ViewState>, warp: Res<warp::Warp>, windows: Query<&Window>, session: Res<benchmark::Session>, diagnostics: Res<DiagnosticsStore>, mut benchmark: ResMut<RenderBenchmark>) {
+fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<ViewState>, warp: Res<warp::Warp>, windows: Query<&Window>, session: Res<benchmark::Session>, diagnostics: Res<DiagnosticsStore>, mut benchmark: ResMut<RenderBenchmark>, clock: Res<SimClock>) {
     let Some(mode) = benchmark.mode.clone() else {
         return;
     };
@@ -1490,7 +1488,7 @@ fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<Vi
     // Read actual flight time even when GPU/CPU profiling is disabled. The
     // FPS-only path deliberately skips the performance counters on Metal.
     let simulated_seconds = f.elapsed - benchmark.start_sim.unwrap();
-    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
+    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
         "simulated_seconds":simulated_seconds,"simulation_rate":simulated_seconds/(elapsed-warmup),"over_25_ms":frames.iter().filter(|&&t|t>25.).count(),"over_50_ms":frames.iter().filter(|&&t|t>50.).count(),"measurements":performance::report(&diagnostics),
         "workers":{"compute":bevy::tasks::ComputeTaskPool::get().thread_num(),"async_compute":bevy::tasks::AsyncComputeTaskPool::get().thread_num(),"io":bevy::tasks::IoTaskPool::get().thread_num()},
         "note":"Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed"});
@@ -2234,22 +2232,21 @@ fn scenario_buttons(
     }
 }
 fn step(
-    _time: Res<Time>,
+    time: Res<Time<bevy::time::Real>>,
     mut clock: ResMut<SimClock>,
     mut f: ResMut<Flight>,
     mut e: ResMut<Environment>,
     mut warp: ResMut<warp::Warp>,
     combat: Option<ResMut<combat::Combat>>,
+    view: Option<Res<ViewState>>,
 ) {
     let _measure = performance::span(0);
     let mut combat = combat;
-    if f.paused {
-        clock.accumulator = 0.0;
-        return;
-    }
+    let wall = clock.wall_duration(time.delta_secs_f64(), f.elapsed, f.paused, view.as_ref().map(|v|v.generation));
+    if f.paused || wall <= 0. { return; }
     warp.effective = warp.allowed(&f);
     if warp.effective > 4.0 {
-        let requested = warp.timestep * warp.effective;
+        let requested = wall * warp.effective;
         let duration = f
             .space
             .burn_stop
@@ -2265,13 +2262,11 @@ fn step(
             warp.effective = 1.;
             warp.message = "Warp stopped / planned burn, encounter or entry".into();
         }
-        clock.accumulator = 0.0;
+        clock.discard_remainder();
         return;
     }
-    clock.accumulator = warp.timestep * warp.effective;
-    let requested=clock.accumulator;
-    while clock.accumulator > 1e-12 {
-        let dt = clock.accumulator.min(1.0 / 120.0);
+    let (steps, dt) = clock.steps(wall, warp.effective, warp.timestep);
+    for _ in 0..steps {
         e.advance(dt);
         simulate(&mut f, &e, dt);
         if let Some(ref mut combat) = combat {
@@ -2280,9 +2275,8 @@ fn step(
             combat.tick(&mut f, dt);
             combat::effects::advance(combat, &f, dt);
         }
-        clock.accumulator -= dt;
     }
-    performance::advanced(requested);
+    performance::advanced(steps as f64 * dt);
 }
 fn update_camera(
     mut ambient: ResMut<GlobalAmbientLight>,
@@ -3109,9 +3103,9 @@ mod lunar_warp_regression {
         let mut app=App::new();let mut w=warp::Warp::default();
         w.selected=w.rates.iter().position(|r|*r==0.5).unwrap();
         app.insert_resource(Flight::spacecraft()).insert_resource(w)
-            .init_resource::<Time>().init_resource::<Environment>()
+            .init_resource::<Time<bevy::time::Real>>().init_resource::<Environment>()
             .init_resource::<SimClock>().add_systems(Update,step);
-        for _ in 0..60{app.update();}
+        for _ in 0..60{app.world_mut().resource_mut::<Time<bevy::time::Real>>().advance_by(std::time::Duration::from_secs_f64(1./60.));app.update();}
         assert!((app.world().resource::<Flight>().elapsed-0.5).abs()<1e-8);
         assert!((app.world().resource::<Environment>().time-0.5).abs()<1e-8);
         assert_eq!(app.world().resource::<warp::Warp>().timestep,1./60.);
@@ -3125,10 +3119,11 @@ mod lunar_warp_regression {
         warp.selected = warp.rates.len() - 1;
         app.insert_resource(f)
             .insert_resource(warp)
-            .init_resource::<Time>()
+            .init_resource::<Time<bevy::time::Real>>()
             .init_resource::<Environment>()
             .init_resource::<SimClock>()
             .add_systems(Update, step);
+        app.world_mut().resource_mut::<Time<bevy::time::Real>>().advance_by(std::time::Duration::from_secs_f64(1./60.));
         app.update();
         assert!((app.world().resource::<Flight>().elapsed - 20.).abs() < 1e-6);
         let w=app.world().resource::<warp::Warp>();
@@ -3440,24 +3435,27 @@ mod camera_input_tests {
         assert_eq!(v.index, 3);
     }
     #[test]
-    fn simulation_advances_configured_time_without_wall_clock_catchup() {
+    fn configured_interval_is_a_tick_bound_and_pause_stops_both_clocks() {
         let mut app = App::new();
         let mut warp = warp::Warp::default();
-        warp.timestep = 0.01;
-        app.add_plugins(MinimalPlugins)
+        warp.timestep = 0.005;
+        app.init_resource::<Time<bevy::time::Real>>()
             .insert_resource(warp)
             .insert_resource(Flight::spacecraft())
             .insert_resource(Environment::default())
             .insert_resource(SimClock::default())
             .add_systems(Update, step);
         for _ in 0..5 {
+            app.world_mut().resource_mut::<Time<bevy::time::Real>>().advance_by(std::time::Duration::from_millis(20));
             app.update();
         }
-        assert!((app.world().resource::<Flight>().elapsed - 0.05).abs() < 1e-9);
-        assert!((app.world().resource::<Environment>().time - 0.05).abs() < 1e-9);
+        assert!((app.world().resource::<Flight>().elapsed - 0.1).abs() < 1e-9);
+        assert!((app.world().resource::<Environment>().time - 0.1).abs() < 1e-9);
         app.world_mut().resource_mut::<Flight>().paused = true;
+        app.world_mut().resource_mut::<Time<bevy::time::Real>>().advance_by(std::time::Duration::from_secs(5));
         app.update();
-        assert!((app.world().resource::<Flight>().elapsed - 0.05).abs() < 1e-9);
+        assert!((app.world().resource::<Flight>().elapsed - 0.1).abs() < 1e-9);
+        assert!((app.world().resource::<Environment>().time - 0.1).abs() < 1e-9);
     }
     #[test]
     fn camera_cycle_contains_exactly_four_flight_views_and_map_is_separate() {
@@ -3615,5 +3613,75 @@ mod camera_input_tests {
         assert_eq!(view.yaw, 0.0);
         assert_eq!(view.pitch, 0.0);
         assert!(!view.left_camera_drag);
+    }
+}
+
+#[cfg(test)]
+mod realtime_flight_regressions {
+    use super::*;
+    use std::time::Duration;
+    fn scene() -> App {
+        let mut app = App::new();
+        let mut f = carrier::scenario(false);
+        f.controls = DVec3::new(0.05, -0.03, 0.08);
+        app.insert_resource(f).insert_resource(Environment { wind_enabled:false, ..default() })
+            .insert_resource(warp::Warp::default()).insert_resource(ViewState::default())
+            .insert_resource(combat::Combat::default()).init_resource::<SimClock>()
+            .init_resource::<Time<bevy::time::Real>>().add_systems(Update, step);
+        app
+    }
+    fn frame(app: &mut App, duration: Duration) {
+        app.world_mut().resource_mut::<Time<bevy::time::Real>>().advance_by(duration);
+        app.update();
+    }
+    fn trajectory(fps: u32, slow: bool) -> Flight {
+        let mut app = scene();
+        if slow {
+            let mut w = app.world_mut().resource_mut::<warp::Warp>();
+            w.selected = w.rates.iter().position(|r| *r == 0.5).unwrap();
+        }
+        let mut previous = Duration::ZERO;
+        for i in 1..=fps*2 {
+            let at = Duration::from_secs_f64(i as f64/fps as f64);
+            frame(&mut app, at-previous);
+            previous = at;
+        }
+        let expected = if slow {1.} else {2.};
+        let f=app.world().resource::<Flight>();
+        assert!((f.elapsed-expected).abs()<1e-9);
+        assert!((app.world().resource::<Environment>().time-expected).abs()<1e-9);
+        assert!(!f.crashed && f.position.is_finite() && f.orientation.is_finite());
+        f.clone()
+    }
+    #[test]
+    fn hornet_physics_and_controls_follow_same_trajectory_at_different_render_rates() {
+        for slow in [false,true] {
+            let reference = trajectory(60,slow);
+            for fps in [24,30,40,120,144,240] {
+                let f=trajectory(fps,slow);
+                assert!(f.position.distance(reference.position)<1e-6,"{fps} Hz position mismatch");
+                assert!(f.velocity.distance(reference.velocity)<1e-8,"{fps} Hz velocity mismatch");
+                assert!(f.orientation.angle_between(reference.orientation)<1e-6);
+                assert!(f.rates.distance(reference.rates)<1e-8);
+                assert!((f.fuel-reference.fuel).abs()<1e-8);
+            }
+        }
+    }
+    #[test]
+    fn scenario_reset_and_resume_do_not_replay_old_time() {
+        let mut app=scene();
+        frame(&mut app,Duration::from_millis(25));
+        assert!((app.world().resource::<Flight>().elapsed-0.025).abs()<1e-9);
+        app.world_mut().resource_mut::<Flight>().paused=true;
+        frame(&mut app,Duration::from_secs(5));
+        app.world_mut().resource_mut::<Flight>().paused=false;
+        frame(&mut app,Duration::from_secs(5));
+        assert!((app.world().resource::<Flight>().elapsed-0.025).abs()<1e-9);
+        *app.world_mut().resource_mut::<Flight>()=carrier::scenario(false);
+        app.world_mut().resource_mut::<ViewState>().generation+=1;
+        frame(&mut app,Duration::from_millis(25));
+        assert_eq!(app.world().resource::<Flight>().elapsed,0.);
+        frame(&mut app,Duration::from_millis(25));
+        assert!((app.world().resource::<Flight>().elapsed-0.025).abs()<1e-9);
     }
 }

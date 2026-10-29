@@ -1118,7 +1118,7 @@ pub fn update(
     f: Res<Flight>,
     combat: Res<crate::combat::Combat>,
     environment: Res<Environment>,
-    time: Res<Time>,
+    (time, diagnostic): (Res<Time>, Option<Res<crate::benchmark::Session>>),
     mut last: Local<crate::render_cache::PresentationClock>,
     screens: Query<&Instrument>,
     mut images: ResMut<Assets<Image>>,
@@ -1190,6 +1190,9 @@ pub fn update(
         return;
     }
     let _measure = crate::performance::span(5);
+    if diagnostic.as_ref().is_some_and(|session| session.instruments_frozen) {
+        return;
+    }
     if !last.due(time.elapsed_secs(), if f.aircraft==crate::aircraft::Aircraft::Hornet{1./30.}else{0.10}, &view) {
         return;
     }

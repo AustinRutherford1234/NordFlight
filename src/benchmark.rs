@@ -10,6 +10,8 @@ pub struct Session {
     pub warmup: f64,
     pub seconds: f64,
     pub events: Vec<serde_json::Value>,
+    /// Diagnostic-only ablation: retain the last rendered instrument pages.
+    pub instruments_frozen: bool,
     phase: Option<usize>,
     phase_seconds: f64,
     last_event: u64,
@@ -37,6 +39,7 @@ impl Default for Session {
             warmup: number("NORD_BENCH_WARMUP", 20.),
             seconds: number("NORD_BENCH_SECONDS", 40.),
             events: Vec::new(),
+            instruments_frozen: false,
             phase: None,
             phase_seconds: number("NORD_SOAK_SEGMENT_SECONDS", 150.),
             last_event: u64::MAX,
@@ -171,6 +174,8 @@ pub fn exercise(
         return;
     }
     let wall = time.elapsed_secs_f64();
+    session.instruments_frozen = std::env::var_os("NORD_BENCH_FREEZE_INSTRUMENTS").is_some()
+        && wall >= session.warmup;
     let phase = (wall / session.phase_seconds) as usize;
     let script = if session.soak {
         if session.atmosphere_only {
@@ -188,7 +193,7 @@ pub fn exercise(
             *f = crate::carrier::scenario(false);
             f.paused = false;
             v.scenario = 11;
-            v.index = 3;
+            v.index = if std::env::var("NORD_BENCH_CAMERA").as_deref() == Ok("external") { 1 } else { 3 };
             v.yaw = 0.;
             v.pitch = -0.1;
             e.wind_enabled = false;
@@ -197,6 +202,7 @@ pub fn exercise(
         if wall >= session.next_sample {
             session.next_sample = wall + 1.;
             let relative = crate::carrier::relative(f.position, f.elapsed);
+            let frozen = session.instruments_frozen;
             session.events.push(serde_json::json!({
                 "wall_s": wall, "simulation_s": f.elapsed,
                 "altitude_m": f.altitude(), "agl_m": f.agl(),
@@ -205,7 +211,8 @@ pub fn exercise(
                 "throttle": f.throttle, "crashed": f.crashed,
                 "landed": f.landed, "paused": f.paused,
                 "camera": v.index, "meshes": meshes.len(),
-                "entities": entities.iter().count()
+                "entities": entities.iter().count(),
+                "instruments_frozen": frozen
             }));
         }
         return;
