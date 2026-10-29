@@ -181,6 +181,16 @@ pub fn exercise(
     };
     let scripted =
         session.soak || matches!(script.as_str(), "ascent" | "descent" | "landing" | "warp");
+    if script=="carrier-approach" {
+        // Diagnostic-only repeated final approach; never alters normal flight.
+        let z=2300.-(wall*70.)%2000.;
+        if session.phase.is_none(){*f=crate::carrier::scenario(false);v.scenario=11;session.phase=Some(0);}
+        f.position=crate::carrier::world(bevy::math::DVec3::new(crate::carrier::lane(z),crate::carrier::DECK+(z-75.)*0.061+3.,z),wall);
+        f.orientation=crate::carrier::rotation(wall)*bevy::math::DQuat::from_rotation_y(0.14)*bevy::math::DQuat::from_rotation_x(0.07);
+        f.elapsed=wall;f.paused=true;v.index=if std::env::var_os("NORD_TERRAIN_COCKPIT").is_some(){3}else{1};
+        if wall>=session.next_sample{session.next_sample=wall+1.;session.events.push(serde_json::json!({"wall_s":wall,"carrier_range_m":z,"camera":v.index,"meshes":meshes.len(),"entities":entities.iter().count()}));}
+        return;
+    }
     if script == "terrain-stream" {
         // A deterministic camera/streaming path isolates presentation from
         // aircraft collisions. Ordinary flight never enters this branch.

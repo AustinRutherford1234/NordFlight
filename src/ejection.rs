@@ -296,6 +296,7 @@ pub fn setup(
 }
 pub fn visual(
     f: Res<Flight>,
+    mut was_active: Local<bool>,
     mut labels: Query<&mut Text, With<EscapeLabel>>,
     mut escape: Query<
         (&Escape, &mut Transform, &mut Visibility),
@@ -345,6 +346,31 @@ pub fn visual(
     >,
 ) {
     let active = f.ejection.active && f.aircraft == crate::aircraft::Aircraft::Hornet;
+    if !active {
+        if *was_active {
+            for mut text in &mut labels {
+                text.0.clear();
+            }
+            for (_, _, mut v) in &mut escape {
+                *v = Visibility::Hidden;
+            }
+            for (_, _, mut v) in &mut seats {
+                *v = Visibility::Hidden;
+            }
+            for (_, _, mut v) in &mut chutes {
+                *v = Visibility::Hidden;
+            }
+            for (_, mut v) in &mut canopy {
+                *v = Visibility::Hidden;
+            }
+            for (_, _, mut v) in &mut rockets {
+                *v = Visibility::Hidden;
+            }
+        }
+        *was_active = false;
+        return;
+    }
+    *was_active = true;
     for mut text in &mut labels {
         text.0 = if active {
             format!(
@@ -504,4 +530,55 @@ mod escape_regressions {
 #[cfg(test)] mod gesture_tests {use super::*;
  #[test]fn requires_three_presses_inside_one_window(){let mut g=Gesture::default();assert!(!g.press(0.,1));assert!(!g.press(0.6,1));assert!(g.press(1.4,1));assert!(!g.press(1.5,1));}
  #[test]fn timeout_and_scenario_reset_discard_partial_gestures(){let mut g=Gesture::default();assert!(!g.press(0.,1));assert!(!g.press(2.,1));assert!(!g.press(2.2,1));assert!(!g.press(2.3,2));assert!(!g.press(2.4,2));assert!(g.press(2.5,2));}
+}
+
+#[cfg(test)]
+mod idle_visual_regression {
+    use super::*;
+    #[test]
+    fn inactive_escape_keeps_transforms_finite_and_reset_hides_actors() {
+        let mut f = Flight::approach();
+        crate::aircraft::select(&mut f, crate::aircraft::Aircraft::Hornet);
+        let mut app = App::new();
+        app.insert_resource(f).add_systems(Update, visual);
+        let e = app
+            .world_mut()
+            .spawn((Escape(0), Transform::default(), Visibility::Hidden))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<Transform>(e)
+                .unwrap()
+                .rotation
+                .is_finite()
+        );
+        assert_eq!(
+            *app.world().get::<Transform>(e).unwrap(),
+            Transform::default()
+        );
+        {
+            let mut f = app.world_mut().resource_mut::<Flight>();
+            start(&mut f);
+            advance(&mut f, 0.7);
+        }
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(e).unwrap(),
+            Visibility::Inherited
+        );
+        app.world_mut().resource_mut::<Flight>().ejection = Default::default();
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(e).unwrap(),
+            Visibility::Hidden
+        );
+        assert!(
+            app.world()
+                .get::<Transform>(e)
+                .unwrap()
+                .rotation
+                .is_finite()
+        );
+    }
 }

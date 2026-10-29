@@ -403,6 +403,7 @@ pub fn setup(
                         MeshMaterial3d(mat.clone()),
                         Transform::from_xyz(x, 0.62, -3.225 + z),
                         super::InternalDisplay,
+                        super::Repeater,
                         super::Instrument {
                             aircraft: crate::aircraft::Aircraft::Hornet,
                             vehicle: crate::physics::Vehicle::Gripen,
@@ -575,5 +576,58 @@ mod optical_regression {
             e = p.parent();
         }
         assert!((matrix.transform_vector3(Vec3::X).length() - 1.).abs() < 1e-5);
+    }
+}
+
+#[cfg(test)]
+mod repeater_regression {
+    use super::*;
+    #[test]
+    fn rear_repeaters_share_live_front_materials_without_duplicate_updates() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Image>>()
+            .add_systems(
+                Startup,
+                |mut c: Commands,
+                 mut m: ResMut<Assets<Mesh>>,
+                 mut mats: ResMut<Assets<StandardMaterial>>,
+                 mut images: ResMut<Assets<Image>>| {
+                    let root = c.spawn((Transform::default(), Visibility::Inherited)).id();
+                    super::super::setup_for(
+                        &mut c,
+                        &mut m,
+                        &mut mats,
+                        &mut images,
+                        root,
+                        crate::physics::Vehicle::Gripen,
+                        crate::aircraft::Aircraft::Hornet,
+                    );
+                    super::super::fleet_display(
+                        &mut c,
+                        &mut m,
+                        &mut mats,
+                        &mut images,
+                        root,
+                        crate::aircraft::Aircraft::Hornet,
+                    );
+                },
+            )
+            .add_systems(PostStartup, super::super::link_repeaters);
+        app.update();
+        let w = app.world_mut();
+        let sources: Vec<_> = w
+            .query::<&super::super::Instrument>()
+            .iter(w)
+            .map(|s| s.material.clone())
+            .collect();
+        assert_eq!(sources.len(), 5);
+        let repeaters:Vec<_>=w.query_filtered::<(Entity,&MeshMaterial3d<StandardMaterial>),With<super::super::Repeater>>().iter(w).map(|(e,m)|(e,m.0.clone())).collect();
+        assert_eq!(repeaters.len(), 3);
+        for (e, m) in repeaters {
+            assert!(w.get::<super::super::Instrument>(e).is_none());
+            assert!(sources.contains(&m));
+        }
     }
 }

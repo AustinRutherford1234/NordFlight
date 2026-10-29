@@ -17,6 +17,18 @@ pub struct Instrument {
     image: Handle<Image>,
     material: Handle<StandardMaterial>,
 }
+/// A rear screen displaying the exact same page as a front instrument.
+#[derive(Component)]
+pub(crate) struct Repeater;
+/// Bind repeaters once after startup, so each live page is rasterized and
+/// uploaded once. Sharing the material also keeps power/brightness in sync.
+pub(crate) fn link_repeaters(mut commands:Commands, originals:Query<&Instrument,Without<Repeater>>, repeaters:Query<(Entity,&Instrument),With<Repeater>>) {
+    for (entity,repeater) in &repeaters {
+        if let Some(source)=originals.iter().find(|s|s.aircraft==repeater.aircraft&&s.vehicle==repeater.vehicle&&s.kind==repeater.kind) {
+            commands.entity(entity).remove::<Instrument>().insert(MeshMaterial3d(source.material.clone()));
+        }
+    }
+}
 #[derive(Component)]
 pub struct PilotControl {
     aircraft: crate::aircraft::Aircraft,

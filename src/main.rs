@@ -1300,7 +1300,7 @@ fn main() {
         .add_plugins(terrain_ready::TerrainReadyPlugin)
         .add_systems(
             PostStartup,
-            (mesh_reuse::share, render_batch::build).chain(),
+            (mesh_reuse::share, render_batch::build,cockpit::link_repeaters).chain(),
         )
         .add_plugins(sound::FlightAudioPlugin)
         .add_plugins(crew::CrewPlugin)
