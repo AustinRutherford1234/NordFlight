@@ -127,7 +127,9 @@ fn contacts(f: &mut Flight, dt: f64) -> Loads {
             let speed = v.dot(forward).abs();
             // A passive caster estimate when steering is released at speed.
             // Steering acts by turning the tyre, never by an extra side force.
-            let target = if speed > 20. && f.controls.y.abs() < 0.05 {
+            let target = if f.carrier.attached || f.carrier.launch.is_some() {
+                0.
+            }else if speed > 20. && f.controls.y.abs() < 0.05 {
                 v.dot(right).atan2(speed).clamp(-0.5, 0.5)
             } else {
                 -f.controls.y * 0.35 / (1. + speed * 0.05)

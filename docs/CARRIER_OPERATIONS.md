@@ -2,7 +2,7 @@
 
 From the flight setup menu choose **CARRIER APPROACH** or **CARRIER CATAPULT**. Both use the F/A-18F. The Nimitz model by Larcenie Grant / k26_k29 is licensed CC BY 4.0; see `assets/ships/nimitz/README.md`.
 
-The carrier runs a constant straight course at 25 knots in a sea corridor around x=20 km, starting at z=-16 km in the existing local terrain. The visual deck and the convex contact outline were measured from the imported asset. The 333 m scale, island collider, angled landing lane, wire stations and catapult placement are simulation estimates, not a surveyed carrier layout.
+The carrier runs a constant straight course at 25 knots in a sea corridor around x=20 km, starting at z=-16 km in the existing local terrain. The visual deck and the convex contact outline were measured from the imported asset. The 333 m scale, island collider, angled landing lane and wire stations remain simulation estimates. The active catapult follows the measured port bow rail in the imported model; this is not a surveyed real-carrier layout.
 
 ## Controls
 
@@ -25,3 +25,5 @@ No pitch/roll sea motion, taxi director, launch-bar mesh animation, detailed hyd
 Tests cover moving-frame transforms, deck boundaries, parked transport, catapult release, hook-dependent arrest, integrated touchdown/bolter behavior and scenario reset. Existing physics and collision regression tests also pass. `NORD_CARRIER_CAPTURE=deck-close` or `approach`, together with `--visual-check dry`, provides reproducible app-render captures without advancing flight. Additional presets `launch-release`, `arrested` and `relaunch` simulate the physical sequence first, then render the resulting state. Launch inspection presets include an explicit pilot pitch input after release. These are inspection presets, not normal controls.
 
 The [Hornet FBW](hornet/FBW.md) provides basic stabilization and trim with manual flaps. It does not fly the approach or manage throttle. T selects normal/direct control; failed hardware can remove available control authority in either selection.
+
+The [catapult alignment and stability update](hornet/CATAPULT.md) documents the measured rail, attachment-point damping, comparison traces and validation. The former duplicate track overlay has been removed; the model rail and movable shuttle share the physics geometry.

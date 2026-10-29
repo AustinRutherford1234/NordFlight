@@ -56,10 +56,12 @@
 | Hook pivot / shank / lowering angle | body (0,.15,5.16) m; 3.5 m; .65 rad | Imported pivot plus shank estimate, medium/low | tip location ±.2 m |
 | Launch attachment | (0,-1.4,-3.61) m | Nose gear rig / launch-bar estimate, low | ±.2 m |
 | Nose wheel steering | 2 rad/s steering/caster rate, ±.5 rad caster limit above 20 m/s with released steering | Engineering approximation, very low; not a verified F/A-18F NWS law | Rate ±50%; threshold 10–30 m/s |
-| Catapult | 105 m stroke, 78 m/s design deck-relative speed; force cap 800 kN; down-component ratio .38 | Energy/stroke engineering estimate, low; mass, drag, engines integrated normally | ±20%; no proprietary catapult curve |
+| Catapult | 131.865 m modeled-rail stroke, 78 m/s design deck-relative speed; force cap 800 kN; down-component ratio .38 | Rail length measured from the imported asset; energy/stroke schedule estimated, low; mass, drag, engines integrated normally | ±20%; no proprietary catapult curve |
 | Arresting absorber | 180 kN base, 2,500 N/m payout, 2,000 N s/m damping, 700 kN cap | Engineering estimate, low | ±40% |
 | Cable limits | 120 m effective payout, 90 MJ dissipated work | Engineering estimate, low | ±30% |
 
 No parameters above establish certified departure behavior, engine restart procedures, fatigue life, flutter boundaries, carrier operating limits, or weapons-release safety.
 
 Optional Hornet external tanks and their estimated parameters are documented in [STORES.md](STORES.md).
+
+Updated catapult joint and geometry parameters are in [CATAPULT.md](CATAPULT.md).

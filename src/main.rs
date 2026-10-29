@@ -1173,6 +1173,14 @@ fn main() {
             }
             assert!(!initial_flight.crashed,"carrier capture launch failed: {}",initial_flight.status);
         }
+        if let Some(percent)=mode.strip_prefix("catapult-").and_then(|v|v.split('-').next()?.parse::<f64>().ok()) {
+            if std::env::var_os("NORD_CATAPULT_TANKS").is_some(){aircraft::hornet::stores::fit(&mut initial_flight);}
+            initial_flight.throttle=1.;for _ in 0..960{simulate(&mut initial_flight,&initial_environment,1./240.);}
+            if percent>0. {carrier::launch(&mut initial_flight);for _ in 0..2400 {simulate(&mut initial_flight,&initial_environment,1./240.);if initial_flight.carrier.launch.is_none()||(percent<100.&&carrier::catapult::stroke(&initial_flight)>=carrier::catapult::LENGTH*percent/100.){break;}}}
+            initial_view.simple=true;
+            assert!(!initial_flight.crashed,"catapult sequence failed: {}",initial_flight.status);
+            println!("Rail capture {mode}: bar={:?} stroke={} rail_x={} yaw_deg={}",carrier::catapult::attachment(&initial_flight),carrier::catapult::stroke(&initial_flight),carrier::catapult::X,(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).x.atan2(-(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).z).to_degrees());
+        }
         println!("Carrier capture {mode}: status={} altitude={} ship_velocity={:?} pitch={} rates={:?} hook={:?} payout={} absorbed_J={}",initial_flight.status,initial_flight.altitude(),initial_flight.velocity-carrier::velocity(initial_flight.elapsed),initial_flight.pitch(),initial_flight.rates,carrier::hook_point(&initial_flight),initial_flight.carrier.arrest_distance,initial_flight.hornet.cable_energy);
         initial_flight.paused=true;initial_view.help=false;initial_view.scenario=if mode=="approach"{11}else{12};initial_view.index=0;
         initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
@@ -2466,6 +2474,10 @@ fn update_camera(
         let basis=local_rot(carrier::rotation(f.elapsed),&f);
         p=target+basis*Vec3::new(260.,150.,260.);up_view=basis*Vec3::Y;
         if std::env::var("NORD_CARRIER_CAPTURE").as_deref()!=Ok("approach") {target=local(f.position,&f);p=target+basis*Vec3::new(28.,12.,30.);}
+        if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("catapult-")) {
+            let at=(carrier::catapult::START+carrier::catapult::END)*0.5;target=local(carrier::world(at,f.elapsed),&f);p=target+basis*Vec3::new(0.,155.,0.01);up_view=basis*Vec3::NEG_Z;
+            if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.ends_with("close")){target=local(f.position,&f);p=target+basis*Vec3::new(12.,6.,-13.);up_view=basis*Vec3::Y;}
+        }
     }
     if let Some(missile) = v
         .missile_follow

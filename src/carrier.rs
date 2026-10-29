@@ -1,12 +1,13 @@
 //! First playable carrier: estimated deck contacts, forgiving wire and catapult mechanics.
 use crate::{physics::*,aircraft::Aircraft};
+pub mod catapult;
 use bevy::{prelude::*,math::{DVec3,DQuat}};
 pub const DECK:f64=21.2*(333./303.842285);
 pub const SPEED:f64=12.86; // 25 knots, constant straight course.
 const SCALE:f32=333./303.842285;
 #[derive(Clone,Debug)]
-pub struct State {pub active:bool,pub guidance:bool,pub attached:bool,pub launch:Option<f64>,pub arrested:bool,pub arrest_speed:f64,pub arrest_distance:f64,pub wire:usize,pub deck_position:DVec3}
-impl Default for State {fn default()->Self {Self{active:false,guidance:true,attached:false,launch:None,arrested:false,arrest_speed:0.,arrest_distance:0.,wire:0,deck_position:DVec3::ZERO}}}
+pub struct State {pub active:bool,pub guidance:bool,pub attached:bool,pub launch:Option<f64>,pub launch_stroke:f64,pub arrested:bool,pub arrest_speed:f64,pub arrest_distance:f64,pub wire:usize,pub deck_position:DVec3}
+impl Default for State {fn default()->Self {Self{active:false,guidance:true,attached:false,launch:None,launch_stroke:0.,arrested:false,arrest_speed:0.,arrest_distance:0.,wire:0,deck_position:DVec3::ZERO}}}
 pub fn origin(t:f64)->DVec3 {surface_point(20000.,-16000.-SPEED*t,0.)}
 pub fn rotation(t:f64)->DQuat {DQuat::from_rotation_arc(DVec3::Y,origin(t).normalize())}
 pub fn velocity(t:f64)->DVec3 {rotation(t)*DVec3::NEG_Z*SPEED}
@@ -28,7 +29,7 @@ pub fn lane(z:f64)->f64 {-8.+(z-75.)*0.14}
 pub fn scenario(deck_start:bool)->Flight {
  let mut f=Flight::approach();crate::aircraft::select(&mut f,Aircraft::Hornet);
  f.carrier.active=true;f.flaps=0.55;f.systems.hook_down=!deck_start;f.hornet.hook_angle=if deck_start{0.}else{0.65};
- if deck_start {f.carrier.attached=true;f.carrier.deck_position=DVec3::new(10.,DECK,15.);f.throttle=0.;f.spool=0.;f.thrust=0.;place_locked(&mut f);f.status="CATAPULT READY / SHIFT FULL POWER THEN ENTER".into();}
+ if deck_start {f.carrier.attached=true;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;f.throttle=0.;f.spool=0.;f.thrust=0.;place_locked(&mut f);f.status="CATAPULT READY / SHIFT FULL POWER THEN ENTER".into();}
  else {let z=2300.;f.position=world(DVec3::new(lane(z),DECK+(z-75.)*0.061+3.,z),0.);f.orientation=rotation(0.)*DQuat::from_rotation_y(0.14)*DQuat::from_rotation_x(0.07);f.velocity=velocity(0.)+rotation(0.)*DVec3::new(-9.8,-4.27,-70.);f.throttle=0.55;f.spool=0.55;f.landed=false;f.status="CARRIER APPROACH / H HOOK / ALT+G GUIDANCE".into();}
  let density=atmosphere(f.altitude()).2;
  let speed=(f.mass()*9.80665*2./(density*46.5*1.05)).sqrt();
@@ -40,8 +41,8 @@ pub fn scenario(deck_start:bool)->Flight {
  f
 }
 fn place_locked(f:&mut Flight) {let clearance=crate::collision::wheel_clearance(f);let mut p=f.carrier.deck_position;p.y=DECK+clearance-0.12;f.position=world(p,f.elapsed);f.orientation=rotation(f.elapsed);f.velocity=velocity(f.elapsed);f.rates=DVec3::ZERO;f.landed=true;f.airspeed=SPEED;f.alpha=0.;f.beta=0.;}
-pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
-pub fn attach(f:&mut Flight) {if f.carrier.active&&f.landed&&(f.velocity-velocity(f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=DVec3::new(10.,DECK,15.);place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
+pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.launch_stroke=catapult::stroke(f).max(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
+pub fn attach(f:&mut Flight) {if f.carrier.active&&f.landed&&(f.velocity-velocity(f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
 /// Hook-tip geometry derived from the imported pivot and shank. Shared by
 /// attachment loads, crossing detection and wire rendering; animated angle is
 /// integrated by the physics clock rather than render time.
@@ -94,10 +95,10 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
     let hook=f.position+f.orientation*hook_point(&f);
     lines.line(crate::world::local(a,&f),crate::world::local(hook,&f),color);lines.line(crate::world::local(hook,&f),crate::world::local(b,&f),color);
    }else{lines.line(crate::world::local(a,&f),crate::world::local(b,&f),color);}}
-  let track_a=world(DVec3::new(10.,DECK+0.15,20.),f.elapsed);let track_b=world(DVec3::new(10.,DECK+0.15,-105.),f.elapsed);
-  lines.line(crate::world::local(track_a,&f),crate::world::local(track_b,&f),Color::srgb(0.7,0.7,0.65));
-  let shuttle_z=if f.carrier.launch.is_some(){f.carrier.deck_position.z-5.5}else{9.5};
-  lines.line(crate::world::local(world(DVec3::new(9.4,DECK+0.2,shuttle_z),f.elapsed),&f),crate::world::local(world(DVec3::new(10.6,DECK+0.2,shuttle_z),f.elapsed),&f),Color::srgb(1.,0.75,0.05));
+  // Reuse the model's rail; only the movable shuttle is overlaid.
+  let stroke=if f.carrier.attached||f.carrier.launch.is_some(){catapult::stroke(&f)}else{f.carrier.launch_stroke};
+  let shuttle=catapult::point(stroke)+DVec3::Y*0.035;
+  lines.line(crate::world::local(world(shuttle-DVec3::X*0.3,f.elapsed),&f),crate::world::local(world(shuttle+DVec3::X*0.3,f.elapsed),&f),Color::srgb(1.,0.75,0.05));
   if f.carrier.guidance {for z in (200..=2200).step_by(200) {let p=DVec3::new(lane(z as f64),DECK+(z as f64-75.)*0.061+3.,z as f64);let a=world(p-DVec3::X*6.,f.elapsed);let b=world(p+DVec3::X*6.,f.elapsed);lines.line(crate::world::local(a,&f),crate::world::local(b,&f),Color::srgb(0.2,1.,0.5));}}
  }
 }
@@ -129,24 +130,10 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
 pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
  use crate::aircraft::hornet::{Loads,mass};
  let mut loads=Loads::default();if !f.carrier.active{return loads;}
- let (cg,_)=mass::properties(f);let basis=rotation(f.elapsed);let p=relative(f.position,f.elapsed);
+ let (cg,_)=mass::properties(f);let basis=rotation(f.elapsed);
  let v=basis.conjugate()*(f.velocity-velocity(f.elapsed));
- let to_body=|force:DVec3|f.orientation.conjugate()*(basis*force);
- if f.carrier.attached {
-  let target=f.carrier.deck_position;
-  let spring=DVec3::new((target.x-p.x)*180000.-v.x*45000.,0.,(target.z-p.z)*180000.-v.z*45000.);
-  let force=spring.clamp(DVec3::splat(-500000.),DVec3::splat(500000.));
-  loads.add(to_body(force),LAUNCH_POINT-cg);
- }
- if let Some(age)=f.carrier.launch {
-  f.carrier.launch=Some(age+dt);let stroke=15.-p.z;
-  let forward=-v.z;let target=78.;let required=(f.mass()*target*target/(2.*105.)-f.thrust).clamp(100000.,800000.);
-  let schedule=((stroke+1.)/5.).clamp(0.1,1.)*((110.-stroke)/10.).clamp(0.,1.);
-  let force=DVec3::new((-100000.*(p.x-10.)-20000.*v.x).clamp(-250000.,250000.),-required*schedule*0.38,-required*schedule);
-  loads.add(to_body(force),LAUNCH_POINT-cg);
-  f.carrier.deck_position.z=p.z;
-  if stroke>105.||forward>82.||age>6.||!f.engine||f.throttle<0.5 {f.carrier.launch=None;f.status="CATAPULT RELEASE / S ROTATE / G GEAR UP".into();}
- }
+ let orientation=f.orientation;let to_body=|force:DVec3|orientation.conjugate()*(basis*force);
+ let catapult_loads=catapult::loads(f,dt);loads.force+=catapult_loads.force;loads.moment+=catapult_loads.moment;
  if f.carrier.arrested {
   let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);
   let center=f.carrier.deck_position;let left=DVec3::new(center.x-15.,DECK,center.z)-hook;let right=DVec3::new(center.x+15.,DECK,center.z)-hook;
