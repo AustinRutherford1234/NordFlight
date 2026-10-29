@@ -200,8 +200,8 @@ for side, base in ((-1, 0), (1, 4)):
     partition_surface(airframe, 'HornetPanel%d' % (11 if side<0 else 12), planes, (22.,side*10.,2.))
 
 # Partition the supplied detailed gear-down geometry into individual gear legs.
-# This is a simplified rigid assembly; separate scissors and doors are a future
-# refinement. The simulator controls actual extension, not these visual meshes.
+# Separate wheels, articulated links and independently sequenced doors replace
+# the joined source leg. The simulator controls actual extension.
 gear_parent = next(o for o in bpy.data.objects if o.name.startswith("F18-landingOn_") )
 gear_mesh = next(o for o in gear_parent.children if o.type == "MESH")
 # The closed-gear mesh contains distinct left and right main-bay skins.
@@ -255,10 +255,23 @@ for side in (-1,1):
 bpy.data.objects.remove(closed_mesh,do_unlink=True)
 # Opaque bay wells prevent seeing through the aircraft between the doors.
 well_paint=metal('Gear well interior',(0.27,0.29,0.29,1.),0.2)
-for x0,x1,y0,y1,z0,z1 in [(48.,81.,-3.6,3.6,-4.4,2.),(-9.6,14.,-11.,-2.,-6.0,1.),(-9.6,14.,2.,11.,-6.0,1.)]:
+for x0,x1,y0,y1,z0,z1 in [(48.,81.,-3.6,3.6,-4.4,4.),(-9.6,14.,-11.,-2.,-6.0,1.),(-9.6,14.,2.,11.,-6.0,1.)]:
     for loc,dim in [(((x0+x1)/2,(y0+y1)/2,z1),(x1-x0,y1-y0,.16)),((x0,(y0+y1)/2,(z0+z1)/2),(.16,y1-y0,z1-z0)),((x1,(y0+y1)/2,(z0+z1)/2),(.16,y1-y0,z1-z0)),(((x0+x1)/2,y0,(z0+z1)/2),(x1-x0,.16,z1-z0)),(((x0+x1)/2,y1,(z0+z1)/2),(x1-x0,.16,z1-z0))]:
         bpy.ops.mesh.primitive_cube_add(size=1.,location=loc)
         obj=bpy.context.object;obj.name='HornetBayWell';obj.dimensions=dim;obj.data.materials.append(well_paint)
+# Roof-mounted stiffeners and service conduits stay above the swept wheel
+# envelope. These are representative visual details, not a maintenance drawing.
+for bay,x0,x1,y0,y1,roof in [('Nose',48.,81.,-3.6,3.6,4.),('MainL',-9.6,14.,-11.,-2.,1.),('MainR',-9.6,14.,2.,11.,1.)]:
+    fixed=pivot('HornetWellDetail'+bay,(0.,0.,0.))
+    for fraction in (.12,.36,.64,.88):
+        x=x0+(x1-x0)*fraction
+        cylinder('Well roof rib '+bay,(x,y0+.22,roof-.18),(x,y1-.22,roof-.18),.11,inner_paint,fixed)
+    for offset in (.35,.65):
+        y=y0+offset
+        cylinder('Well hydraulic tube '+bay,(x0+.4,y,roof-.38),(x1-.4,y,roof-.38),.065,fastener,fixed)
+        for fraction in (.18,.5,.82):
+            x=x0+(x1-x0)*fraction
+            cylinder('Well tube clamp '+bay,(x,y-.15,roof-.36),(x,y+.15,roof-.36),.10,inner_paint,fixed)
 nose_pivot, nose_mesh = partition_surface(gear_mesh, 'HornetGearNose', [((40.,0.,0.),(1.,0.,0.))], (63.,0.,-6.))
 # Forward door skins are now represented by the independent closed-pose
 # doors. Keeping their gear-down copies on the leg swings them through the
@@ -325,10 +338,11 @@ for leg in ('Nose','MainL','MainR'):
         bpy.ops.mesh.primitive_cylinder_add(vertices=32,radius=radius,depth=1.)
         obj=bpy.context.object; obj.name='HornetStrut'+segment+leg
         obj.data.materials.append(mat)
+        for face in obj.data.polygons: face.use_smooth = len(face.vertices)==4
         # Collars, gland nuts and retaining rings follow the link transform.
         if segment in ('Upper','Lower'):
             for position in (-.42,-.3,.3,.42):
-                bpy.ops.mesh.primitive_torus_add(major_radius=radius*1.08,minor_radius=.10,major_segments=24,minor_segments=8,location=(0,0,position))
+                bpy.ops.mesh.primitive_torus_add(major_radius=radius*1.08,minor_radius=.008,major_segments=32,minor_segments=10,location=(0,0,position))
                 ring=bpy.context.object;ring.name='Gear collar';ring.data.materials.append(paint)
                 world_parent(ring,obj)
 # Open the actual lower skin, rather than allowing gear to pass through it.

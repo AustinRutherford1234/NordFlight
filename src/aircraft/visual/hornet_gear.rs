@@ -43,6 +43,40 @@ pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
 mod tests {
  use super::*;
  #[test]
+ fn strut_mesh_long_axis_follows_the_link_not_its_radius() {
+  for leg in ["Nose","MainL","MainR"] {
+   for segment in ["Upper","Lower","Brace","ScissorA","ScissorB","Hose"] {
+    for i in 0..=100 {
+     let t=pose(&format!("HornetStrut{segment}{leg}"),i as f32/100.,1.).unwrap();
+     // Authored cylinders extend from exported local -Y/2 to +Y/2. Cross
+     // sections must stay circular while only their axial length changes.
+     assert_eq!(t.scale.x,1.);assert_eq!(t.scale.z,1.);
+     let a=t.transform_point(Vec3::NEG_Y*0.5);
+     let b=t.transform_point(Vec3::Y*0.5);
+     assert!((a.distance(b)-t.scale.y).abs()<1e-4);
+     assert!(a.is_finite()&&b.is_finite());
+    }
+   }
+  }
+ }
+ #[test]
+ fn deployed_upper_nose_link_joins_its_actual_mount_and_knee() {
+  let t=pose("HornetStrutUpperNose",1.,0.).unwrap();
+  assert!(t.transform_point(Vec3::NEG_Y*0.5).distance(p(63.,0.,-3.5))<1e-4);
+  assert!(t.transform_point(Vec3::Y*0.5).distance(p(63.,0.,-13.))<1e-4);
+ }
+ #[test]
+ fn stowed_nose_tire_envelope_clears_the_well_roof() {
+  for side in [-1.,1.] {
+   let n=if side<0.{"HornetWheelNoseL"}else{"HornetWheelNoseR"};
+   let t=pose(n,0.,0.).unwrap();
+   let axle=p(63.,0.,-6.)+t.translation;
+   // Source tire outer radius 2.9 units; roof underside is at 3.92.
+   assert!(axle.y+2.9<3.92);
+   assert!(axle.y-2.9> -4.4);
+  }
+ }
+ #[test]
  fn primitive_children_keep_their_authored_offsets() {
   for n in ["HornetWheelNoseLMesh", "HornetWheelMainRMesh.airframe", "HornetStrutUpperNose.airframe"] {assert!(pose(n,0.,0.).is_none());}
  }

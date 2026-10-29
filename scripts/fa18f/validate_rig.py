@@ -62,3 +62,28 @@ for obj in bpy.data.objects:
         if not min(v[axis] for v in points)-.4 <= center[axis] <= max(v[axis] for v in points)+.4:
             raise RuntimeError('Floating hinge: '+obj.name)
 print('No residual source gear meshes or detached door hinges')
+
+# Blender authors Z, exported as glTF Y. Reject an authoring change
+# that moves the link's length onto a different local axis.
+import math
+for obj in bpy.data.objects:
+    if obj.type!='MESH':continue
+    if any(not all(math.isfinite(v) for v in vertex.co) for vertex in obj.data.vertices):
+        raise RuntimeError('Nonfinite geometry: '+obj.name)
+    if obj.name.startswith('HornetStrut'):
+        lo=[min(v.co[i] for v in obj.data.vertices) for i in range(3)]
+        hi=[max(v.co[i] for v in obj.data.vertices) for i in range(3)]
+        if abs(lo[2]+.5)>1e-5 or abs(hi[2]-.5)>1e-5:
+            raise RuntimeError('Strut local axis no longer matches runtime: '+obj.name)
+print('Finite vertices and unit-Z strut authoring verified')
+import struct
+raw=(Path(__file__).resolve().parents[2]/'assets/aircraft/fa18f/rigged.glb').read_bytes()
+length=struct.unpack_from('<I',raw,12)[0]
+gltf=json.loads(raw[20:20+length])
+for node in gltf['nodes']:
+    if not node.get('name','').startswith('HornetStrut') or 'mesh' not in node:continue
+    for primitive in gltf['meshes'][node['mesh']]['primitives']:
+        bounds=gltf['accessors'][primitive['attributes']['POSITION']]
+        if abs(bounds['min'][1]+.5)>1e-5 or abs(bounds['max'][1]-.5)>1e-5:
+            raise RuntimeError('Exported strut axis disagrees with runtime: '+node['name'])
+print('Exported glTF unit-Y links match runtime transforms')

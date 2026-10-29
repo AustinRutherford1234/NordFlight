@@ -1078,7 +1078,8 @@ fn main() {
                 initial_flight.gear_door=if initial_flight.gear_extension>0. && initial_flight.gear_extension<1.{1.}else{0.};
             }
             if let Some(t)=mode.strip_prefix("gear-cycle-").and_then(|s|s.split('-').next()?.parse::<u32>().ok()) {
-                initial_flight.gear=true;initial_flight.gear_extension=0.;initial_flight.gear_door=0.;initial_flight.gear_phase=0;
+                initial_view.simple=true;
+                initial_flight.gear=!mode.contains("retract");initial_flight.gear_extension=if initial_flight.gear{0.}else{1.};initial_flight.gear_door=0.;initial_flight.gear_phase=0;
                 for _ in 0..t*12 {collision::update_gear(&mut initial_flight,1./1200.);}
             }
             if mode.starts_with("nozzle-") {
@@ -2460,6 +2461,8 @@ fn update_camera(
         if mode=="gear-main-close" {target=pos+rot*Vec3::new(1.15,-1.1,1.7);p=target+rot*Vec3::new(2.7,-0.8,3.0);up_view=rot*Vec3::Y;}
         if mode=="gear-nose-close" {target=pos+rot*Vec3::new(0.,-1.1,-5.5);p=target+rot*Vec3::new(2.1,-0.6,2.8);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") {target=pos+rot*Vec3::new(0.,-0.65,-1.5);p=target+rot*Vec3::new(8.,-4.,9.);up_view=rot*Vec3::Y;}
+        if mode.starts_with("gear-cycle-") && mode.contains("nose") {target=pos+rot*Vec3::new(0.,-0.65,-4.4);p=target+rot*Vec3::new(2.8,-2.2,3.5);up_view=rot*Vec3::Y;}
+        if mode.starts_with("gear-cycle-") && mode.contains("main") {target=pos+rot*Vec3::new(1.0,-0.5,1.8);p=target+rot*Vec3::new(3.3,-2.1,3.5);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") && mode.ends_with("-bay") {target=pos+rot*Vec3::new(1.15,-0.1,0.5);p=target+rot*Vec3::new(0.10,-3.0,0.4);up_view=rot*Vec3::Z;}
         if matches!(mode.as_str(),"nozzle-top"|"nozzle-up-top"|"nozzle-down-top") {target=pos+rot*Vec3::new(0.,0.,7.6);p=target+rot*Vec3::new(2.4,4.0,4.0);up_view=rot*Vec3::Y;}
         if mode=="nozzle-side" {target=pos+rot*Vec3::new(0.,0.,6.7);p=target+rot*Vec3::new(5.0,2.2,3.0);up_view=rot*Vec3::Y;}
