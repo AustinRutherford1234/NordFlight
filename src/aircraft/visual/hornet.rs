@@ -436,15 +436,15 @@ mod tests {
         app.update();
         assert_ne!(app.world().get::<Transform>(panel).unwrap().rotation,Quat::IDENTITY);
         assert_eq!(app.world().get::<Transform>(nose).unwrap().rotation,Quat::IDENTITY);
-        assert_eq!(app.world().get::<Transform>(door).unwrap().rotation,Quat::IDENTITY);
+        assert_ne!(app.world().get::<Transform>(door).unwrap().rotation,Quat::IDENTITY);
         app.world_mut().resource_mut::<Flight>().gear_door=1.;
         app.update();
         assert_ne!(app.world().get::<Transform>(door).unwrap().rotation,Quat::IDENTITY);
         assert_ne!(app.world().get::<Transform>(nose_door).unwrap().rotation,Quat::IDENTITY);
         app.world_mut().resource_mut::<Flight>().gear_door=0.;
         app.update();
-        assert_eq!(app.world().get::<Transform>(door).unwrap().rotation,Quat::IDENTITY);
-        assert_eq!(app.world().get::<Transform>(nose_door).unwrap().rotation,Quat::IDENTITY);
+        assert_ne!(app.world().get::<Transform>(door).unwrap().rotation,Quat::IDENTITY);
+        assert_ne!(app.world().get::<Transform>(nose_door).unwrap().rotation,Quat::IDENTITY);
         assert_eq!(*app.world().get::<Visibility>(closed).unwrap(),Visibility::Hidden);
         assert_eq!(app.world().get::<Transform>(unrelated).unwrap().rotation,Quat::IDENTITY);
         let uncompressed=app.world().get::<Transform>(wheel).unwrap().translation;

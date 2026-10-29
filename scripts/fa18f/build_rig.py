@@ -216,39 +216,52 @@ door_paint=metal('Hornet bay exterior',(0.54,0.56,0.57,1.),0.25)
 inner_paint=metal('Bay panel inner face',(0.64,0.66,0.64,1.),0.15)
 fastener=metal('Door hinge hardware',(0.22,0.24,0.25,1.),0.8)
 def door_panel(name,x0,x1,y0,y1,z,hinge):
-    bpy.ops.mesh.primitive_cube_add(size=1.,location=((x0+x1)/2,(y0+y1)/2,z))
-    obj=bpy.context.object;obj.name=name+'Mesh'
-    obj.dimensions=(x1-x0,y1-y0,.18)
-    bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
-    obj.data.materials.append(door_paint)
-    bevel=obj.modifiers.new('Rounded panel edge','BEVEL');bevel.width=.07;bevel.segments=2
-    bpy.ops.object.modifier_apply(modifier=bevel.name)
-    hinge_obj=pivot(name,hinge)
-    world_parent(obj,hinge_obj)
-    # Shallow pressed inner panel, two stiffening ribs and evenly spaced
-    # perimeter fasteners. Geometry follows the door's own hinge.
-    bpy.ops.mesh.primitive_cube_add(size=1.,location=((x0+x1)/2,(y0+y1)/2,z+.12))
-    inner=bpy.context.object;inner.name=name+' inner liner'
-    inner.dimensions=(max(.2,x1-x0-.35),max(.2,y1-y0-.35),.08)
-    inner.data.materials.append(inner_paint);world_parent(inner,hinge_obj)
+    # A continuous cambered shell replaces detached rectangular patches.
+    nx,ny=12,12
+    def skin(u,v):
+        inset=.48*abs(2*v-1)**8
+        return (x0+inset+(x1-x0-2*inset)*u,y0+(y1-y0)*v,
+                z+.36*math.sin(math.pi*v))
+    vertices=[];faces=[]
+    for layer in (0,1):
+        for i in range(nx+1):
+            for j in range(ny+1):
+                x,y,h=skin(i/nx,j/ny);vertices.append((x,y,h+layer*.18))
+    stride=ny+1;offset=(nx+1)*stride
+    for i in range(nx):
+        for j in range(ny):
+            k=i*stride+j
+            faces.append((k,k+stride,k+stride+1,k+1))
+            faces.append((k+offset,k+1+offset,k+stride+1+offset,k+stride+offset))
+    boundary=list(range(ny+1))+[i*stride+ny for i in range(1,nx+1)]+[nx*stride+j for j in range(ny-1,-1,-1)]+[i*stride for i in range(nx-1,0,-1)]
+    for i,k in enumerate(boundary):
+        n=boundary[(i+1)%len(boundary)];faces.append((k,n,n+offset,k+offset))
+    faces=[tuple(reversed(face)) for face in faces]
+    mesh=bpy.data.meshes.new(name+' shell');mesh.from_pydata(vertices,[],faces);mesh.update()
+    obj=bpy.data.objects.new(name+'Mesh',mesh);bpy.context.scene.collection.objects.link(obj)
+    mesh.materials.append(door_paint);mesh.materials.append(inner_paint)
+    for i,face in enumerate(mesh.polygons):
+        face.material_index=1 if i<nx*ny*2 and i%2 else 0
+        face.use_smooth=i<nx*ny*2
+    hinge_obj=pivot(name,hinge);world_parent(obj,hinge_obj)
     for fraction in (.28,.72):
+        for j in range(10):
+            a=Vector(skin(fraction,.04+.92*j/10));b=Vector(skin(fraction,.04+.92*(j+1)/10))
+            a.z+=.22;b.z+=.22
+            cylinder(name+' inner rib',a,b,.065,inner_paint,hinge_obj)
+    for u in (.04,.96):
+        for v in (.05,.95):
+            x,y,h=skin(u,v)
+            cylinder(name+' flush fastener',(x,y,h-.025),(x,y,h+.20),.055,fastener,hinge_obj)
+    for fraction in (.22,.78):
         x=x0+(x1-x0)*fraction
-        cylinder(name+' stiffener',(x,y0+.2,z+.2),(x,y1-.2,z+.2),.07,inner_paint,hinge_obj)
-    for x in (x0+.18,x1-.18):
-        for y in (y0+.18,y1-.18):
-            cylinder(name+' flush fastener',(x,y,z-.10),(x,y,z+.15),.055,fastener,hinge_obj)
-    # Two hinge knuckles lie along the longitudinal hinge axis.
-    for x in (x0+(x1-x0)*.22,x0+(x1-x0)*.78) if y0-.15 <= hinge[1] <= y1+.15 else ():
         cylinder(name+' hinge',(x-.22,hinge[1],hinge[2]),(x+.22,hinge[1],hinge[2]),.12,fastener,hinge_obj)
 for side in (-1,1):
     suffix='L' if side<0 else 'R'
     y0,y1=sorted((side*2.,side*11.))
-    # Main wheel cover surrounds a rectangular strut passage.
-    for part,x0,x1,a0,a1 in [('Fore',-9.6,3.,2.,11.),('Aft',10.,14.,2.,11.),('Inner',3.,10.,2.,6.),('Outer',3.,10.,9.,11.)]:
-        lo,hi=sorted((side*a0,side*a1))
-        door_panel('HornetMainDoor'+part+suffix,x0,x1,lo,hi,-6.0,(5.,side*2.,-6.0))
-    lo,hi=sorted((side*6.,side*9.))
-    door_panel('HornetMainLegDoor'+suffix,3.08,9.92,lo+.06,hi-.06,-6.0,(3.,side*6.,-6.0))
+    # One connected cover, hinged along the inboard edge. The former
+    # inner/outer/leg patches rotated about distant axes and looked detached.
+    door_panel('HornetMainDoorFore'+suffix,-9.6,14.,y0,y1,-6.0,(5.,side*2.,-6.0))
     lo,hi=sorted((0.,side*3.6))
     door_panel('HornetNoseDoor'+suffix,65.,81.,lo,hi,-4.4,(73.,side*3.6,-4.4))
     door_panel('HornetNoseLegDoor'+suffix,48.,65.,lo,hi,-4.4,(61.5,side*3.6,-4.4))

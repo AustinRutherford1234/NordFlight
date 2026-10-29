@@ -16,7 +16,7 @@ pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
   return Some(Transform::from_rotation(Quat::from_rotation_x((if name.starts_with("HornetMain") {-side}else{side})*e.max(door.clamp(0.,1.))*1.5)));
  }
  if name.starts_with("HornetMainDoor") || name.starts_with("HornetNoseDoor") {
-  return Some(Transform::from_rotation(Quat::from_rotation_x((if name.starts_with("HornetMainDoor") {-side}else{side})*door.clamp(0.,1.)*1.65)));
+  return Some(Transform::from_rotation(Quat::from_rotation_x((if name.starts_with("HornetMainDoor") {-side}else{side})*e.max(door.clamp(0.,1.))*1.65)));
  }
  if matches!(name,"HornetGearNose"|"HornetGearMainL"|"HornetGearMainR") {return Some(Transform::IDENTITY);}
  if name.starts_with("HornetWheel") {
@@ -74,6 +74,13 @@ mod tests {
    // Source tire outer radius 2.9 units; roof underside is at 3.92.
    assert!(axle.y+2.9<3.92);
    assert!(axle.y-2.9> -4.4);
+  }
+ }
+ #[test]
+ fn bay_covers_remain_open_with_deployed_gear() {
+  for n in ["HornetMainDoorForeL","HornetMainDoorForeR","HornetNoseDoorL","HornetNoseDoorR"] {
+   assert_eq!(pose(n,1.,0.).unwrap().rotation,pose(n,0.,1.).unwrap().rotation);
+   assert_eq!(pose(n,0.,0.).unwrap().rotation,Quat::IDENTITY);
   }
  }
  #[test]

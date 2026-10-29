@@ -10,7 +10,7 @@ root = Path(__file__).resolve().parents[2] / 'assets/aircraft/fa18f'
 required = {'HornetCanopyPivot', 'HornetCanopyFrame', 'HornetHookPivot',
             'HornetWingTipPivotL', 'HornetWingTipPivotR', 'HornetGearNose',
             'HornetGearMainL', 'HornetGearMainR', 'HornetWheelNoseL', 'HornetWheelNoseR',
-            'HornetWheelMainL', 'HornetWheelMainR', 'HornetMainDoorForeL', 'HornetMainDoorForeR', 'HornetMainLegDoorL', 'HornetMainLegDoorR', 'HornetNoseDoorL', 'HornetNoseDoorR'} | {'HornetStrut'+part+leg for part in ('Upper','Lower','Brace','ScissorA','ScissorB','Hose') for leg in ('Nose','MainL','MainR')} | {'HornetPanel%d' % n for n in (0,1,2,3,4,5,6,7,9,10,11,12)}
+            'HornetWheelMainL', 'HornetWheelMainR', 'HornetMainDoorForeL', 'HornetMainDoorForeR', 'HornetNoseDoorL', 'HornetNoseDoorR'} | {'HornetStrut'+part+leg for part in ('Upper','Lower','Brace','ScissorA','ScissorB','Hose') for leg in ('Nose','MainL','MainR')} | {'HornetPanel%d' % n for n in (0,1,2,3,4,5,6,7,9,10,11,12)}
 
 def inspect(path):
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -87,3 +87,24 @@ for node in gltf['nodes']:
         if abs(bounds['min'][1]+.5)>1e-5 or abs(bounds['max'][1]-.5)>1e-5:
             raise RuntimeError('Exported strut axis disagrees with runtime: '+node['name'])
 print('Exported glTF unit-Y links match runtime transforms')
+
+# Door skins must be one closed connected component, rather than separated
+# patches that can appear to float when rotated about their common hinge.
+import bmesh
+for obj in bpy.data.objects:
+    if not (obj.type=='MESH' and obj.name.endswith('Mesh') and ('HornetMainDoor' in obj.name or 'HornetNoseDoor' in obj.name or 'HornetNoseLegDoor' in obj.name)):continue
+    bm=bmesh.new();bm.from_mesh(obj.data)
+    # glTF splits vertices at material/normal seams; weld coincident
+    # positions only in this temporary validation copy.
+    bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=1e-5)
+    if any(not e.is_manifold for e in bm.edges):raise RuntimeError('Open door shell: '+obj.name)
+    remaining=set(bm.verts);parts=0
+    while remaining:
+        stack=[remaining.pop()];parts+=1
+        while stack:
+            for edge in stack.pop().link_edges:
+                for vertex in edge.verts:
+                    if vertex in remaining:remaining.remove(vertex);stack.append(vertex)
+    bm.free()
+    if parts!=1:raise RuntimeError('Disconnected door shell: '+obj.name)
+print('Door shells are closed and connected')
