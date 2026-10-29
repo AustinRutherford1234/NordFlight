@@ -26,7 +26,8 @@ hangar while in a spacecraft starts the runway scenario.
 | Y, F-35B | Toggle STOVL conversion below 150 m/s |
 | Alt+Y, F-35B | Airbrake; Y remains the airbrake in other aircraft |
 | Alt+B | Manual weapon-bay control on F-22/F-35B |
-| Alt+J | Jettison the modeled missile stores |
+| Alt+J | Hornet: jettison tanks; other aircraft: jettison modeled missile stores |
+| Alt+Shift+J, F/A-18F | Jettison tanks and missiles |
 | Alt/Option+click | Cockpit switches and radar controls |
 | Shift / Control | Full / zero throttle, as before |
 | H / Shift+H, F/A-18F | Lower or raise the arresting hook / help |
@@ -173,3 +174,5 @@ The dedicated Hornet physics, parameter provenance, numerical evidence and remai
 The Hornet now has [representative FBW](hornet/FBW.md) with four computer/sensor lanes, normal/degraded/direct/failed modes, automatic pitch trim and reconfigurable surface allocation. Flaps and launch rotation remain manual, and approaches remain pilot-flown. The normal control laws do not command throttle, altitude or flight path.
 
 The F/A-18F HUD uses F7 for mode selection; see [HUD controls and fidelity limits](hornet/HUD.md).
+
+The Hornet carries two AIM-9X and six AIM-120. Optional three-tank loadouts, tank-only release and faster control actuators are described in [Hornet stores](hornet/STORES.md).

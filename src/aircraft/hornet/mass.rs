@@ -1,6 +1,6 @@
 use super::*;
-fn points(f: &Flight) -> [(f64, DVec3); 21] {
-    let mut p = [(0., DVec3::ZERO); 21];
+fn points(f: &Flight) -> [(f64, DVec3); 24] {
+    let mut p = [(0., DVec3::ZERO); 24];
     p[..3].copy_from_slice(&[
         (config::EMPTY - 2100., DVec3::ZERO),
         (config::CREW, DVec3::new(0., 0.5, -4.)),
@@ -41,11 +41,14 @@ fn points(f: &Flight) -> [(f64, DVec3); 21] {
     for (i, on) in f.systems.stores.iter().enumerate().take(8) {
         if *on {
             p[index] = (
-                if i < 2 { 85. } else { 152. },
+                if i < 2 { 84.37 } else { 152. },
                 crate::aircraft::station_for(f, i),
             );
             index += 1;
         }
+    }
+    for (i,fuel) in f.hornet.tanks.fuel.iter().enumerate() {
+        if let Some(fuel)=fuel {p[index]=(stores::DRY+fuel,stores::STATIONS[i]);index+=1;}
     }
     p
 }

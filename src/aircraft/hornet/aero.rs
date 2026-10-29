@@ -47,8 +47,8 @@ pub fn advance_actuators(f: &mut Flight, q: f64, dt: f64) {
             continue;
         }
         let rate =
-            ((target - f.hornet.angles[i]) * 10.).clamp(-0.9, 0.9) * authority / (1. + q / 100000.);
-        f.hornet.actuator_rates[i] += (rate - f.hornet.actuator_rates[i]).clamp(-4. * dt, 4. * dt);
+            ((target - f.hornet.angles[i]) * config::ACTUATOR_GAIN).clamp(-config::ACTUATOR_RATE, config::ACTUATOR_RATE) * authority / (1. + q / 100000.);
+        f.hornet.actuator_rates[i] += (rate - f.hornet.actuator_rates[i]).clamp(-config::ACTUATOR_ACCEL * dt, config::ACTUATOR_ACCEL * dt);
         f.hornet.angles[i] =
             (f.hornet.angles[i] + f.hornet.actuator_rates[i] * dt).clamp(-0.55, 0.55);
     }
@@ -178,7 +178,9 @@ pub(super) fn forces(f: &mut Flight, dt: f64) -> Loads {
     let cd = 0.008
         + 0.02 * f.gear_extension
         + 0.05 * if f.airbrake { 1. } else { 0. }
-        + crate::aircraft::store_drag(f);
+        + crate::aircraft::store_drag(f)
+        - f.hornet.tanks.fuel.iter().flatten().count() as f64 * stores::DRAG;
+    let tank_drag=stores::drag(f,cg);loads.force+=tank_drag.force;loads.moment+=tank_drag.moment;
     loads.add(
         -air.normalize_or_zero() * (q * config::AREA * cd),
         DVec3::new(0., -0.05, 0.) - cg,
@@ -199,4 +201,15 @@ pub(super) fn forces(f: &mut Flight, dt: f64) -> Loads {
     loads.wings = wing_lift;
     loads.elastic[..2].copy_from_slice(&wing_lift);
     loads
+}
+#[cfg(test)]
+mod actuator_speed_tests {
+    use super::*;
+    #[test]
+    fn faster_actuators_keep_hydraulic_and_jam_limits() {
+        let mut f=Flight::approach();crate::aircraft::select(&mut f,crate::aircraft::Aircraft::Hornet);f.assist=false;f.hornet.trim=0.;f.hornet.angles=[0.;16];f.hornet.actuator_rates=[0.;16];f.controls=DVec3::X;f.hornet.hydraulic_pressure=1.;
+        for _ in 0..48{advance_actuators(&mut f,0.,1./240.);}
+        assert!(f.hornet.angles[0]>0.24,"{}",f.hornet.angles[0]);assert!(f.hornet.actuator_rates[0]>0.9);assert!(f.hornet.actuator_rates[0]<=config::ACTUATOR_RATE+1e-8);
+        f.damage.surface_state[0]=crate::combat::damage::SurfaceState::Jammed(0.12);advance_actuators(&mut f,0.,1./240.);assert_eq!(f.hornet.angles[0],0.12);assert_eq!(f.hornet.actuator_rates[0],0.);
+    }
 }

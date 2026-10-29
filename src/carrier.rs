@@ -40,7 +40,7 @@ pub fn scenario(deck_start:bool)->Flight {
  f
 }
 fn place_locked(f:&mut Flight) {let clearance=crate::collision::wheel_clearance(f);let mut p=f.carrier.deck_position;p.y=DECK+clearance-0.12;f.position=world(p,f.elapsed);f.orientation=rotation(f.elapsed);f.velocity=velocity(f.elapsed);f.rates=DVec3::ZERO;f.landed=true;f.airspeed=SPEED;f.alpha=0.;f.beta=0.;}
-pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.attached&&f.throttle>0.85&&f.fuel>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
+pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
 pub fn attach(f:&mut Flight) {if f.carrier.active&&f.landed&&(f.velocity-velocity(f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=DVec3::new(10.,DECK,15.);place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
 /// Hook-tip geometry derived from the imported pivot and shank. Shared by
 /// attachment loads, crossing detection and wire rendering; animated angle is

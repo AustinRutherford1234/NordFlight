@@ -48,6 +48,7 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
     let (cg, _) = mass::properties(f);
     let mut flow = 0.;
     let mut spool = 0.;
+    let fueled = f.fuel + super::stores::fuel(f) > 0. || f.infinite_fuel;
     for i in 0..2 {
         let health = f.damage.engines[i].clamp(0., 1.);
         let state = &mut f.hornet.engines[i];
@@ -60,7 +61,6 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
         if state.distortion_time > 1.2 || health < 0.12 {
             state.flameout = true;
         }
-        let fueled = f.fuel > 0. || f.infinite_fuel;
         let running = f.engine && f.systems.engine_on[i] && fueled && health > 0.12;
         if state.flameout
             && running
@@ -123,7 +123,7 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
     f.spool = spool * 0.5;
     f.thrust = f.hornet.engines.iter().map(|e| e.thrust).sum();
     if !f.infinite_fuel {
-        f.fuel = (f.fuel - dt * (flow + f.damage.fuel_leak)).max(0.);
+        super::stores::burn(f, dt * (flow + f.damage.fuel_leak));
     }
     result
 }

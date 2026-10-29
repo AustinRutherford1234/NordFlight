@@ -252,9 +252,9 @@ pub fn update(
                 match g.0 {
                     0 => f.throttle * 100.0,
                     1 => {
-                        f.fuel
+                        f.usable_fuel()
                             / if f.vehicle == Vehicle::Gripen {
-                                1500.0
+                                if f.aircraft==crate::aircraft::Aircraft::Hornet{f.aircraft.spec().fuel+f.hornet.tanks.fuel.iter().flatten().count()as f64*crate::aircraft::hornet::stores::CAPACITY}else{1500.0}
                             } else {
                                 f.space.stage.capacity().max(1.)
                             }
@@ -302,7 +302,7 @@ pub fn update(
             && (f.vehicle == Vehicle::Gripen || f.space.stage != crate::space::Stage::Capsule)
         {
             "ENGINE OFF".into()
-        } else if f.fuel < 100.0
+        } else if f.usable_fuel() < 100.0
             && !f.infinite_fuel
             && (f.vehicle == Vehicle::Gripen || f.space.stage != crate::space::Stage::Capsule)
         {

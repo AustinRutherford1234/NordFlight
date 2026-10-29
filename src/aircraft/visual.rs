@@ -2,6 +2,7 @@
 use super::*;
 use bevy::{asset::RenderAssetUsages, mesh::Indices, render::render_resource::PrimitiveTopology};
 mod raptor_mesh;
+pub(crate) mod hornet_stores;
 mod raptor_intake;
 mod raptor_finish;
 pub mod raptor_bay;
@@ -1920,6 +1921,7 @@ pub fn update(
             continue;
         }
         if let Some(Store(a, i)) = store {
+            if *a==Aircraft::Hornet&&*i<2 {t.translation=super::station_for(&f,*i).as_vec3();t.rotation=super::store_rotation(&f,*i).as_quat();}
             if *a==Aircraft::F22 {
                 if *i>=16 {*v=if *a==f.aircraft&&f.systems.external_stores{Visibility::Inherited}else{Visibility::Hidden};continue;}
                 if *i<2 {

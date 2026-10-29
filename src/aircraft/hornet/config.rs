@@ -1,4 +1,8 @@
 //! SI parameters. Values without published measurements are engineering estimates.
+// User-requested 2x actuator time scale versus .9 rad/s, 4 rad/s^2, gain 10.
+pub const ACTUATOR_RATE:f64=1.8;
+pub const ACTUATOR_ACCEL:f64=16.;
+pub const ACTUATOR_GAIN:f64=20.;
 pub const AREA: f64 = 46.5;
 pub const SPAN: f64 = 13.62;
 pub const CHORD: f64 = 3.76;

@@ -79,7 +79,7 @@ pub fn setup(mut c: Commands, f: Res<Flight>, mut h: ResMut<Hangar>) {
   p.spawn((Text::new("Select your aircraft. AI remains in Gripens. Starting resets the atmospheric scenario."),TextFont{font_size:16.,..default()}));
   p.spawn(Node{flex_direction:FlexDirection::Row,flex_wrap:FlexWrap::Wrap,margin:UiRect::vertical(px(20)),..default()}).with_children(|p|{for a in Aircraft::ALL{let e=button(p,a.name());p.commands().entity(e).insert(Choice(a));}});
   p.spawn((Readout,Text::new(""),TextFont{font_size:18.,..default()},TextColor(Color::srgb(0.65,0.9,0.9)),Node{min_height:px(150),..default()}));
-  let e=button(p,"F-22 LOADOUT: TOGGLE INTERNAL / TWO EXTERNAL MISSILES");p.commands().entity(e).insert(Loadout);
+  let e=button(p,"EXTERNAL LOADOUT: TOGGLE (DETAILS BELOW)");p.commands().entity(e).insert(Loadout);
   p.spawn(Node{flex_direction:FlexDirection::Row,..default()}).with_children(|p|{let e=button(p,"START / RESET SCENARIO");p.commands().entity(e).insert(Start);let e=button(p,"CANCEL / ESC");p.commands().entity(e).insert(Cancel);});
  });
 }
@@ -107,8 +107,8 @@ pub fn controls(
 ) {
     h.block_input = h.open;
     for (i,mut visibility) in &mut loadout {
-        visibility.set_if_neq(if h.selected==Aircraft::F22{Visibility::Inherited}else{Visibility::Hidden});
-        if h.open && h.selected==Aircraft::F22 && i.is_changed()&&*i==Interaction::Pressed{h.external=!h.external;}
+        visibility.set_if_neq(if matches!(h.selected,Aircraft::F22|Aircraft::Hornet){Visibility::Inherited}else{Visibility::Hidden});
+        if h.open && matches!(h.selected,Aircraft::F22|Aircraft::Hornet) && i.is_changed()&&*i==Interaction::Pressed{h.external=!h.external;}
     }
     let mut toggle = keys.just_pressed(KeyCode::F6)
         && !(keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight));
@@ -132,7 +132,7 @@ pub fn controls(
         } else {
             h.open = true;
             h.selected = f.aircraft;
-            h.external=f.systems.external_stores;
+            h.external=if f.aircraft==Aircraft::Hornet {f.hornet.tanks.loadout}else{f.systems.external_stores};
             h.was_paused = f.paused;
             if let Some(menu) = bvr.as_mut() {
                 if menu.open {
@@ -156,6 +156,7 @@ pub fn controls(
             v.scenario
         };
         f.aircraft = a;
+        if a==Aircraft::Hornet {f.hornet.tanks.loadout=h.external;}
         crate::reset(&mut f, scenario, &mut v);
         if a==Aircraft::F22{f.systems.external_stores=h.external;}
         f.paused = h.was_paused;
@@ -196,6 +197,7 @@ pub fn controls(
                 s.engines,
                 s.wet / 1000.
             );
+            if h.selected==Aircraft::Hornet{t.0.push_str(if h.external{"\n2 AIM-9X / 6 AIM-120 / THREE FULL 480-GAL TANKS\nAlt+J: TANK JETTISON / Alt+Shift+J: ALL STORES"}else{"\n2 AIM-9X / 6 AIM-120 / NO EXTERNAL TANKS\nTOGGLE EXTERNAL LOADOUT TO ADD THREE TANKS"});}
             if h.selected==Aircraft::F22{t.0.push_str(if h.external{"\nLOADOUT: 2 IR + 4 INTERNAL RADAR / 2 EXTERNAL RADAR"}else{"\nLOADOUT: CLEAN / ALL 8 MISSILES INTERNAL"});}
         }
     }
@@ -213,6 +215,24 @@ pub fn controls(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hornet_tank_only_and_emergency_jettison_keep_inventory_consistent() {
+        let mut f=Flight::approach();crate::aircraft::select(&mut f,Aircraft::Hornet);crate::aircraft::hornet::stores::fit(&mut f);let mut c=crate::combat::Combat::default();c.start(&f,1);
+        let mut app=App::new();app.init_resource::<Hangar>().init_resource::<ButtonInput<KeyCode>>().insert_resource(f).insert_resource(c).add_systems(Update,systems);
+        {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.press(KeyCode::AltLeft);keys.press(KeyCode::KeyJ);}app.update();
+        assert!(app.world().resource::<Flight>().hornet.tanks.fuel.iter().all(Option::is_none));assert_eq!(app.world().resource::<crate::combat::Combat>().ammo,[2,6]);assert!(app.world().resource::<Flight>().systems.stores[..8].iter().all(|s|*s));
+        crate::aircraft::hornet::stores::fit(&mut app.world_mut().resource_mut::<Flight>());
+        {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::AltLeft);keys.press(KeyCode::ShiftLeft);keys.press(KeyCode::KeyJ);}app.update();
+        assert_eq!(app.world().resource::<crate::combat::Combat>().ammo,[0,0]);assert!(app.world().resource::<Flight>().systems.stores.iter().all(|s|!*s));
+    }
+    #[test]
+    fn hornet_hangar_loadout_toggle_fits_three_full_tanks_on_reset() {
+        let mut f=Flight::runway();crate::aircraft::select(&mut f,Aircraft::Hornet);
+        let mut app=App::new();app.insert_resource(Hangar{open:true,selected:Aircraft::Hornet,..Default::default()}).init_resource::<ButtonInput<KeyCode>>().insert_resource(f).insert_resource(ViewState::default()).init_resource::<crate::combat::Combat>().add_systems(Update,controls);
+        app.world_mut().spawn((Loadout,Interaction::Pressed,Visibility::Inherited));app.update();assert!(app.world().resource::<Hangar>().external);
+        app.world_mut().spawn((Start,Interaction::Pressed));app.update();
+        let f=app.world().resource::<Flight>();assert_eq!(f.aircraft,Aircraft::Hornet);assert!(f.hornet.tanks.fuel.iter().all(|v|*v==Some(crate::aircraft::hornet::stores::CAPACITY)));assert!(!app.world().resource::<Hangar>().open);
+    }
     #[test]
     fn hangar_cancel_restores_pause_and_start_resets_to_selected_aircraft() {
         let mut app = App::new();
@@ -288,9 +308,11 @@ pub fn systems(
     if (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
         && keys.just_pressed(KeyCode::KeyJ)
     {
-        f.systems.stores = [false; 10];
-        c.ammo = [0; 2];
-        f.status = "STORES JETTISONED".into();
+        if f.aircraft==Aircraft::Hornet {
+            let n=crate::aircraft::hornet::stores::jettison(&mut f,None);
+            f.status=format!("JETTISONED {n} EXTERNAL TANKS");
+            if keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight) {f.systems.stores=[false;10];c.ammo=[0;2];f.status="ALL EXTERNAL STORES JETTISONED".into();}
+        }else{f.systems.stores=[false;10];c.ammo=[0;2];f.status="STORES JETTISONED".into();}
     }
     if f.aircraft == Aircraft::Gripen {
         return;

@@ -228,6 +228,7 @@ impl Flight {
             self.position.length() - RADIUS
         }
     }
+    pub fn usable_fuel(&self) -> f64 {self.fuel+if self.vehicle==Vehicle::Gripen&&self.aircraft==crate::aircraft::Aircraft::Hornet{crate::aircraft::hornet::stores::fuel(self)}else{0.}}
     pub fn mass(&self) -> f64 {
         if self.vehicle == Vehicle::Gripen {
             if self.aircraft==crate::aircraft::Aircraft::Hornet {crate::aircraft::hornet::mass::total(self)}else{self.aircraft.spec().empty + self.fuel + crate::aircraft::stores_mass(self)}

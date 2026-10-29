@@ -132,7 +132,7 @@ impl Gnc {
         self
     }
     pub fn for_aircraft(mut self, aircraft: crate::aircraft::Aircraft, kind: Weapon) -> Self {
-        self.aim9x = aircraft == crate::aircraft::Aircraft::F22 && kind == Weapon::Heat;
+        self.aim9x = matches!(aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) && kind == Weapon::Heat;
         self
     }
     pub fn launch(velocity: DVec3, target: Contact, seed: u64) -> Self {
@@ -1259,12 +1259,12 @@ mod tests {
     }
     use super::*;
     #[test]
-    fn aim9x_is_exclusive_to_f22_infrared_loadout() {
+    fn aim9x_is_used_by_f22_and_hornet_infrared_loadouts() {
         use crate::aircraft::Aircraft;
         for a in Aircraft::ALL {
             for kind in [Weapon::Heat, Weapon::Radar] {
                 let g = Gnc::default().for_aircraft(a, kind);
-                assert_eq!(g.aim9x, a == Aircraft::F22 && kind == Weapon::Heat);
+                assert_eq!(g.aim9x, matches!(a,Aircraft::F22|Aircraft::Hornet) && kind == Weapon::Heat);
             }
         }
     }

@@ -20,7 +20,7 @@
 | Central inertia diagonal (pitch/yaw/roll) | 140,000 / 175,000 / 20,000 kg m² | Estimated central dry body, low; component/tank/store parallel-axis terms added separately | ±40% |
 | Fuel distribution | 35% forward, 25% aft, 20% each wing | Estimated tank representation, low; total remains current fuel | Each allocation ±0.1, renormalized |
 | Fuel locations | (0,0,-1.4), (0,0,1.8), (±2,0,0) m | Geometric engineering estimate, low | ±0.5 m |
-| Stores | 85 kg first two stations; 152 kg remaining occupied stations | Existing representative AIM-9/AIM-120 loads, medium for these simulated stores only | ±10%; no bomb/tank mass claim |
+| Stores | 84.37 kg AIM-9X at first two stations; 152 kg AIM-120 at remaining occupied stations | Existing representative AIM-9/AIM-120 loads, medium for these simulated stores only | ±10%; no bomb/tank mass claim |
 | Wing strip geometry | 4 strips/side, 4.8 m² each | Reduced-order allocation, low; not additional aggregate wing lift | ±15% area allocation |
 | LEX / stabilator / fin contributions | 3 / 4 / 3.8 m² per side | Effective aerodynamic element estimates, low | ±25% |
 | Wing lift tables | α = 0…π; CL = 0, .48, .92, 1.28, 1.55, 1.2, .55, 0, 0 | Engineering estimate, low; shape-preserving bounded smooth interpolation | ±25% attached lift; ±50% separated lift |
@@ -33,7 +33,7 @@
 | Wave drag increment | 0 below .75 Mach, peak .024 near 1.1 | Engineering estimate, low | ±50% |
 | Fuselage normal force | three 2.5 m² elements, .6 sin(2α) | Engineering estimate, low | ±50% |
 | Tail / fin slopes | 3.2 / 2.3 per rad | Engineering estimate, low | ±30% |
-| Actuator travel / unloaded rate / acceleration | ±.55 rad / .9 rad/s / 4 rad/s² | Engineering estimate, low; hinge-load proxy q/100,000 Pa reduces rate | ±30% |
+| Actuator travel / unloaded rate / acceleration | ±.55 rad / 1.8 rad/s / 16 rad/s² | User-requested 2x actuator time scale; engineering estimate, low; hinge-load proxy q/100,000 Pa reduces rate | ±30% |
 | Hydraulic pressure | engine-powered 1; APU .4; 3 s decay/recovery | Estimated normalized authority, low | APU .2–.6, lag 1–6 s |
 | Per-engine dry / wet rating | 62,500 / 97,860 N | Dry estimated, low; wet is public 22,000 lbf class, medium | dry ±15%, installed wet ±10% |
 | Engine locations | (±.475,.48,8.202) m thrust line | Measured model nozzle locations, medium | Mesh-dependent, not manufacturer engine-CG data |
@@ -61,3 +61,5 @@
 | Cable limits | 120 m effective payout, 90 MJ dissipated work | Engineering estimate, low | ±30% |
 
 No parameters above establish certified departure behavior, engine restart procedures, fatigue life, flutter boundaries, carrier operating limits, or weapons-release safety.
+
+Optional Hornet external tanks and their estimated parameters are documented in [STORES.md](STORES.md).

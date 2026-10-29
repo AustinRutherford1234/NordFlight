@@ -536,7 +536,7 @@ pub fn update(
         .max(0.);
     let running = f.engine
         && !f.crashed
-        && (f.fuel > 0. || f.infinite_fuel)
+        && (f.usable_fuel() > 0. || f.infinite_fuel)
         && (f.vehicle == Vehicle::Spacecraft || f.density > 1e-6);
     let spool = f.spool.clamp(0., 1.) as f32;
     controls.sources[0] = Emitter {

@@ -48,11 +48,11 @@ pub enum Weapon {
 }
 impl Weapon {
     fn player_range(self, f: &Flight) -> f64 {
-        if self == Self::Heat && f.aircraft == crate::aircraft::Aircraft::F22 { 10000.0 } else { self.range() }
+        if self == Self::Heat && matches!(f.aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) { 10000.0 } else { self.range() }
     }
     fn player_cone(self, f: &Flight) -> f64 {
         if self == Self::Heat {
-            if f.aircraft == crate::aircraft::Aircraft::F22 { 60.0 } else { 16.0 }
+            if matches!(f.aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) { 60.0 } else { 16.0 }
         } else { 35.0 }
     }
     pub(crate) fn index(self) -> usize {
@@ -355,6 +355,7 @@ impl Combat {
         }
     }
     pub(crate) fn cue(&self, f: &Flight) -> Result<(), &'static str> {
+        if f.aircraft==crate::aircraft::Aircraft::Hornet&&f.systems.hornet_wing_fold>0.02 {return Err("UNFOLD WINGS");}
         if let Some(b) = &self.bvr {
             return b.cue(self, f);
         }
@@ -529,7 +530,7 @@ impl Combat {
             gnc,
             decoy: None,
             position,
-            velocity: launch_velocity - (f.orientation * DVec3::Y) * if main||(self.weapon==Weapon::Heat && f.aircraft==crate::aircraft::Aircraft::F22) {0.}else{4.},
+            velocity: launch_velocity - (f.orientation * DVec3::Y) * if main||(self.weapon==Weapon::Heat && matches!(f.aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet)) {0.}else{4.},
             kind: self.weapon,
             target: self.selected,
             age: 0.0,
@@ -2392,10 +2393,22 @@ mod tests {
             c.start(&f, 1);
             c.lock = Weapon::Heat.lock_time();
             assert!(c.fire(&f));
-            assert_eq!(c.missiles[0].gnc.aim9x, a == crate::aircraft::Aircraft::F22);
+            assert_eq!(c.missiles[0].gnc.aim9x, matches!(a,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet));
             c.targets[0].position = f.position + f.orientation * DVec3::new(1500.0, 0.0, -1500.0);
-            assert_eq!(c.cue(&f).is_ok(), a == crate::aircraft::Aircraft::F22);
+            assert_eq!(c.cue(&f).is_ok(), matches!(a,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet));
         }
+    }
+    #[test]
+    fn hornet_releases_two_9x_and_six_amraams_from_matching_racks() {
+        let mut f=flight();crate::aircraft::select(&mut f,crate::aircraft::Aircraft::Hornet);let mut c=Combat::default();c.start(&f,1);f.rates=DVec3::ZERO;
+        for i in 0..8 {
+            c.weapon=if i<2{Weapon::Heat}else{Weapon::Radar};c.lock=2.;c.clock+=1.;let rack=crate::aircraft::station_for(&f,i);
+            assert!(c.fire(&f),"failed station {i}");let m=c.missiles.last().unwrap();assert_eq!(m.gnc.aim9x,i<2);assert!(m.position.distance(f.position+f.orientation*rack)<1e-8);
+            if i<2 {assert!((m.velocity-f.velocity-f.forward()*18.).length()<1e-8);}
+            f.systems.stores[i]=false;
+        }
+        assert_eq!(c.ammo,[0,0]);assert!(!c.fire(&f));
+        assert_eq!(crate::aircraft::missile_name(f.aircraft,Weapon::Heat),"AIM-9X");assert_eq!(crate::aircraft::missile_name(f.aircraft,Weapon::Radar),"AIM-120");
     }
     #[test]
     fn aim9x_mesh_matches_public_envelope() {

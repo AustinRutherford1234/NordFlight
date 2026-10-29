@@ -89,3 +89,7 @@ This model intentionally keeps a bounded simulation incidence envelope. It does 
 The flight-control system has no validated production flight-software gain set, certified sensor model, or hardware redundancy/timing equivalence. The controller's aircraft predictor assumes known configuration and damage state and uses the simulator's structural estimate; real observer uncertainty is not fully modeled. Continued flight and fault validation must remain separate from claims about the real aircraft.
 
 Numerical, fault, timing and native-render evidence is recorded in [FBW_VALIDATION.md](FBW_VALIDATION.md).
+
+## Actuator response update, 2026-10-28
+
+The user requested twice the actuator speed. The Hornet plant now uses 1.8 rad/s unloaded rate (previously .9), gain 20 per second (previously 10), and 16 rad/s² acceleration (previously 4). The latter scales by four to preserve the acceleration ramp under a 2x time scale. Hydraulic, pressure, health, power, jam and travel limits still apply. The allocator uses the same rate constant for reachability. Gear, canopy, hook and other aircraft are unchanged. These are simulation response settings, not newly sourced Super Hornet measurements.

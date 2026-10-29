@@ -1177,7 +1177,8 @@ pub fn update(
         return;
     }
     rwr.update(&combat, &f);
-    let signature = (f.hornet.hud.mode as u64).rotate_left(3) ^ (f.hornet.hud.reject as u64).rotate_left(5) ^ (f.hornet.hud.caged as u64).rotate_left(9) ^ (f.hornet.hud.radar_alt as u64).rotate_left(10) ^ (f.hornet.hud.brightness.to_bits() as u64).rotate_left(13) ^ f.elapsed.to_bits()
+    let tank_signature=f.hornet.tanks.fuel.iter().enumerate().fold(0u64,|hash,(i,fuel)|hash ^ fuel.unwrap_or(-1.).to_bits().rotate_left((i*17)as u32));
+    let signature = tank_signature ^ f.fuel.to_bits().rotate_left(27) ^ (f.hornet.hud.mode as u64).rotate_left(3) ^ (f.hornet.hud.reject as u64).rotate_left(5) ^ (f.hornet.hud.caged as u64).rotate_left(9) ^ (f.hornet.hud.radar_alt as u64).rotate_left(10) ^ (f.hornet.hud.brightness.to_bits() as u64).rotate_left(13) ^ f.elapsed.to_bits()
         ^ rwr.fingerprint().rotate_left(31)
         ^ f.throttle.to_bits().rotate_left(7)
         ^ f.gear_extension.to_bits().rotate_left(19)
@@ -1282,7 +1283,7 @@ pub fn update(
         }
         let mut lines = match screen.kind {
             4 if f.aircraft==crate::aircraft::Aircraft::F22=>vec!["FLIGHT / SYSTEMS".into(),format!("AOA {:+.1} / G {:+.1}",f.alpha.to_degrees(),f.g_load),format!("FBW {}  HYD {:.0}%",if f.assist{"ON"}else{"DIRECT"},f.damage.hydraulics*100.),format!("ENG L {:.0} R {:.0}",f.systems.engines[0]*100.,f.systems.engines[1]*100.),format!("TVC L {:+.0} R {:+.0}",f.systems.nozzle[0].to_degrees(),f.systems.nozzle[1].to_degrees()),format!("FUEL {:.0} KG",f.fuel),format!("BAYS {:.0}% / GEAR {:.0}%",f.systems.bays*100.,f.gear_extension*100.)],
-            4 if f.aircraft==crate::aircraft::Aircraft::Hornet=>vec!["HORNET FLIGHT CONTROLS".into(),crate::aircraft::hornet::fbw::summary(&f),format!("HYD {:.0}% / TRIM {:+.1}",f.hornet.hydraulic_pressure*f.damage.hydraulics*100.,f.hornet.trim.to_degrees()),format!("AOA {:+.1} / G {:+.1}",f.alpha.to_degrees(),f.g_load),format!("MANUAL FLAPS {:.0}%",f.flaps*100.),"T NORMAL / DIRECT".into(),"PILOT ROTATION / NO AP".into()],
+            4 if f.aircraft==crate::aircraft::Aircraft::Hornet=>vec!["HORNET FLIGHT CONTROLS".into(),crate::aircraft::hornet::fbw::summary(&f),format!("HYD {:.0}% / TRIM {:+.1}",f.hornet.hydraulic_pressure*f.damage.hydraulics*100.,f.hornet.trim.to_degrees()),format!("AOA {:+.1} / G {:+.1}",f.alpha.to_degrees(),f.g_load),format!("MANUAL FLAPS {:.0}%",f.flaps*100.),"T NORMAL / DIRECT".into(),format!("EXT FUEL {:.0}KG / {} TK",crate::aircraft::hornet::stores::fuel(&f),f.hornet.tanks.fuel.iter().flatten().count())],
             4=>vec![f.aircraft.name().into(),format!("SPD {:.0} / M {:.2}",f.airspeed,f.mach),format!("ALT {:.0} / G {:.1}",f.altitude(),f.g_load),format!("FBW {}",if f.assist{"ON"}else{"DIRECT"}),format!("ENG L {:.0} R {:.0}",f.systems.engines[0]*100.,f.systems.engines[1]*100.),format!("LIFT {:.0}% BAY {:.0}%",f.systems.conversion*100.,f.systems.bays*100.),format!("FUEL {:.0} KG",f.fuel),"Y STOVL / ALT+B BAYS".into()],
             3 => vec![
                 format!("HDG {:03.0}", f.heading()),

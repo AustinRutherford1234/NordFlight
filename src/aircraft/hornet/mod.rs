@@ -5,6 +5,7 @@ pub mod fbw;
 pub mod config;
 pub mod engine;
 pub mod mass;
+pub mod stores;
 pub mod structure;
 pub mod trim;
 use crate::physics::*;
@@ -35,6 +36,7 @@ pub struct Diagnostics {
 pub struct Dynamics {
     pub fbw:fbw::State,
     pub hud:crate::cockpit::hornet_hud::State,
+    pub tanks: stores::Tanks,
     pub nose_steering: f64,
     pub skin_temperature: f64,
     pub structural_loads: structure::Channels,
@@ -59,6 +61,7 @@ impl Default for Dynamics {
         Self {
             fbw:Default::default(),
             hud:Default::default(),
+            tanks: Default::default(),
             nose_steering: 0.,
             skin_temperature: 288.15,
             structural_loads: Default::default(),
@@ -170,6 +173,7 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     let before = f.position;
     let previous_orientation = f.orientation;
     f.elapsed += dt;
+    stores::advance(f,dt);
     crate::collision::update_gear(f, dt);
     let hook_target = if f.systems.hook_down { 0.65 } else { 0. };
     f.hornet.hook_angle += (hook_target - f.hornet.hook_angle).clamp(-0.32 * dt, 0.32 * dt);

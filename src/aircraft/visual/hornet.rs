@@ -45,17 +45,19 @@ pub(super) fn setup(c: &mut Commands, meshes: &mut Assets<Mesh>, mats: &mut Asse
     crate::cockpit::fleet_display(c, meshes, mats, images, cabin, Aircraft::Hornet);
 
     let metal = material(mats, Color::srgb(0.58,0.62,0.65), 0.7);
+    let missile_paint=material(mats,Color::WHITE,0.15);
     let spec = Aircraft::Hornet.spec();
     for i in 0..(spec.ammo[0]+spec.ammo[1]) as usize {
-        let mesh = if i >= spec.ammo[0] as usize { crate::combat::radar_visual::body(false,true) } else { crate::combat::missile_mesh() };
-        let e = part(c,meshes,root,mesh,metal.clone(),Transform::from_translation(super::super::station(Aircraft::Hornet,i).as_vec3()));
+        let mesh = if i >= spec.ammo[0] as usize { crate::combat::radar_visual::body(false,true) } else { crate::combat::aim9x_mesh() };
+        let e = part(c,meshes,root,mesh,missile_paint.clone(),Transform::from_translation(super::super::station(Aircraft::Hornet,i).as_vec3()));
         c.entity(e).insert(Store(Aircraft::Hornet,i));
         let at=super::super::station(Aircraft::Hornet,i).as_vec3();
         // The rail saddle meets the missile body, with the pylon above it.
         let rail=box_part(c,meshes,root,metal.clone(),at+Vec3::Y*0.14,Vec3::new(0.10,0.12,1.35));
-        c.entity(rail).insert(Name::new(format!("HornetLaunchRail{i}")));
+        c.entity(rail).insert((Name::new(format!("HornetLaunchRail{i}")),super::hornet_stores::HornetRail(i)));
 
     }
+    super::hornet_stores::setup(c,meshes,mats,root);
     let beacon=c.spawn((PointLight{color:Color::srgb(1.,0.03,0.02),intensity:0.,range:5.,shadows_enabled:false,..default()},
         Transform::from_xyz(0.,0.8,0.),Lamp(Aircraft::Hornet,1))).id();
     c.entity(root).add_child(beacon);

@@ -444,11 +444,11 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
         ground(&mut c, f, combat);
     }
     c.text(state.mode.label(), 20., 333., 1.8);
-    c.text(&format!("FUEL {:04.0}", f.fuel * 2.204623), 20., 353., 1.25);
+    c.text(&format!("FUEL {:04.0}", (f.fuel+crate::aircraft::hornet::stores::fuel(f)) * 2.204623), 20., 353., 1.25);
     if state.caged {
         c.text("CAGED", 220., 354., 1.2);
     }
-    let caution = if f.fuel < 300. {
+    let caution = if f.fuel+crate::aircraft::hornet::stores::fuel(f) < 300. {
         "FUEL"
     } else if f.gear_extension < 0.98 && radalt < 200. && f.vertical_speed() < -1. {
         "CHECK GEAR"
@@ -465,7 +465,7 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
 }
 fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
     let heat = combat.weapon == Weapon::Heat;
-    c.text(if heat { "9M" } else { "120" }, 20., 297., 1.6);
+    c.text(if heat { "9X" } else { "120" }, 20., 297., 1.6);
     c.text(
         &format!(
             "{} {}",

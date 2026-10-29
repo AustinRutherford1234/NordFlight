@@ -66,7 +66,7 @@ pub fn allocate(
         }
 
         let reach =
-            (0.9 * f.damage.hydraulics * f.hornet.hydraulic_pressure * f.damage.surfaces[i]
+            (config::ACTUATOR_RATE * f.damage.hydraulics * f.hornet.hydraulic_pressure * f.damage.surfaces[i]
                 / (1. + q / 100000.)
                 * 0.22)
                 .max(0.);

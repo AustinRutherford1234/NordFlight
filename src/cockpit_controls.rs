@@ -227,7 +227,7 @@ pub fn setup(
         }
     }
     if aircraft!=crate::aircraft::Aircraft::Gripen {
-        let mut extra=vec![(Action::EngineL,"ENG L"),(Action::Dump,"JETT")];
+        let mut extra=vec![(Action::EngineL,"ENG L"),(Action::Dump,if aircraft==crate::aircraft::Aircraft::Hornet{"TANK JETT"}else{"JETT"})];
         if aircraft.spec().engines==2{extra.push((Action::EngineR,"ENG R"));}
         if aircraft==crate::aircraft::Aircraft::F35B{extra.push((Action::Stovl,"STOVL"));}
         if matches!(aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::F35B){extra.push((Action::Bays,"BAYS"));}
@@ -359,7 +359,7 @@ fn apply(a: Action, f: &mut Flight, v: &mut ViewState, c: &mut Combat) -> &'stat
         HudAltitude=>{f.hornet.hud.radar_alt=!f.hornet.hud.radar_alt;"HUD BARO / RADAR ALTITUDE"},
         Stovl=>{if f.airspeed>150.||f.damage.lift_fan<0.15{return "STOVL INHIBITED / SPEED OR LIFT FAN";}f.systems.conversion_target=!f.systems.conversion_target;"STOVL CONVERSION"},
         Bays=>{f.systems.manual_bays=!f.systems.manual_bays;f.systems.bays_target=f.systems.manual_bays;"WEAPON BAY DOORS"},
-        Dump=>{f.systems.stores=[false;10];c.ammo=[0;2];"STORES JETTISONED"},
+        Dump=>{if f.aircraft==crate::aircraft::Aircraft::Hornet{crate::aircraft::hornet::stores::jettison(f,None);"EXTERNAL TANKS JETTISONED"}else{f.systems.stores=[false;10];c.ammo=[0;2];"STORES JETTISONED"}},
         EngineL=>{f.systems.engine_on[0]=!f.systems.engine_on[0];"LEFT ENGINE FUEL VALVE"},
         EngineR=>{f.systems.engine_on[1]=!f.systems.engine_on[1];"RIGHT ENGINE FUEL VALVE"},
         Battery => {

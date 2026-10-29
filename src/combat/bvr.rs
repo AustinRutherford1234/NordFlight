@@ -276,6 +276,7 @@ impl Battle {
         i >= self.enemies
     }
     pub fn cue(&self, c: &Combat, f: &Flight) -> Result<(), &'static str> {
+        if f.aircraft==crate::aircraft::Aircraft::Hornet&&f.systems.hornet_wing_fold>0.02 {return Err("UNFOLD WINGS");}
         if f.crashed {
             return Err("AIRFRAME LOST");
         }
@@ -357,7 +358,7 @@ fn launch(
     let main=launcher.is_none()&&kind==Weapon::Radar&&c.internal_main_slot(f).is_some();
     let rate=q*launcher.map_or(f.rates,|i|c.targets[i].dynamics.rates);
     let inherited=v+rate.cross(q*station);
-    let velocity = if main{inherited-q*DVec3::Y*8.}else{inherited + q * (rail * -DVec3::Z * 18. - DVec3::Y * if launcher.is_none() && kind==Weapon::Heat && f.aircraft==crate::aircraft::Aircraft::F22 {0.}else{4.})};
+    let velocity = if main{inherited-q*DVec3::Y*8.}else{inherited + q * (rail * -DVec3::Z * 18. - DVec3::Y * if launcher.is_none() && kind==Weapon::Heat && matches!(f.aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) {0.}else{4.})};
     let mut gnc = guidance::Gnc::launch(
         velocity,
         contact,

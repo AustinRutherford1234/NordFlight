@@ -1,5 +1,7 @@
 # Hornet FBW validation evidence
 
+The subsequent [stores and actuator update](STORES_VALIDATION.md) records the current regression results after the user-requested 2x actuator time scale. Numbers below describe the original FBW milestone.
+
 2026-10-28. Parent physics milestone: `68ca41e`. Architecture, user-selected scope, source distinctions and estimated parameter values are in [FBW.md](FBW.md). These results validate the implemented simulation in the tested cases; they do not validate production Super Hornet handling qualities.
 
 ## Automated checks

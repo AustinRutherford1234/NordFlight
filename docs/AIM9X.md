@@ -1,12 +1,11 @@
-# F-22 AIM-9X Sidewinder
+# AIM-9X Sidewinder integration
 
 The F-22's infrared weapon slot now launches a distinct AIM-9X model. Select
 the F-22 in the hangar, select the infrared weapon with **O**, acquire a target,
 and fire with **Space**. It uses the existing two Sidewinder stations, ammunition,
 bay animation, damage resolver, missile camera, audio and countermeasure paths.
 Practice, close combat and BVR use the same profile. AI Gripens do not receive it.
-Other aircraft keep their existing generic IR dynamics; the F-35B and Hornet's
-previous AIM-9X labels now read generic IR MISSILE so this addition is F-22-only.
+The Hornet also uses this AIM-9X model, with external wingtip rails rather than side bays. Its integration, external tanks and controls are described in [Hornet stores](hornet/STORES.md). Other aircraft retain their existing generic IR dynamics.
 
 ## Public specifications used
 

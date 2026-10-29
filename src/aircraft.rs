@@ -550,9 +550,10 @@ pub fn stores_mass(f: &Flight) -> f64 {
     } else {
         f.systems.stores.iter().enumerate().filter(|(_,s)|**s).map(|(i,_)|store_unit_mass(f.aircraft,i)).sum::<f64>()
             +if f.aircraft==Aircraft::F22&&f.systems.external_stores{70.}else{0.}
+            +if f.aircraft==Aircraft::Hornet{hornet::stores::mass(f)}else{0.}
     }
 }
-fn store_unit_mass(a:Aircraft,i:usize)->f64{if a==Aircraft::F22{if i<2{84.37}else{152.}}else{160.}}
+fn store_unit_mass(a:Aircraft,i:usize)->f64{if matches!(a,Aircraft::F22|Aircraft::Hornet){if i<2{84.37}else{152.}}else{160.}}
 pub fn jet_output(a: Aircraft, power: f64, rho: f64, mach: f64) -> (f64, f64) {
     if a == Aircraft::F22 { return raptor::flight_model::engine(power, rho, mach); }
     let s = a.spec();
@@ -587,7 +588,7 @@ pub fn station(a: Aircraft, i: usize) -> DVec3 {
             0 => (6.48, 0.12, 2.15),
             1 => (4.40, -0.48, 1.45),
             2 => (3.46, -0.55, 1.30),
-            _ => (2.28, -0.52, 1.10),
+            _ => (0.88, -0.60, 0.05),
         };
         return DVec3::new(side * span, height, aft);
     }
@@ -611,7 +612,16 @@ pub fn station(a: Aircraft, i: usize) -> DVec3 {
         (i / 2) as f64 * 0.16,
     )
 }
+pub fn store_rotation(f:&Flight,i:usize)->bevy::math::DQuat {
+    if f.aircraft==Aircraft::Hornet&&i<2 {bevy::math::DQuat::from_rotation_z(if i==0{-1.}else{1.}*f.systems.hornet_wing_fold*1.3)}else{bevy::math::DQuat::IDENTITY}
+}
 pub fn station_for(f:&Flight,i:usize)->DVec3 {
+    if f.aircraft==Aircraft::Hornet&&i<2 {
+        // Imported WingTipPivot translations (0,0,+/-45), transformed by
+        // .1 scale, +90deg yaw and the rig's (0,.35,2.56) offset.
+        let pivot=DVec3::new(if i==0{-4.5}else{4.5},0.35,2.56);
+        return pivot+store_rotation(f,i)*(station(f.aircraft,i)-pivot);
+    }
     if f.aircraft==Aircraft::F22 && f.systems.external_stores && i>=6 {
         DVec3::new(if i%2==0{-3.35}else{3.35},-0.68,0.85)
     }else{station(f.aircraft,i)}
@@ -621,7 +631,8 @@ pub fn store_drag(f:&Flight)->f64 {
         let external=if f.systems.external_stores{f.systems.stores[6..8].iter().filter(|on|**on).count()}else{0};
         external as f64*0.0025+if f.systems.external_stores{0.0012}else{0.}+f.systems.bays*0.008
             + f.systems.side_bays.iter().map(|b| 0.0018*b.door+0.0009*b.launcher).sum::<f64>()
-    }else{stores_mass(f)/160.*0.0018}
+    }else if f.aircraft==Aircraft::Hornet {f.systems.stores.iter().filter(|on|**on).count() as f64*0.0018+f.hornet.tanks.fuel.iter().flatten().count() as f64*hornet::stores::DRAG}
+    else{stores_mass(f)/160.*0.0018}
 }
 pub fn launch_station(f: &Flight, kind: crate::combat::Weapon, ammo: [u8; 2]) -> DVec3 {
     let s = f.aircraft.spec();
@@ -660,7 +671,7 @@ pub fn missile_name(a: Aircraft, kind: crate::combat::Weapon) -> &'static str {
         (Aircraft::Su27, crate::combat::Weapon::Radar) => "R-77",
         (Aircraft::Gripen, crate::combat::Weapon::Heat) => "IRIS-T",
         (Aircraft::Gripen, crate::combat::Weapon::Radar) => "METEOR",
-        (Aircraft::F22, crate::combat::Weapon::Heat) => "AIM-9X",
+        (Aircraft::F22 | Aircraft::Hornet, crate::combat::Weapon::Heat) => "AIM-9X",
         (Aircraft::F22, crate::combat::Weapon::Radar) => "AIM-120D",
         (_, crate::combat::Weapon::Heat) => "IR MISSILE",
         _ => "AIM-120",

@@ -1106,6 +1106,23 @@ fn main() {
                 }else{aircraft::raptor::roll_trial(if mode.ends_with("left"){-0.6}else{0.6},true,false).0};
                 initial_flight.paused=true;
             }
+            if a==aircraft::Aircraft::Hornet&&mode.starts_with("stores-") {
+                aircraft::hornet::stores::fit(&mut initial_flight);
+                initial_flight.gear=false;initial_flight.gear_extension=0.;initial_flight.gear_door=0.;initial_flight.hornet.trim=0.;
+                if mode=="stores-folded" {initial_flight.systems.hornet_wing_fold=1.;initial_flight.systems.hornet_wing_target=true;}
+                if let Some(seconds)=mode.strip_prefix("stores-drop-").and_then(|v|v.parse::<f64>().ok()) {
+                    initial_flight.paused=false;aircraft::hornet::stores::jettison(&mut initial_flight,None);
+                    for _ in 0..(seconds*240.).round()as usize {simulate(&mut initial_flight,&initial_environment,1./240.);}
+                }
+                if mode.contains("launch") {
+                    initial_flight.paused=false;
+                    combat.start(&initial_flight,initial_view.generation);combat.weapon=if mode.contains("120"){combat::Weapon::Radar}else{combat::Weapon::Heat};combat.lock=2.;
+                    assert!(combat.fire(&initial_flight));initial_flight.systems.stores[if mode.contains("120"){2}else{0}]=false;
+                    for _ in 0..12 {combat.advance(&initial_flight,1./120.);}
+                }
+                initial_flight.paused=true;
+                println!("Hornet stores capture {mode}: mass={} external_fuel={} tanks={:?} missiles={}",initial_flight.mass(),aircraft::hornet::stores::fuel(&initial_flight),initial_flight.hornet.tanks.fuel,combat.missiles.len());
+            }
             if a==aircraft::Aircraft::Hornet&&mode.starts_with("hud-") {
                 if mode.contains("landing") {initial_flight=carrier::scenario(false);}
                 initial_flight.hornet.hud.mode=if mode.contains("air"){cockpit::hornet_hud::MasterMode::Air}else if mode.contains("ground"){cockpit::hornet_hud::MasterMode::Ground}else{cockpit::hornet_hud::MasterMode::Nav};
@@ -1338,7 +1355,7 @@ fn main() {
                 )
                     .chain().in_set(FlightStage::Camera),
                 (
-                    (gear::update,aircraft::visual::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,carrier::visual,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
+                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,carrier::visual,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
                     (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
@@ -1819,6 +1836,7 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
     let best = f.best_landing;
     let aircraft = f.aircraft;
     let external_stores=f.systems.external_stores;
+    let hornet_tanks=f.hornet.tanks.loadout;
     *f = match scenario {
         0 => Flight::cold(),
         1 => Flight::runway(),
@@ -1838,6 +1856,7 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
     let aircraft=if matches!(scenario,11|12){aircraft::Aircraft::Hornet}else{aircraft};
     if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11|12) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
     if aircraft==aircraft::Aircraft::F22{f.systems.external_stores=external_stores;}
+    if f.vehicle==Vehicle::Gripen&&aircraft==aircraft::Aircraft::Hornet&&hornet_tanks {aircraft::hornet::stores::configure_scenario(f);}
     v.generation = v.generation.wrapping_add(1);
     v.scenario = scenario;
     if matches!(scenario,11|12){v.help=false;}
@@ -2371,6 +2390,9 @@ fn update_camera(
         p = center + look * (p - center) * v.zoom;
     }
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
+        if mode.starts_with("stores-") {
+            target=pos+rot*Vec3::new(0.,-0.4,0.7);p=target+rot*Vec3::new(12.,-7.,-16.);up_view=rot*Vec3::Y;
+        }
         if mode.starts_with("detail-") {
             let s=if mode.contains("left"){-1.}else{1.};
             let (at,offset)=if mode=="detail-hornet-seat" {
@@ -2853,7 +2875,7 @@ fn update_hud(
                 "MAIN ENGINE {:3.0}%   THRUST {:.0} kN\nFUEL {:.0} kg {}\nSAS {}   MODE {}\nRCS TORQUE {:.0} Nm   HEALTH {:.0}%",
                 f.throttle * 100.0,
                 f.thrust / 1000.0,
-                f.fuel,
+                f.usable_fuel(),
                 if f.infinite_fuel { "INFINITE" } else { "" },
                 if f.assist { "ON" } else { "OFF" },
                 space::sas_label(&f),
@@ -2864,7 +2886,7 @@ fn update_hud(
                 "THROTTLE {:3.0}%   THRUST {:.0} kN\nFUEL {:.0} kg {}   GEAR {}\nFLAPS {:.0}%   AIRBRAKE {}   FBW {}\nAoA {:+.1}°   SLIP {:+.1}°   HEALTH {:.0}%",
                 f.throttle * 100.0,
                 f.thrust / 1000.0,
-                f.fuel,
+                f.usable_fuel(),
                 if f.infinite_fuel { "INFINITE" } else { "" },
                 if f.gear_health.iter().any(|health| *health <= 0.0) {
                     "FAILED".to_string()
@@ -2968,7 +2990,7 @@ fn update_hud(
                 }
             }
         };
-        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\nF7 HUD NAV/A/A/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles");}text}else{updated};
+        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\nF7 HUD NAV/A/A/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles\nF6 external loadout: 3 tanks · Alt+J drop tanks · Alt+Shift+J all stores");}text}else{updated};
         let updated = if tag.0 == 9 && v.help && v.scenario >= 4 && f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet {
             let mut text = updated.replace("HELP   H", "HELP   Shift+H");
             text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");
@@ -3388,6 +3410,13 @@ mod camera_input_tests {
         assert!(view.map);
         assert_eq!(view.index, 0);
         assert!(!app.world().resource::<Flight>().paused);
+    }
+    #[test]
+    fn reset_restores_the_hornet_tank_loadout_after_jettison() {
+        let mut f=Flight::approach();aircraft::select(&mut f,aircraft::Aircraft::Hornet);aircraft::hornet::stores::fit(&mut f);aircraft::hornet::stores::jettison(&mut f,None);
+        let mut view=ViewState::default();reset(&mut f,2,&mut view);
+        assert!(f.hornet.tanks.loadout&&f.hornet.tanks.fuel.iter().all(Option::is_some));assert!(f.hornet.tanks.dropped.iter().all(Option::is_none));
+        f.hornet.tanks.loadout=false;reset(&mut f,2,&mut view);assert!(f.hornet.tanks.fuel.iter().all(Option::is_none));
     }
     #[test]
     fn hornet_hud_shortcuts_preserve_other_aircraft_and_existing_functions() {
