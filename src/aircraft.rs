@@ -138,6 +138,7 @@ impl Aircraft {
         }
     }
     pub fn cabin_offset(self) -> Vec3 {
+        if self==Self::Hornet {return Vec3::new(0.,0.18,-1.52);}
         if self == Self::Gripen {
             Vec3::ZERO
         } else {
@@ -454,6 +455,7 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
     f.systems = Systems::default();
     f.structure = Default::default();
     f.hornet = Default::default();
+    f.ejection = Default::default();
     if aircraft==Aircraft::Hornet {f.autopilot=false;}
     if f.vehicle == Vehicle::Spacecraft {
         return;

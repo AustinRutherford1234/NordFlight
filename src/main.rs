@@ -17,6 +17,7 @@ mod cockpit_controls;
 mod cockpit_labels;
 mod collision;
 mod water;
+mod ejection;
 mod carrier;
 mod combat;
 mod control_surfaces;
@@ -976,8 +977,10 @@ fn main() {
                 initial_view.index=3;initial_view.zoom=1.;initial_view.yaw=0.;
                 initial_view.simple=true;
                 initial_view.pitch=match mode.as_str() {"cockpit-floor"=>-1.12,"cockpit-seat"=>-0.72,_=>-0.62};
-                if mode=="cockpit-seat"{initial_view.yaw=std::f32::consts::PI;}
+
                 if mode=="cockpit-right"{initial_view.yaw=-0.38;}
+                if mode=="cockpit-rear"{initial_view.yaw=std::f32::consts::PI;initial_view.pitch=-0.3;}
+                if mode=="cockpit-seat"{initial_view.pitch=-1.47;initial_view.yaw=0.;}
                 if mode=="cockpit-left"{initial_view.yaw=0.58;}
             }
             if mode=="top"{initial_view.yaw=2.8;initial_view.pitch=-1.1;}
@@ -1124,6 +1127,15 @@ fn main() {
                 }
                 initial_flight.paused=true;
                 println!("Hornet stores capture {mode}: mass={} external_fuel={} tanks={:?} missiles={}",initial_flight.mass(),aircraft::hornet::stores::fuel(&initial_flight),initial_flight.hornet.tanks.fuel,combat.missiles.len());
+            }
+            if mode.starts_with("escape-") {
+                initial_flight.position=initial_flight.up()*(physics::RADIUS+1200.);initial_flight.velocity=initial_flight.forward()*120.;
+                initial_flight.paused=false;
+                ejection::start(&mut initial_flight);
+                let age=mode.strip_prefix("escape-").and_then(|s|s.parse::<f64>().ok()).unwrap_or(0.);
+                for _ in 0..(age*240.)as usize {physics::simulate(&mut initial_flight,&initial_environment,1./240.);}
+                initial_flight.paused=true;initial_view.simple=true;initial_view.index=0;
+                println!("Escape {age}: rear={:?} front={:?}",initial_flight.ejection.pilots[1],initial_flight.ejection.pilots[0]);
             }
             if mode.starts_with("water-") {
                 initial_flight=carrier::scenario(false);initial_flight.carrier.active=false;
@@ -1312,6 +1324,7 @@ fn main() {
                 navball::setup,
                 (aircraft::visual::setup,hangar::setup).chain(),
                 cockpit::setup_ball,
+                ejection::setup,
                 instruments::setup,
                 warp::setup,
                 map::setup,
@@ -1386,7 +1399,7 @@ fn main() {
                     instruments::update,
                     warp::ui,
                     (map::draw, map::editor_draw).chain(),
-                    cockpit::update,
+                    (cockpit::update,ejection::visual,cockpit::hornet_interior::update).chain(),
                     combat::draw,
                     combat::draw_telemetry,
                     combat::dogfight::draw,
@@ -1956,6 +1969,7 @@ fn input(
     {
         return;
     }
+    if keys.just_pressed(KeyCode::KeyE) && (keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) && (keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight)) {if ejection::start(&mut f){v.index=0;v.map=false;}}
     let dt = time.delta_secs_f64().min(0.1);
     let cursor_delta: Vec2 = cursor_motion.read().filter_map(|event| event.delta).sum();
     let orbit_delta = if motion.delta.length_squared() > 0.0 {
@@ -2162,7 +2176,7 @@ fn input(
     let roll = (keys.pressed(KeyCode::KeyE) || keys.pressed(KeyCode::ArrowRight)) as i32
         - (keys.pressed(KeyCode::KeyQ) || keys.pressed(KeyCode::ArrowLeft)) as i32;
     let yaw = keys.pressed(KeyCode::KeyA) as i32 - keys.pressed(KeyCode::KeyD) as i32;
-    f.controls = DVec3::new(pitch as f64, yaw as f64, roll as f64);
+    f.controls = if f.ejection.active {v.index=0;v.map=false;DVec3::ZERO}else{DVec3::new(pitch as f64, yaw as f64, roll as f64)};
     if v.map {
         v.map_zoom = (v.map_zoom * (-scroll.delta.y * 0.08).exp()).clamp(0.03, 100.0);
     } else {
@@ -2186,7 +2200,7 @@ fn input(
             v.map_pitch = (v.map_pitch - orbit_delta.y * 0.004).clamp(-1.45, 1.45);
         } else {
             v.yaw -= orbit_delta.x * 0.004;
-            v.pitch = (v.pitch - orbit_delta.y * 0.004).clamp(-1.2, 1.2);
+            v.pitch = (v.pitch - orbit_delta.y * 0.004).clamp(-1.50, 1.50);
         }
     }
 }
@@ -2409,6 +2423,7 @@ fn update_camera(
         let center = pos;
         p = center + look * (p - center) * v.zoom;
     }
+    if f.ejection.active {target=local((f.ejection.pilots[0].position+f.ejection.pilots[1].position)*0.5,&f);let d=(f.ejection.pilots[0].position.distance(f.ejection.pilots[1].position)as f32*0.75+7.).clamp(7.,50.);p=target+Vec3::new(d*0.75,d*0.32,d*0.9);up_view=f.ejection.pilots[0].position.normalize().as_vec3();}
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
         if mode.starts_with("water-") {target=local(if mode.contains("settled")||mode.contains("sunk"){f.position.normalize()*physics::RADIUS}else{f.water.origin},&f);p=target+rot*Vec3::new(-24.,14.,-26.);up_view=f.up().as_vec3();}
         if mode.starts_with("stores-") {
@@ -2983,7 +2998,7 @@ fn update_hud(
                 } else if v.help && v.scenario == 4 {
                     "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
                 } else if v.help {
-                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Shift+H help · H hook · Alt+O canopy · Alt+F wing fold" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Alt+Shift+E eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
                 } else {
                     String::new()
                 }
@@ -3233,6 +3248,8 @@ mod camera_input_tests {
         assert!(!f.systems.hornet_strobe_lights && !f.systems.hornet_nav_lights);
         assert!(f.throttle < 1.);
     }
+    #[test]
+    fn hornet_escape_shortcut_and_reset_work(){let mut app=scene(false);app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::Hornet;{let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.press(KeyCode::AltLeft);k.press(KeyCode::ShiftLeft);k.press(KeyCode::KeyE);}app.update();assert!(app.world().resource::<Flight>().ejection.active);{let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.reset_all();k.press(KeyCode::KeyR);}app.update();assert!(!app.world().resource::<Flight>().ejection.active);}
     #[test]
     fn hornet_hook_and_help_keys_do_not_change_other_aircraft_bindings() {
         let mut app = scene(false);

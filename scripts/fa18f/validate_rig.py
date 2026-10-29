@@ -7,7 +7,7 @@ import bpy
 import json
 
 root = Path(__file__).resolve().parents[2] / 'assets/aircraft/fa18f'
-required = {'HornetCanopyPivot', 'HornetCanopyFrame', 'HornetHookPivot',
+required = {'HornetStrutForkLNose','HornetStrutForkRNose','HornetCanopyPivot', 'HornetCanopyFrame', 'HornetHookPivot',
             'HornetWingTipPivotL', 'HornetWingTipPivotR', 'HornetGearNose',
             'HornetGearMainL', 'HornetGearMainR', 'HornetWheelNoseL', 'HornetWheelNoseR',
             'HornetWheelMainL', 'HornetWheelMainR', 'HornetMainDoorForeL', 'HornetMainDoorForeR', 'HornetNoseDoorL', 'HornetNoseDoorR'} | {'HornetStrut'+part+leg for part in ('Upper','Lower','Brace','ScissorA','ScissorB','Hose') for leg in ('Nose','MainL','MainR')} | {'HornetPanel%d' % n for n in (0,1,2,3,4,5,6,7,9,10,11,12)}

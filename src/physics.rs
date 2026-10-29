@@ -24,6 +24,7 @@ pub enum Vehicle {
 #[derive(Resource, Clone)]
 pub struct Flight {
     pub water: crate::water::State,
+    pub ejection: crate::ejection::State,
     pub carrier: crate::carrier::State,
     pub hornet: crate::aircraft::hornet::Dynamics,
     pub aircraft: crate::aircraft::Aircraft,
@@ -103,6 +104,7 @@ impl Flight {
     pub fn approach() -> Self {
         Self {
             water: Default::default(),
+            ejection: Default::default(),
             carrier: Default::default(),
             hornet: Default::default(),
             aircraft: crate::aircraft::Aircraft::Gripen,
@@ -823,6 +825,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     if f.paused {
         return;
     }
+    crate::ejection::advance(f,dt);
     if crate::water::step(f,dt) {return;}
     if f.crashed {
         if f.vehicle == Vehicle::Spacecraft {

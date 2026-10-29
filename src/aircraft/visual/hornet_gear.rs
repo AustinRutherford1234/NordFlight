@@ -6,6 +6,9 @@ fn main_axle(side:f32,r:f32)->Vec3 {
  let lift=((r-0.45)/0.55).clamp(0.,1.);
  p(6.1,side*(16.03-9.53*tuck),-20.3+4.3*tuck+12.0*lift)
 }
+fn nose_axle(side:f32,r:f32)->Vec3 {
+ p(61.7+12.95*r+side*2.85*(r/0.45).clamp(0.,1.),side*2.12*(1.-((r-0.4)/0.45).clamp(0.,1.)),-20.17+17.37*r)
+}
 pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
  // Bevy gives primitive children names such as `...Mesh.airframe`.
  // Animate the authored pivot only, never its mesh or primitive children.
@@ -21,20 +24,18 @@ pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
  if matches!(name,"HornetGearNose"|"HornetGearMainL"|"HornetGearMainR") {return Some(Transform::IDENTITY);}
  if name.starts_with("HornetWheel") {
   let nose=name.contains("Nose");
-  let down=if nose {p(61.7,side*2.12,-20.17)} else {p(6.1,side*16.03,-20.3)};
-  let up=if nose {p(75.,side*2.12,0.0)} else {p(6.,side*6.,-4.8)};
   let root=if nose {p(63.,0.,-6.)} else {p(7.,side*8.,-6.)};
-  return Some(Transform::from_translation((if nose {down.lerp(up,r)}else{main_axle(side,r)})-root).with_rotation(if nose {Quat::IDENTITY}else{Quat::from_rotation_x(side*((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2)}));
+  return Some(Transform::from_translation((if nose {nose_axle(side,r)}else{main_axle(side,r)})-root).with_rotation(if nose {Quat::from_rotation_x(side*((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2)}else{Quat::from_rotation_x(side*((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2)}));
  }
  if name.starts_with("HornetStrut") {
   let nose=name.contains("Nose");
   let mount=if nose {p(63.,0.,-3.5)}else{p(7.,side*8.,-5.5)};
-  let knee=if nose {p(63.,0.,-13.).lerp(p(68.,0.,-1.),r)}else{p(8.,side*12.,-13.).lerp(p(11.,side*7.,-3.),r)};
-  let axle=if nose {p(61.7,0.,-20.17).lerp(p(75.,0.,0.0),r)}else{main_axle(side,r)};
+  let knee=if nose {p(63.,0.,-13.).lerp(p(68.,0.,-3.5),r)}else{p(8.,side*12.,-13.).lerp(p(11.,side*7.,-3.),r)};
+  let axle=if nose {p(61.7,0.,-20.17).lerp(p(74.65,0.,-2.8),r)}else{main_axle(side,r)};
   let scissor=knee.lerp(axle,0.45)+Vec3::new(1.2,0.,0.);
-  let (a,b)=if name.contains("Upper"){(mount,knee)}else if name.contains("Brace"){(mount+Vec3::new(5.,0.,0.),knee)}else if name.contains("ScissorA"){(knee,scissor)}else if name.contains("ScissorB"){(scissor,axle)}else if name.contains("Hose"){(mount+Vec3::Z*0.8,axle+Vec3::Z*0.8)}else{(knee,axle)};
+  let (a,b)=if name.contains("Fork"){(axle,nose_axle(if name.contains("ForkL"){-1.}else{1.},r))}else if name.contains("Upper"){(mount,knee)}else if name.contains("Brace"){(mount+Vec3::new(5.,0.,if nose{0.9}else{0.}),knee)}else if name.contains("ScissorA"){(knee,scissor)}else if name.contains("ScissorB"){(scissor,axle)}else if name.contains("Hose"){(mount+Vec3::Z*0.8,axle+Vec3::Z*0.8)}else{(knee,axle)};
   let delta=b-a;
-  return Some(Transform::from_translation((a+b)*0.5).with_rotation(Quat::from_rotation_arc(Vec3::Y,delta.normalize())).with_scale(Vec3::new(1.,delta.length(),1.)));
+  return Some(Transform::from_translation((a+b)*0.5).with_rotation(Quat::from_rotation_arc(Vec3::Y,delta.normalize()).normalize()).with_scale(Vec3::new(1.,delta.length(),1.)));
  }
  None
 }
@@ -53,7 +54,7 @@ mod tests {
      assert_eq!(t.scale.x,1.);assert_eq!(t.scale.z,1.);
      let a=t.transform_point(Vec3::NEG_Y*0.5);
      let b=t.transform_point(Vec3::Y*0.5);
-     assert!((a.distance(b)-t.scale.y).abs()<1e-4);
+     assert!((a.distance(b)-t.scale.y).abs()<1e-4,"{leg} {segment} {i}: {:?} distance={} scale={}",t.rotation,a.distance(b),t.scale.y);
      assert!(a.is_finite()&&b.is_finite());
     }
    }
@@ -71,9 +72,9 @@ mod tests {
    let n=if side<0.{"HornetWheelNoseL"}else{"HornetWheelNoseR"};
    let t=pose(n,0.,0.).unwrap();
    let axle=p(63.,0.,-6.)+t.translation;
-   // Source tire outer radius 2.9 units; roof underside is at 3.92.
-   assert!(axle.y+2.9<3.92);
-   assert!(axle.y-2.9> -4.4);
+   // Stowed tire rotates flat; its half-width is about .6 units.
+   assert!(axle.y+1.0< -1.68);
+   assert!(axle.y-1.0> -3.86);
   }
  }
  #[test]
@@ -82,6 +83,10 @@ mod tests {
    assert_eq!(pose(n,1.,0.).unwrap().rotation,pose(n,0.,1.).unwrap().rotation);
    assert_eq!(pose(n,0.,0.).unwrap().rotation,Quat::IDENTITY);
   }
+ }
+ #[test]
+ fn flattened_nose_wheels_clear_the_narrow_bay_during_stowage(){
+  for step in 0..=1000{let r=step as f32/1000.;let t=pose("HornetWheelNoseR",1.-r,1.).unwrap();let center=p(63.,0.,-6.)+t.translation;let angle=((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2;let vertical=2.75*angle.cos()+1.0*angle.sin();let lateral=2.75*angle.sin()+1.0*angle.cos();if center.y+vertical> -4.4{assert!((-center.z).abs()+lateral<3.6);assert!(center.y+vertical< -1.68);}}
  }
  #[test]
  fn primitive_children_keep_their_authored_offsets() {

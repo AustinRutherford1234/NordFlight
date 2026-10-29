@@ -363,6 +363,7 @@ struct Library {
 #[derive(Component)]
 struct Exterior {
     owner: usize,
+    seat:usize,
     appearance: Option<Appearance>,
 }
 #[derive(Component)]
@@ -565,15 +566,17 @@ fn setup(
             RenderLayers::layer(PORTRAIT_LAYER),
         ));
     }
-    for owner in 0..CREW {
+    for owner in 0..CREW {for seat in 0..2 {
         c.spawn((
             Exterior {
                 owner,
+                seat,
                 appearance: None,
             },
             Transform::default(),
             Visibility::Hidden,
         ));
+    }
     }
     // Layer separation removes the player's head from the first-person view,
     // while the exterior cameras still see the complete seated pilot.
@@ -684,7 +687,7 @@ fn reactions(
             combat.targets[id - 1].position
         };
         let dead = if id == 0 {
-            f.crashed
+            f.crashed && !f.ejection.active
         } else {
             !combat.targets[id - 1].alive
         };
@@ -910,7 +913,7 @@ fn sync(
         }
     }
     for mut layer in &mut main_layers {
-        layer.set_if_neq(if v.index == 3 && !v.following() && !v.map {
+        layer.set_if_neq(if v.index == 3 && !v.following() && !v.map && !f.ejection.active {
             RenderLayers::layer(0)
         } else {
             RenderLayers::from_layers(&[0, DOG_LAYER])
@@ -919,7 +922,7 @@ fn sync(
     for (e, mut tag, mut t, mut visible) in &mut exterior {
         let plant = flight_for(tag.owner, &f, &combat);
         let alive = tag.owner == 0 || combat.targets.get(tag.owner - 1).is_some_and(|t| t.alive);
-        let position = if tag.owner == 0 {
+        let position = if tag.owner == 0 && f.ejection.active {f.ejection.pilots[tag.seat].position} else if tag.owner == 0 {
             f.position
         } else {
             combat
@@ -933,7 +936,7 @@ fn sync(
                 .distance(crate::world::local(position, &f))
                 < 180.
         });
-        let show = !menu.open && alive && near && plant.is_some_and(|p| supported(p) && !p.crashed);
+        let show = !menu.open && alive && near && plant.is_some_and(|p| supported(p) && (!p.crashed||p.ejection.active) && (tag.seat==0||p.aircraft==Aircraft::Hornet));
         visible.set_if_neq(if show {
             Visibility::Inherited
         } else {
@@ -950,12 +953,13 @@ fn sync(
             (t.position, t.orientation)
         };
         let mut next = *t;
-        let visual_offset=if plant.aircraft==Aircraft::Hornet { Vec3::new(0.,-0.08,0.35) } else { Vec3::ZERO };
+        let visual_offset=if plant.aircraft==Aircraft::Hornet { Vec3::new(0.,0.06+tag.seat as f32*0.12,-0.35+tag.seat as f32*crate::cockpit::hornet_interior::SPACING) } else { Vec3::ZERO };
         next.translation = crate::world::local(p, &f)
             + crate::world::local_rot(q, &f) * (plant.aircraft.cabin_offset()+visual_offset);
         next.rotation = crate::world::local_rot(q, &f);
+        if tag.owner==0 && f.ejection.active && f.ejection.age>=crate::ejection::delay(tag.seat){next.rotation=crate::ejection::crew_attitude(&f,tag.seat);next.translation=crate::world::local(f.ejection.pilots[tag.seat].position,&f)-next.rotation*Vec3::new(0.,0.34,-2.40);}
         t.set_if_neq(next);
-        let a = appearance(&crew, tag.owner);
+        let mut a = appearance(&crew, tag.owner);if tag.seat==1{a.breed=(a.breed+3)%10;}
         if tag.appearance != Some(a) {
             for (dog, parent) in &dogs {
                 if parent.parent() == e {
@@ -966,7 +970,7 @@ fn sync(
                 .models
                 .entry(a)
                 .or_insert_with(|| model::build(&mut meshes, &mut mats, &mut images, &a));
-            model::spawn(&mut c, e, pieces, a.breed, tag.owner, false);
+            model::spawn_layer(&mut c,e,pieces,a.breed,tag.owner,false,if tag.seat==1{0}else{DOG_LAYER});
             tag.appearance = Some(a);
         }
     }
@@ -1053,6 +1057,7 @@ fn preview_active(crew: &Crew) -> bool {
 }
 fn animate(
     time: Res<Time>,
+    f:Option<Res<Flight>>,
     crew: Res<Crew>,
     states: Res<Reactions>,
     mut tracks: ResMut<Performances>,
@@ -1238,6 +1243,16 @@ fn animate(
                 } else {
                     detail.fingers.y
                 });
+            }
+        }
+        if bone.owner==0 && !bone.portrait && f.as_ref().is_some_and(|f|f.ejection.active) {
+            let hanging=f.as_ref().unwrap().ejection.age>2.5;
+            match bone.joint {
+                Chest=>{out.rotation=Quat::from_rotation_x(if hanging{-0.08}else{0.});},
+                Head=>{out.rotation=Quat::IDENTITY;},
+                ArmL|ArmR=>{let side=if bone.joint==ArmL{-1.}else{1.};out.rotation=Quat::from_euler(EulerRot::XYZ,if hanging{1.3}else{0.2},0.,side*0.18);},
+                WristL|WristR|FingersL|FingersR=>{out.rotation=Quat::from_rotation_x(0.25);},
+                _=>{}
             }
         }
         t.set_if_neq(out);
@@ -1643,6 +1658,8 @@ mod tests {
         app.world_mut().resource_mut::<Flight>().crashed = false;
         app.update();
         assert!(!app.world().resource::<Reactions>().states[0].face.lost);
+        {let mut f=app.world_mut().resource_mut::<Flight>();f.ejection.active=true;f.crashed=true;f.elapsed+=0.1;}
+        app.update();assert!(!app.world().resource::<Reactions>().states[0].face.lost,"escaped aircrew must not inherit aircraft loss");
     }
     #[test]
     fn live_events_select_damage_landing_failure_and_signed_load_performances() {

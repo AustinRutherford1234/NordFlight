@@ -39,7 +39,7 @@ pub(super) fn setup(c: &mut Commands, meshes: &mut Assets<Mesh>, mats: &mut Asse
     )).id();
     c.entity(root).add_child(model);
 
-    let cabin = c.spawn((CockpitRoot(Aircraft::Hornet), Transform::from_translation(Aircraft::Hornet.cabin_offset()), Visibility::Inherited)).id();
+    let cabin = c.spawn((CockpitRoot(Aircraft::Hornet), Transform::from_translation(Aircraft::Hornet.cabin_offset()).with_scale(Vec3::new(0.75,1.,1.)), Visibility::Inherited)).id();
     c.entity(root).add_child(cabin);
     crate::cockpit::setup_for(c, meshes, mats, images, cabin, Vehicle::Gripen, Aircraft::Hornet);
     crate::cockpit::fleet_display(c, meshes, mats, images, cabin, Aircraft::Hornet);
@@ -330,6 +330,7 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
                 Some(f.damage.surface_state[i]!=crate::combat::damage::SurfaceState::Detached)
             }
             else {None};
+        let show=if name.starts_with("F18-cockpit"){Some(false)}else if f.ejection.active&&(name=="HornetCanopyPivot"||name=="HornetCanopyFrame"){Some(false)}else{show};
         if let Some(show)=show {visible.set_if_neq(if show {Visibility::Inherited} else {Visibility::Hidden});}
     }
 }

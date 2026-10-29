@@ -1123,16 +1123,18 @@ fn rest(j: Joint, breed: usize) -> Transform {
         ),
     }
 }
-pub fn spawn(
+pub fn spawn(c:&mut Commands,parent:Entity,pieces:&[Piece],breed:usize,owner:usize,portrait:bool)->Entity {spawn_layer(c,parent,pieces,breed,owner,portrait,if portrait{PORTRAIT_LAYER}else{DOG_LAYER})}
+pub fn spawn_layer(
     c: &mut Commands,
     parent: Entity,
     pieces: &[Piece],
     breed: usize,
     owner: usize,
     portrait: bool,
+    layer:usize,
 ) -> Entity {
     use Joint::*;
-    let layer = if portrait { PORTRAIT_LAYER } else { DOG_LAYER };
+
     let root = c
         .spawn((
             DogRoot,

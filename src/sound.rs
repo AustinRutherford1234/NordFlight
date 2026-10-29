@@ -240,6 +240,7 @@ pub struct Scene {
     engine: bool,
     apu: bool,
     crashed: bool,
+    ejection_age:Option<f64>,
     integrity: f64,
     dead: [bool; 11],
     cone: [bool; 12],
@@ -691,6 +692,8 @@ pub fn update(
         let apu = f.apu != scene.apu;
         let crashed = f.crashed && !scene.crashed;
         let hit = scene.integrity - f.integrity > 0.015;
+        let canopy_escape=f.ejection.active&&scene.ejection_age.is_none();
+        let seat_escape=f.ejection.active&&[0,1].iter().any(|&i|f.ejection.age>=crate::ejection::delay(i)&&scene.ejection_age.unwrap_or(-1.)<crate::ejection::delay(i));
         let mut own = |kind| {
             schedule(
                 &mut scene,
@@ -723,6 +726,8 @@ pub fn update(
         if apu {
             own(Kind::Switch);
         }
+        if canopy_escape {own(Kind::Latch);}
+        if seat_escape {own(Kind::Launch);}
         if crashed && !f.water.active {
             own(Kind::Blast);
         } else if hit {
@@ -873,6 +878,7 @@ pub fn update(
     scene.engine = f.engine;
     scene.apu = f.apu;
     scene.crashed = f.crashed;
+    scene.ejection_age=f.ejection.active.then_some(f.ejection.age);
     scene.integrity = f.integrity;
     scene.dead = std::array::from_fn(|i| combat.targets.get(i).is_none_or(|t| !t.alive));
 }

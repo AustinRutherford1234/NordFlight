@@ -2,7 +2,7 @@
 //! positions stay unchanged; structure stops behind their clear viewing faces.
 use bevy::{asset::RenderAssetUsages, prelude::*, render::render_resource::PrimitiveTopology};
 
-fn padded(size: Vec3) -> Mesh {
+pub(crate) fn padded(size: Vec3) -> Mesh {
     let mut positions = Vec::new();
     let mut normals = Vec::new();
     let mut face = |a: Vec3, b: Vec3, c: Vec3| {

@@ -268,23 +268,23 @@ for side in (-1,1):
 bpy.data.objects.remove(closed_mesh,do_unlink=True)
 # Opaque bay wells prevent seeing through the aircraft between the doors.
 well_paint=metal('Gear well interior',(0.27,0.29,0.29,1.),0.2)
-for x0,x1,y0,y1,z0,z1 in [(48.,81.,-3.6,3.6,-4.4,4.),(-9.6,14.,-11.,-2.,-6.0,1.),(-9.6,14.,2.,11.,-6.0,1.)]:
+for x0,x1,y0,y1,z0,z1 in [(48.,81.,-3.6,3.6,-4.4,-1.6),(-9.6,14.,-11.,-2.,-6.0,1.),(-9.6,14.,2.,11.,-6.0,1.)]:
     for loc,dim in [(((x0+x1)/2,(y0+y1)/2,z1),(x1-x0,y1-y0,.16)),((x0,(y0+y1)/2,(z0+z1)/2),(.16,y1-y0,z1-z0)),((x1,(y0+y1)/2,(z0+z1)/2),(.16,y1-y0,z1-z0)),(((x0+x1)/2,y0,(z0+z1)/2),(x1-x0,.16,z1-z0)),(((x0+x1)/2,y1,(z0+z1)/2),(x1-x0,.16,z1-z0))]:
         bpy.ops.mesh.primitive_cube_add(size=1.,location=loc)
         obj=bpy.context.object;obj.name='HornetBayWell';obj.dimensions=dim;obj.data.materials.append(well_paint)
 # Roof-mounted stiffeners and service conduits stay above the swept wheel
 # envelope. These are representative visual details, not a maintenance drawing.
-for bay,x0,x1,y0,y1,roof in [('Nose',48.,81.,-3.6,3.6,4.),('MainL',-9.6,14.,-11.,-2.,1.),('MainR',-9.6,14.,2.,11.,1.)]:
+for bay,x0,x1,y0,y1,roof in [('Nose',48.,81.,-3.6,3.6,-1.6),('MainL',-9.6,14.,-11.,-2.,1.),('MainR',-9.6,14.,2.,11.,1.)]:
     fixed=pivot('HornetWellDetail'+bay,(0.,0.,0.))
     for fraction in (.12,.36,.64,.88):
         x=x0+(x1-x0)*fraction
-        cylinder('Well roof rib '+bay,(x,y0+.22,roof-.18),(x,y1-.22,roof-.18),.11,inner_paint,fixed)
+        cylinder('Well roof rib '+bay,(x,y0+.22,roof+.18),(x,y1-.22,roof+.18),.11,inner_paint,fixed)
     for offset in (.35,.65):
         y=y0+offset
-        cylinder('Well hydraulic tube '+bay,(x0+.4,y,roof-.38),(x1-.4,y,roof-.38),.065,fastener,fixed)
+        cylinder('Well hydraulic tube '+bay,(x0+.4,y,roof+.38),(x1-.4,y,roof+.38),.065,fastener,fixed)
         for fraction in (.18,.5,.82):
             x=x0+(x1-x0)*fraction
-            cylinder('Well tube clamp '+bay,(x,y-.15,roof-.36),(x,y+.15,roof-.36),.10,inner_paint,fixed)
+            cylinder('Well tube clamp '+bay,(x,y-.15,roof+.36),(x,y+.15,roof+.36),.10,inner_paint,fixed)
 nose_pivot, nose_mesh = partition_surface(gear_mesh, 'HornetGearNose', [((40.,0.,0.),(1.,0.,0.))], (63.,0.,-6.))
 # Forward door skins are now represented by the independent closed-pose
 # doors. Keeping their gear-down copies on the leg swings them through the
@@ -347,7 +347,8 @@ paint=metal('Gear satin white',(0.72,0.74,0.73,1.),0.25)
 chrome=metal('Gear polished piston',(0.65,0.68,0.7,1.),0.95)
 dark=metal('Gear hydraulic hose',(0.025,0.028,0.03,1.),0.1)
 for leg in ('Nose','MainL','MainR'):
-    for segment,radius,mat in [('Upper',.7,paint),('Lower',.4,chrome),('Brace',.22,paint),('ScissorA',.16,paint),('ScissorB',.16,paint),('Hose',.09,dark)]:
+    segments=([('ForkL',.14,paint),('ForkR',.14,paint)] if leg=='Nose' else [])+[('Upper',.7,paint),('Lower',.4,chrome),('Brace',.22,paint),('ScissorA',.16,paint),('ScissorB',.16,paint),('Hose',.09,dark)]
+    for segment,radius,mat in segments:
         bpy.ops.mesh.primitive_cylinder_add(vertices=32,radius=radius,depth=1.)
         obj=bpy.context.object; obj.name='HornetStrut'+segment+leg
         obj.data.materials.append(mat)

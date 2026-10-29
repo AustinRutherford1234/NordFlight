@@ -2,6 +2,7 @@
 pub(crate) mod coverage;
 pub(crate) mod hornet_hud;
 pub(crate) mod raptor_interior;
+pub(crate) mod hornet_interior;
 use crate::{orbit::Orbit, physics::*};
 use bevy::{
     asset::RenderAssetUsages,
@@ -168,7 +169,8 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
     }
     // The Raptor has a fitted tub and seat; retain the original shared cabin
     // only for other vehicles rather than overlapping two interiors.
-    if !raptor {
+    if aircraft==crate::aircraft::Aircraft::Hornet && !space {hornet_interior::setup(c,meshes,materials,images,root);}
+    if !raptor && aircraft!=crate::aircraft::Aircraft::Hornet {
     // Open cockpit tub: floor, sidewalls, forward/rear bulkheads and side consoles.
     for (p, s) in [
         (Vec3::new(0.0, -0.15, -2.65), Vec3::new(0.95, 0.09, 2.55)),
@@ -537,6 +539,8 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
             metal.clone(),
         );
     }
+    // Preserve the combiner's angular calibration inside the narrower tub.
+    let hud_root=if aircraft==crate::aircraft::Aircraft::Hornet {let e=c.spawn((Transform::from_scale(Vec3::new(1./0.75,1.,1.)),Visibility::Inherited)).id();c.entity(root).add_child(e);e}else{root};
     let combiner=part(
         c,
         Vec3::new(
@@ -552,6 +556,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         Quat::from_rotation_x(-0.14),
         glass,
     );
+    if hud_root!=root {c.entity(hud_root).add_child(combiner);}
     if aircraft==crate::aircraft::Aircraft::F22{c.entity(combiner).insert(InternalDisplay);}
     let image = images.add(Image::new_fill(
         Extent3d {
@@ -601,7 +606,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
             bevy::light::NotShadowCaster,
         ))
         .id();
-    c.entity(root).add_child(e);
+    c.entity(hud_root).add_child(e);
     // Spacecraft pressure cabin uses an actual forward window, not the opaque hull skin.
     if !space && std::env::var_os("NORD_HUD_COVERAGE_REFERENCE").is_none() {
         c.entity(e).insert(coverage::Panel {rest:hud_rest,size:hud_size,empty:true});
