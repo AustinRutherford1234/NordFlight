@@ -8,7 +8,7 @@ The paired check measured a **6.8% reduction in the cockpit CPU span**, but **no
 
 ## Scope, permissions, and conditions
 
-The pilot reported delayed controls/low FPS in fullscreen normal quality, particularly low over terrain and on carrier approach, with a smoother external view. Approved work comprised a cockpit/external comparison, a five-minute soak, then the two changes above and two 30-second before/after checks. A further live carrier-flight profile has been requested separately and was not performed in this report.
+The pilot reported delayed controls/low FPS in fullscreen normal quality, particularly low over terrain and on carrier approach, with a smoother external view. Approved work comprised a cockpit/external comparison, a five-minute soak, then the two changes above and two 30-second before/after checks. The pilot subsequently approved one additional 30-second live carrier-flight profile; its results are recorded below.
 
 - Hardware: MacBookAir10,1, Apple M1, 8 GiB unified memory; Metal adapter Apple M1.
 - Fullscreen: 2880 × 1800 physical pixels, normal quality (`quality: false`), VSync. Initial windowed work used 1440 × 900; fullscreen renders four times as many pixels.
@@ -82,7 +82,37 @@ The measured cockpit CPU span fell 6.8%; mean update FPS increased only 1.0%, wh
 
 All **631 automated tests passed**, including the new display-sharing and ejection-reset checks. The Mac development bundle is rebuilt and ad-hoc signed through `build-mac.sh dev`. Building and signing do not establish manual flight quality or solve the remaining slowdown.
 
-The next useful measurement is a separately approved 30-second fullscreen **live** carrier approach with the full flight physics and collision workload, and per-second flight state to distinguish a continuing approach from a crash/reset. No further live diagnostic or soak was run without that approval. Live GPU timing or an actual presentation trace may then be useful if CPU work does not explain the event; that would also need an appropriate measurement workflow.
+The subsequently approved live profile below confirms rendering-rate-dependent simulation slowdown. It does not identify the responsible GPU pass or establish the cockpit/external difference during identical live flight. A GPU/presentation trace and a paired live external-camera control remain useful possible follow-ups, requiring separate diagnostic approval. No further runtime tests were performed.
+
+## Subsequently approved live-flight profile
+
+One additional run used the same 2880 × 1800 fullscreen resolution, normal quality, VSync, enabled counters, ten-second warm-up, and a **30.000-second sample**. The `carrier-live` diagnostic initializes the standard carrier approach once, with neutral pilot commands, normal Hornet FBW, and wind disabled; thereafter normal physics advances position, attitude, and velocity. It does not reposition, recycle, pause, or automatically fly the aircraft to the deck. Physics and collision counters confirm that their normal paths executed.
+
+| Measurement | Live profile |
+|---|---:|
+| Application update frames / mean FPS | 1,198 / 39.91 |
+| Mean / p50 interval | 25.06 / 26.26 ms |
+| p95 / p99 interval | 34.40 / 35.17 ms |
+| Frames over 25 / 50 ms | 599 / 1 |
+| Simulation advanced during sample | 19.95 s |
+| Simulation time / wall time | 0.6650 |
+| Full simulation CPU span, mean per application frame | 0.1812 ms |
+| Aircraft physics, total / calls | 211.689 ms / 4,788 |
+| Collision, total / calls | 2.314 ms / 4,788 |
+| Cockpit CPU span, mean per application frame | 3.3206 ms |
+| Asset preparation, mean per application frame | 0.7551 ms |
+| Display flush, mean per application frame | 0.3638 ms |
+| Upload bytes / calls | 792,641,056 / 1,695 |
+
+All recorded flight-state samples were unpaused, airborne, and uncrashed, with cockpit camera index 3. Near the sample start (wall time 10.134 s), the aircraft was 142.9 m above sea level and at carrier-relative z = 1,942 m. The final one-second state sample (wall time 39.585 s) was 93.2 m above sea level and z = 482 m. The aircraft approached continuously but did not reach touchdown during this test. The track and altitude were allowed to evolve naturally; the run is not evidence of correct manual landing handling or final deck-contact performance.
+
+This live run reproduces sustained rendering slowdown with physically advancing flight. The average simulation CPU cost is less than 1% of the mean frame interval; measured collision CPU work is approximately 0.00193 ms per application frame and is nested inside physics/simulation. These averages make physics and collision CPU cost an unlikely explanation for the **sustained** approximately 40-FPS result in this workload. They do not locate individual frame spikes or exclude different costs during actual deck contact.
+
+The simulation rate agrees with the source timing contract: 39.91 updates/s × 1/60 simulated second/update ≈ 0.665 simulated seconds per wall second. Unlike the prescribed rendering path, this is a real simulation-rate measurement. Slow rendering therefore also slows aircraft motion and control evolution by about one-third. Correcting that contract would require a separate bounded fixed-step/wall-clock accumulation change and appropriate flight/input regressions; no such behavior change is included here.
+
+Compared with the earlier post-fix rendering-only pair, live mean update FPS was lower (39.91 versus 49.28), while cockpit CPU cost was similar (3.321 versus 3.367 ms/frame). Upload volume was higher (26.4 versus 13.8 MB/s), and display-flush CPU cost rose from 0.187 to 0.364 ms/frame. Live instruments change with physically evolving state. These are different trajectories and workloads measured at different times, not an isolated causal A/B test of physics or uploads. The result supports investigating rendering, display updates, and presentation scheduling; it does not prove upload bandwidth saturation or identify a specific shader. Usable per-pass GPU elapsed times remain unavailable.
+
+The process exited normally after 46.04 seconds including startup/warm-up/cleanup. Peak process RSS including startup was 1,287.1 MiB; AC power was present and no system thermal/performance warning was reported. The existing Nord Flight process was resumed by the isolation harness. This follow-up changed only opt-in diagnostic code and this report; the installed app retains the previously packaged production fixes. The live diagnostic compiled successfully and ran once; the full 631-test regression result above belongs to the preceding production update and was not rerun for this diagnostic-only addition.
 
 ## Evidence and reproduction
 
@@ -91,5 +121,6 @@ Tracked harnesses:
 - `tests/hornet-cockpit-performance/diagnose.py`: initial windowed comparison; its original soak was interrupted.
 - `tests/hornet-cockpit-performance/fullscreen.py`: fullscreen matrix and approved pre-change five-minute rendering soak.
 - `tests/hornet-cockpit-performance/paired.py before|after`: the approved pair, requiring a saved `paired/before` executable for the baseline.
+- `tests/hornet-cockpit-performance/live.py`: the separately approved single live profile; full local results, state samples, binary identity, and process records are under `live/`.
 
 Local generated evidence (ignored by Git) remains under `tests/hornet-cockpit-performance/`: `fullscreen/*.json`, process samples/logs, `paired/{before,after}.json`, binary identity/environment JSON, build logs, and `paired/regressions.log`. These scripts actively reset the diagnostic flight and should only be run within the authorized test scope. They are not part of normal gameplay.

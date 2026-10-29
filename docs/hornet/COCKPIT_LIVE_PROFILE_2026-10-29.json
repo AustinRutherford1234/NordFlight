@@ -1,0 +1,927 @@
+{
+  "mode": "carrier-live",
+  "resolution": [
+    2880,
+    1800
+  ],
+  "quality": false,
+  "paused": false,
+  "warmup_seconds": 10.0,
+  "sample_seconds": 30.000292207999998,
+  "frames": 1198,
+  "mean_fps": 39.911580580003914,
+  "mean_ms": 25.055384564273798,
+  "p50_ms": 26.26225,
+  "p95_ms": 34.399291999999996,
+  "p99_ms": 35.174749999999996,
+  "over_25_ms": 599,
+  "over_50_ms": 1,
+  "simulated_seconds": 19.94999999999887,
+  "simulation_rate": 0.6649935227857189,
+  "timestep": 0.016666666666666666,
+  "executable_sha256": "81908bf783e44a0f682156b5f26d86da58b16827e23bfc45f590751cd5f86a5e",
+  "env": {
+    "NORD_AIRCRAFT": "fa18f",
+    "NORD_BENCH_SCENE": "terrain-forest",
+    "NORD_BENCH_FULLSCREEN": "1",
+    "NORD_PRESENT_MODE": "vsync",
+    "NORD_TERRAIN_COCKPIT": "1",
+    "NORD_BENCH_SCRIPT": "carrier-live",
+    "NORD_BENCH_WARMUP": "10",
+    "NORD_BENCH_SECONDS": "30",
+    "NORD_BENCH_LIVE": "1",
+    "NORD_BENCH_REPORT": "/Users/Austin/Downloads/GripenFlight/tests/hornet-cockpit-performance/live/carrier-live.json"
+  },
+  "cpu_spans": {
+    "ai_pilot": {
+      "calls": 0,
+      "mean_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "aircraft_physics": {
+      "calls": 4788,
+      "mean_ms": 0.044212420008354215,
+      "total_ms": 211.689067
+    },
+    "asset_prepare_wall": {
+      "calls": 1197,
+      "mean_ms": 0.7551170685045948,
+      "total_ms": 903.875131
+    },
+    "audio": {
+      "calls": 1197,
+      "mean_ms": 0.00536480701754386,
+      "total_ms": 6.421674
+    },
+    "camera": {
+      "calls": 1197,
+      "mean_ms": 0.010904273182957393,
+      "total_ms": 13.052415
+    },
+    "cockpit": {
+      "calls": 1197,
+      "mean_ms": 3.3206090200501253,
+      "total_ms": 3974.768997
+    },
+    "collision": {
+      "calls": 4788,
+      "mean_ms": 0.0004832245196324144,
+      "total_ms": 2.313679
+    },
+    "combat": {
+      "calls": 2394,
+      "mean_ms": 0.0005843095238095238,
+      "total_ms": 1.398837
+    },
+    "display_flush": {
+      "calls": 1197,
+      "mean_ms": 0.36378115538847117,
+      "total_ms": 435.446043
+    },
+    "display_publish": {
+      "calls": 2253,
+      "mean_ms": 0.11477540168664004,
+      "total_ms": 258.58898
+    },
+    "earth": {
+      "calls": 1197,
+      "mean_ms": 0.005018972431077694,
+      "total_ms": 6.00771
+    },
+    "orbital_coast": {
+      "calls": 0,
+      "mean_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "radar_display": {
+      "calls": 599,
+      "mean_ms": 0.026642367278798,
+      "total_ms": 15.958778
+    },
+    "simulation": {
+      "calls": 1197,
+      "mean_ms": 0.18116719548872182,
+      "total_ms": 216.857133
+    },
+    "terrain": {
+      "calls": 1197,
+      "mean_ms": 0.007906265664160401,
+      "total_ms": 9.4638
+    },
+    "terrain_build": {
+      "calls": 30,
+      "mean_ms": 0.6725375333333333,
+      "total_ms": 20.176126
+    },
+    "world": {
+      "calls": 1197,
+      "mean_ms": 0.12587914369256475,
+      "total_ms": 150.677335
+    }
+  },
+  "state_samples": [
+    {
+      "agl_m": 162.38180315401405,
+      "alpha_rad": 0.14599226035461005,
+      "altitude_m": 162.38180315401405,
+      "camera": 3,
+      "carrier_relative_m": [
+        303.5000000000015,
+        161.95942242392908,
+        2299.9999999999995
+      ],
+      "crashed": false,
+      "entities": 11334,
+      "landed": false,
+      "meshes": 1981,
+      "paused": false,
+      "simulation_s": 0.0,
+      "speed_mps": 82.02471613587517,
+      "throttle": 0.2837848624160306,
+      "wall_s": 0.0
+    },
+    {
+      "agl_m": 162.31167608126998,
+      "alpha_rad": 0.14556503414705466,
+      "altitude_m": 162.31167608126998,
+      "camera": 3,
+      "carrier_relative_m": [
+        303.34016931924083,
+        161.88971499799194,
+        2298.8583363854295
+      ],
+      "crashed": false,
+      "entities": 12225,
+      "landed": false,
+      "meshes": 2089,
+      "paused": false,
+      "simulation_s": 0.016666666666666666,
+      "speed_mps": 82.0329667715242,
+      "throttle": 0.2837848624160306,
+      "wall_s": 1.022457208
+    },
+    {
+      "agl_m": 162.17133512347937,
+      "alpha_rad": 0.14562396801940747,
+      "altitude_m": 162.17133512347937,
+      "camera": 3,
+      "carrier_relative_m": [
+        303.020465451664,
+        161.75021286011045,
+        2296.5746001375715
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 0.049999999999999996,
+      "speed_mps": 82.049601381581,
+      "throttle": 0.2837848624160306,
+      "wall_s": 2.03042125
+    },
+    {
+      "agl_m": 160.7049201661721,
+      "alpha_rad": 0.14526603295775337,
+      "altitude_m": 160.7049201661721,
+      "camera": 3,
+      "carrier_relative_m": [
+        299.66045816569005,
+        160.29256699682907,
+        2272.562442635896
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 0.3999999999999998,
+      "speed_mps": 82.21896724999023,
+      "throttle": 0.2837848624160306,
+      "wall_s": 3.034430666
+    },
+    {
+      "agl_m": 157.90012270398438,
+      "alpha_rad": 0.143797668687873,
+      "altitude_m": 157.90012270398438,
+      "camera": 3,
+      "carrier_relative_m": [
+        293.08461086999995,
+        157.5046845104578,
+        2225.5110867334834
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 1.0833333333333308,
+      "speed_mps": 82.54054495657266,
+      "throttle": 0.2837848624160306,
+      "wall_s": 4.067387833
+    },
+    {
+      "agl_m": 155.2425720449537,
+      "alpha_rad": 0.1421407010322956,
+      "altitude_m": 155.2425720449537,
+      "camera": 3,
+      "carrier_relative_m": [
+        286.649931563471,
+        154.8633683316636,
+        2179.3951314268834
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 1.7499999999999951,
+      "speed_mps": 82.84620906117851,
+      "throttle": 0.2837848624160306,
+      "wall_s": 5.067597083
+    },
+    {
+      "agl_m": 152.66290512867272,
+      "alpha_rad": 0.14046574032997433,
+      "altitude_m": 152.66290512867272,
+      "camera": 3,
+      "carrier_relative_m": [
+        280.1975242233488,
+        152.29966496660563,
+        2133.0743666085414
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 2.4166666666666816,
+      "speed_mps": 83.14556477072841,
+      "throttle": 0.2837848624160306,
+      "wall_s": 6.067896958
+    },
+    {
+      "agl_m": 150.09674075245857,
+      "alpha_rad": 0.13878782913647994,
+      "altitude_m": 150.09674075245857,
+      "camera": 3,
+      "carrier_relative_m": [
+        273.5667117720798,
+        149.74957590656751,
+        2085.387212858698
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 3.100000000000049,
+      "speed_mps": 83.44688239647544,
+      "throttle": 0.2837848624160306,
+      "wall_s": 7.083760041
+    },
+    {
+      "agl_m": 147.66522364225239,
+      "alpha_rad": 0.1372129169604597,
+      "altitude_m": 147.66522364225239,
+      "camera": 3,
+      "carrier_relative_m": [
+        267.0821692589006,
+        147.33345597621772,
+        2038.663433792132
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 3.7666666666667488,
+      "speed_mps": 83.73616565732597,
+      "throttle": 0.2837848624160306,
+      "wall_s": 8.08434575
+    },
+    {
+      "agl_m": 145.2421727888286,
+      "alpha_rad": 0.1356709539201905,
+      "altitude_m": 145.2421727888286,
+      "camera": 3,
+      "carrier_relative_m": [
+        260.4208722835446,
+        144.92588832625194,
+        1990.5701088755663
+      ],
+      "crashed": false,
+      "entities": 12230,
+      "landed": false,
+      "meshes": 2091,
+      "paused": false,
+      "simulation_s": 4.450000000000068,
+      "speed_mps": 84.02839450185276,
+      "throttle": 0.2837848624160306,
+      "wall_s": 9.117734
+    },
+    {
+      "agl_m": 142.88463254645467,
+      "alpha_rad": 0.134202110363929,
+      "altitude_m": 142.88463254645467,
+      "camera": 3,
+      "carrier_relative_m": [
+        253.74591658577955,
+        142.58352310913924,
+        1942.2758332794413
+      ],
+      "crashed": false,
+      "entities": 12350,
+      "landed": false,
+      "meshes": 2211,
+      "paused": false,
+      "simulation_s": 5.133333333333362,
+      "speed_mps": 84.31666158458206,
+      "throttle": 0.2837848624160306,
+      "wall_s": 10.1342755
+    },
+    {
+      "agl_m": 140.58828634675592,
+      "alpha_rad": 0.13280191352371692,
+      "altitude_m": 140.58828634675592,
+      "camera": 3,
+      "carrier_relative_m": [
+        247.0584270603865,
+        140.30203827657039,
+        1893.7833682300102
+      ],
+      "crashed": false,
+      "entities": 12219,
+      "landed": false,
+      "meshes": 2080,
+      "paused": false,
+      "simulation_s": 5.816666666666657,
+      "speed_mps": 84.6012510624177,
+      "throttle": 0.2837848624160306,
+      "wall_s": 11.167871416
+    },
+    {
+      "agl_m": 138.3492412827909,
+      "alpha_rad": 0.13146414892899166,
+      "altitude_m": 138.3492412827909,
+      "camera": 3,
+      "carrier_relative_m": [
+        240.35948783047849,
+        138.07753557248427,
+        1845.0952751424122
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 6.499999999999951,
+      "speed_mps": 84.88238235087911,
+      "throttle": 0.2837848624160306,
+      "wall_s": 12.183310958
+    },
+    {
+      "agl_m": 136.21672654617578,
+      "alpha_rad": 0.13021294025719365,
+      "altitude_m": 136.21672654617578,
+      "camera": 3,
+      "carrier_relative_m": [
+        233.81390647196983,
+        135.95889606890245,
+        1797.4084625042135
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 7.16666666666658,
+      "speed_mps": 85.15349190879469,
+      "throttle": 0.2837848624160306,
+      "wall_s": 13.184427583
+    },
+    {
+      "agl_m": 134.0811364594847,
+      "alpha_rad": 0.12897969712894283,
+      "altitude_m": 134.0811364594847,
+      "camera": 3,
+      "carrier_relative_m": [
+        227.09540350285775,
+        133.83720281004494,
+        1748.3408128044912
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 7.849999999999874,
+      "speed_mps": 85.42827686380879,
+      "throttle": 0.2837848624160306,
+      "wall_s": 14.217775583
+    },
+    {
+      "agl_m": 132.04411255847663,
+      "alpha_rad": 0.12781935380495257,
+      "altitude_m": 132.04411255847663,
+      "camera": 3,
+      "carrier_relative_m": [
+        220.53265422399687,
+        131.8134146488376,
+        1700.2879169820194
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 8.516666666666504,
+      "speed_mps": 85.69344848615847,
+      "throttle": 0.2837848624160306,
+      "wall_s": 15.217789208
+    },
+    {
+      "agl_m": 130.05079188384116,
+      "alpha_rad": 0.12669680049328882,
+      "altitude_m": 130.05079188384116,
+      "camera": 3,
+      "carrier_relative_m": [
+        213.9628045634487,
+        129.83300688672907,
+        1652.0571854671102
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 9.183333333333133,
+      "speed_mps": 85.95584226450016,
+      "throttle": 0.2837848624160306,
+      "wall_s": 16.217974208
+    },
+    {
+      "agl_m": 128.0509805297479,
+      "alpha_rad": 0.1255813797937909,
+      "altitude_m": 128.0509805297479,
+      "camera": 3,
+      "carrier_relative_m": [
+        207.222267807461,
+        127.84609147359987,
+        1602.438056776315
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 9.866666666666427,
+      "speed_mps": 86.22200020342353,
+      "throttle": 0.2837848624160306,
+      "wall_s": 17.234109708
+    },
+    {
+      "agl_m": 126.18777893576771,
+      "alpha_rad": 0.12455021714747161,
+      "altitude_m": 126.18777893576771,
+      "camera": 3,
+      "carrier_relative_m": [
+        200.80533679145418,
+        125.99483313551441,
+        1555.0695362084534
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 10.51666666666639,
+      "speed_mps": 86.47261884602716,
+      "throttle": 0.2837848624160306,
+      "wall_s": 18.23515125
+    },
+    {
+      "agl_m": 124.26852551661432,
+      "alpha_rad": 0.12349462173930151,
+      "altitude_m": 124.26852551661432,
+      "camera": 3,
+      "carrier_relative_m": [
+        194.05475233250368,
+        124.08779065466007,
+        1505.095100480674
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 11.199999999999685,
+      "speed_mps": 86.73346759287462,
+      "throttle": 0.2837848624160306,
+      "wall_s": 19.250988416
+    },
+    {
+      "agl_m": 122.4337322646752,
+      "alpha_rad": 0.12249039777929059,
+      "altitude_m": 122.4337322646752,
+      "camera": 3,
+      "carrier_relative_m": [
+        187.4651499455418,
+        122.26456548478157,
+        1456.1666514413528
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 11.866666666666314,
+      "speed_mps": 86.98541928916092,
+      "throttle": 0.2837848624160306,
+      "wall_s": 20.251313583
+    },
+    {
+      "agl_m": 120.59038501698524,
+      "alpha_rad": 0.12148509731624955,
+      "altitude_m": 120.59038501698524,
+      "camera": 3,
+      "carrier_relative_m": [
+        180.70793280998632,
+        120.43271729969372,
+        1405.839498236717
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 12.549999999999608,
+      "speed_mps": 87.24112152468118,
+      "throttle": 0.2837848624160306,
+      "wall_s": 21.284609416
+    },
+    {
+      "agl_m": 118.78365649934858,
+      "alpha_rad": 0.12050214961497842,
+      "altitude_m": 118.78365649934858,
+      "camera": 3,
+      "carrier_relative_m": [
+        173.94869003385247,
+        118.63712062380876,
+        1355.3364007255718
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 13.233333333332903,
+      "speed_mps": 87.49428783419219,
+      "throttle": 0.2837848624160306,
+      "wall_s": 22.301083666
+    },
+    {
+      "agl_m": 117.01249532774091,
+      "alpha_rad": 0.11953980929309768,
+      "altitude_m": 117.01249532774091,
+      "camera": 3,
+      "carrier_relative_m": [
+        167.18830477930067,
+        116.87671951316838,
+        1304.6590554330844
+      ],
+      "crashed": false,
+      "entities": 12152,
+      "landed": false,
+      "meshes": 2013,
+      "paused": false,
+      "simulation_s": 13.916666666666197,
+      "speed_mps": 87.74495630408397,
+      "throttle": 0.2837848624160306,
+      "wall_s": 23.334704291
+    },
+    {
+      "agl_m": 115.40186144877225,
+      "alpha_rad": 0.11866493967354673,
+      "altitude_m": 115.40186144877225,
+      "camera": 3,
+      "carrier_relative_m": [
+        160.92232447163258,
+        115.27572246997792,
+        1257.5356727735646
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 14.549999999999494,
+      "speed_mps": 87.9750813872288,
+      "throttle": 0.2837848624160306,
+      "wall_s": 24.334817375
+    },
+    {
+      "agl_m": 113.69663247838616,
+      "alpha_rad": 0.11773811079034305,
+      "altitude_m": 113.69663247838616,
+      "camera": 3,
+      "carrier_relative_m": [
+        154.16220040923182,
+        113.58052451747173,
+        1206.52726467293
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 15.233333333332789,
+      "speed_mps": 88.22102509121484,
+      "throttle": 0.2837848624160306,
+      "wall_s": 25.350623625
+    },
+    {
+      "agl_m": 112.02443299815059,
+      "alpha_rad": 0.11682783841838251,
+      "altitude_m": 112.02443299815059,
+      "camera": 3,
+      "carrier_relative_m": [
+        147.40347741806377,
+        111.91797120060039,
+        1155.3494264030076
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 15.916666666666083,
+      "speed_mps": 88.46455391651708,
+      "throttle": 0.2837848624160306,
+      "wall_s": 26.384739375
+    },
+    {
+      "agl_m": 110.424162725918,
+      "alpha_rad": 0.11595466041312813,
+      "altitude_m": 110.424162725918,
+      "camera": 3,
+      "carrier_relative_m": [
+        140.81177105945076,
+        110.32673674300042,
+        1105.258082529703
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 16.583333333332714,
+      "speed_mps": 88.69983534481257,
+      "throttle": 0.2837848624160306,
+      "wall_s": 27.384892791
+    },
+    {
+      "agl_m": 108.81516380049288,
+      "alpha_rad": 0.11507393098872706,
+      "altitude_m": 108.81516380049288,
+      "camera": 3,
+      "carrier_relative_m": [
+        134.05833111951577,
+        108.72661083325488,
+        1053.7502260380907
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 17.26666666666601,
+      "speed_mps": 88.93865036825176,
+      "throttle": 0.2837848624160306,
+      "wall_s": 28.40096975
+    },
+    {
+      "agl_m": 107.27535161376,
+      "alpha_rad": 0.1142277424151878,
+      "altitude_m": 107.27535161376,
+      "camera": 3,
+      "carrier_relative_m": [
+        127.47339749728582,
+        107.19507196584196,
+        1003.3399331730969
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 17.933333333332637,
+      "speed_mps": 89.16936319014756,
+      "throttle": 0.2837848624160306,
+      "wall_s": 29.401524791
+    },
+    {
+      "agl_m": 105.72719101700932,
+      "alpha_rad": 0.1133729614770137,
+      "altitude_m": 105.72719101700932,
+      "camera": 3,
+      "carrier_relative_m": [
+        120.72855022395031,
+        105.65499449967561,
+        951.508227168855
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 18.61666666666593,
+      "speed_mps": 89.40352122102018,
+      "throttle": 0.2837848624160306,
+      "wall_s": 30.434693125
+    },
+    {
+      "agl_m": 104.20904101245105,
+      "alpha_rad": 0.11253013050233544,
+      "altitude_m": 104.20904101245105,
+      "camera": 3,
+      "carrier_relative_m": [
+        113.98930398593845,
+        104.144521533097,
+        899.5149241113244
+      ],
+      "crashed": false,
+      "entities": 12167,
+      "landed": false,
+      "meshes": 2028,
+      "paused": false,
+      "simulation_s": 19.299999999999226,
+      "speed_mps": 89.63533773482153,
+      "throttle": 0.2837848624160306,
+      "wall_s": 31.450660583
+    },
+    {
+      "agl_m": 102.75638714060187,
+      "alpha_rad": 0.11171868830266785,
+      "altitude_m": 102.75638714060187,
+      "camera": 3,
+      "carrier_relative_m": [
+        107.42062709471433,
+        102.69896212065206,
+        848.6355028712172
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 19.966666666665855,
+      "speed_mps": 89.85925125614268,
+      "throttle": 0.2837848624160306,
+      "wall_s": 32.451109166
+    },
+    {
+      "agl_m": 101.29616557154804,
+      "alpha_rad": 0.11089741076548999,
+      "altitude_m": 101.29616557154804,
+      "camera": 3,
+      "carrier_relative_m": [
+        100.69490229905033,
+        101.24560312272662,
+        796.3275095343471
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 20.64999999999915,
+      "speed_mps": 90.08646365025068,
+      "throttle": 0.2837848624160306,
+      "wall_s": 33.484868875
+    },
+    {
+      "agl_m": 99.86464203242213,
+      "alpha_rad": 0.11008609652021421,
+      "altitude_m": 99.86464203242213,
+      "camera": 3,
+      "carrier_relative_m": [
+        93.97725879742804,
+        99.82052381087905,
+        743.8625279892321
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 21.333333333332444,
+      "speed_mps": 90.31135353485256,
+      "throttle": 0.2837848624160306,
+      "wall_s": 34.501423375
+    },
+    {
+      "agl_m": 98.46143545024097,
+      "alpha_rad": 0.10928416233842522,
+      "altitude_m": 98.46143545024097,
+      "camera": 3,
+      "carrier_relative_m": [
+        87.26852439077832,
+        98.42333908084667,
+        691.2420989889614
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 22.01666666666574,
+      "speed_mps": 90.53392453500828,
+      "throttle": 0.2837848624160306,
+      "wall_s": 35.534474416
+    },
+    {
+      "agl_m": 97.11940260231495,
+      "alpha_rad": 0.10851030156479605,
+      "altitude_m": 97.11940260231495,
+      "camera": 3,
+      "carrier_relative_m": [
+        80.732792301831,
+        97.08677034859726,
+        639.7567589715057
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 22.683333333332367,
+      "speed_mps": 90.74883466058819,
+      "throttle": 0.2837848624160306,
+      "wall_s": 36.534984125
+    },
+    {
+      "agl_m": 95.77111552935094,
+      "alpha_rad": 0.10772531073842583,
+      "altitude_m": 95.77111552935094,
+      "camera": 3,
+      "carrier_relative_m": [
+        74.04408215842209,
+        95.74365899833946,
+        586.8337466134359
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 23.36666666666566,
+      "speed_mps": 90.96683097394593,
+      "throttle": 0.2837848624160306,
+      "wall_s": 37.551134041
+    },
+    {
+      "agl_m": 94.4501522500068,
+      "alpha_rad": 0.10694814595550647,
+      "altitude_m": 94.4501522500068,
+      "camera": 3,
+      "carrier_relative_m": [
+        67.36672980496144,
+        94.42743732494351,
+        533.7598602984298
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 24.049999999998956,
+      "speed_mps": 91.1825132516953,
+      "throttle": 0.2837848624160306,
+      "wall_s": 38.584557375
+    },
+    {
+      "agl_m": 93.18745918106288,
+      "alpha_rad": 0.10619702498246102,
+      "altitude_m": 93.18745918106288,
+      "camera": 3,
+      "carrier_relative_m": [
+        60.86396774748573,
+        93.16894816200376,
+        481.8365278095055
+      ],
+      "crashed": false,
+      "entities": 12158,
+      "landed": false,
+      "meshes": 2019,
+      "paused": false,
+      "simulation_s": 24.716666666665585,
+      "speed_mps": 91.39070497266843,
+      "throttle": 0.2837848624160306,
+      "wall_s": 39.584649375
+    }
+  ],
+  "upload_bytes": 792641056,
+  "upload_calls": 1695,
+  "note": "Single approved live run, not a paired camera comparison; CPU spans overlap. Full local logs are ignored by Git."
+}

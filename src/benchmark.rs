@@ -181,6 +181,35 @@ pub fn exercise(
     };
     let scripted =
         session.soak || matches!(script.as_str(), "ascent" | "descent" | "landing" | "warp");
+    if script == "carrier-live" {
+        // Initialize once, then leave position, attitude and velocity entirely
+        // to the ordinary simulation. Never recycle a crashed flight.
+        if session.phase.is_none() {
+            *f = crate::carrier::scenario(false);
+            f.paused = false;
+            v.scenario = 11;
+            v.index = 3;
+            v.yaw = 0.;
+            v.pitch = -0.1;
+            e.wind_enabled = false;
+            session.phase = Some(0);
+        }
+        if wall >= session.next_sample {
+            session.next_sample = wall + 1.;
+            let relative = crate::carrier::relative(f.position, f.elapsed);
+            session.events.push(serde_json::json!({
+                "wall_s": wall, "simulation_s": f.elapsed,
+                "altitude_m": f.altitude(), "agl_m": f.agl(),
+                "carrier_relative_m": relative.to_array(),
+                "speed_mps": f.velocity.length(), "alpha_rad": f.alpha,
+                "throttle": f.throttle, "crashed": f.crashed,
+                "landed": f.landed, "paused": f.paused,
+                "camera": v.index, "meshes": meshes.len(),
+                "entities": entities.iter().count()
+            }));
+        }
+        return;
+    }
     if script=="carrier-approach" {
         // Diagnostic-only repeated final approach; never alters normal flight.
         let z=2300.-(wall*70.)%2000.;
