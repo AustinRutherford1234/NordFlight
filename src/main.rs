@@ -1962,14 +1962,22 @@ fn input(
     mut v: ResMut<ViewState>,
     warp: Res<warp::Warp>,
     preview: Option<Res<VisualCheck>>,
+    mut escape_gesture:Local<ejection::Gesture>,
 ) {
     if hangar.as_ref().is_some_and(|h|h.open||h.block_input) || warp.editing
         || bvr_menu.as_ref().is_some_and(|m| m.open)
         || preview.is_some_and(|p| p.0.is_some())
     {
+        escape_gesture.reset();
         return;
     }
-    if keys.just_pressed(KeyCode::KeyE) && (keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) && (keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight)) {if ejection::start(&mut f){v.index=0;v.map=false;}}
+    let option=keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight);
+    let shift=keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight);
+    if keys.just_pressed(KeyCode::KeyC) {
+        if option && !shift && f.aircraft==aircraft::Aircraft::Hornet && !f.ejection.active && !f.crashed {
+            if escape_gesture.press(time.elapsed_secs_f64(),v.generation) && ejection::start(&mut f){v.index=0;v.map=false;}
+        }else{escape_gesture.reset();}
+    }
     let dt = time.delta_secs_f64().min(0.1);
     let cursor_delta: Vec2 = cursor_motion.read().filter_map(|event| event.delta).sum();
     let orbit_delta = if motion.delta.length_squared() > 0.0 {
@@ -2024,7 +2032,7 @@ fn input(
     if keys.just_pressed(KeyCode::KeyP) || keys.just_pressed(KeyCode::Escape) {
         f.paused = !f.paused;
     }
-    if keys.just_pressed(KeyCode::KeyC) && !(f.carrier.active && (keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight))) {
+    if keys.just_pressed(KeyCode::KeyC) && !((f.carrier.active||f.aircraft==aircraft::Aircraft::Hornet) && option) {
         v.restore_camera();
         v.index = (v.index + 1) % 4;
         if v.index == 3 {
@@ -2066,7 +2074,7 @@ fn input(
     }
     let carrier_alt=keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight);
     if f.carrier.active && keys.just_pressed(KeyCode::Enter) {carrier::launch(&mut f);}
-    if f.carrier.active && carrier_alt && keys.just_pressed(KeyCode::KeyC) {carrier::attach(&mut f);}
+    if f.carrier.active && carrier_alt && shift && keys.just_pressed(KeyCode::KeyC) {carrier::attach(&mut f);}
     if f.carrier.active && carrier_alt && keys.just_pressed(KeyCode::KeyG) {f.carrier.guidance=!f.carrier.guidance;}
     if keys.just_pressed(KeyCode::KeyG) && !(f.carrier.active&&carrier_alt) {f.gear=!f.gear;}
     let hornet = f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet;
@@ -2990,7 +2998,7 @@ fn update_hud(
             }
             9 => {
                 if v.help && f.carrier.active {
-                    "CARRIER / F/A-18F\nH hook · G gear · Z/X throttle · Shift full\nEnter catapult launch when attached at full power\nAlt+C return to catapult once stopped on deck\nAlt+G approach guidance · Shift+H close help".into()
+                    "CARRIER / F/A-18F\nH hook · G gear · Z/X throttle · Shift full\nEnter catapult launch when attached at full power\nAlt+Shift+C return to catapult once stopped on deck\nOption+C three times to eject\nAlt+G approach guidance · Shift+H close help".into()
                 } else if v.help && f.vehicle == Vehicle::Spacecraft {
                     "SPACEFLIGHT  W/S pitch · Q/E roll · A/D yaw\nPOWER  Shift full · Ctrl cut · Z/X adjust\nSTAGING  Space (throttle off) · G landing legs\nGUIDANCE  F7 SAS mode · T assist · M map\nREENTRY  K arm parachutes · N infinite fuel\nWARP  , / . rate · / normal time\nVIEW  C camera · Home recenter · R restart\nPAUSE  P · H help · 9 audio · 0 mute".into()
                 } else if v.help && v.scenario >= 5 {
@@ -2998,7 +3006,7 @@ fn update_hud(
                 } else if v.help && v.scenario == 4 {
                     "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
                 } else if v.help {
-                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Alt+Shift+E eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
                 } else {
                     String::new()
                 }
@@ -3035,7 +3043,7 @@ fn update_hud(
         let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\nF7 HUD NAV/A/A/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles\nF6 external loadout: 3 tanks · Alt+J drop tanks · Alt+Shift+J all stores");}text}else{updated};
         let updated = if tag.0 == 9 && v.help && v.scenario >= 4 && f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet {
             let mut text = updated.replace("HELP   H", "HELP   Shift+H");
-            text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");
+            text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold · Option+C x3 eject\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");
             text
         } else { updated };
         if t.0 != updated {
@@ -3249,7 +3257,30 @@ mod camera_input_tests {
         assert!(f.throttle < 1.);
     }
     #[test]
-    fn hornet_escape_shortcut_and_reset_work(){let mut app=scene(false);app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::Hornet;{let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.press(KeyCode::AltLeft);k.press(KeyCode::ShiftLeft);k.press(KeyCode::KeyE);}app.update();assert!(app.world().resource::<Flight>().ejection.active);{let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.reset_all();k.press(KeyCode::KeyR);}app.update();assert!(!app.world().resource::<Flight>().ejection.active);}
+    fn hornet_escape_shortcut_and_reset_work(){
+        let mut app=scene(false);app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::Hornet;
+        let initial=app.world().resource::<ViewState>().index;
+        for i in 0..3 {
+            {let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.reset_all();k.press(KeyCode::AltLeft);k.press(KeyCode::KeyC);}
+            app.update();assert_eq!(app.world().resource::<Flight>().ejection.active,i==2);
+            if i<2 {assert_eq!(app.world().resource::<ViewState>().index,initial);}
+        }
+        {let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.reset_all();k.press(KeyCode::KeyR);}
+        app.update();assert!(!app.world().resource::<Flight>().ejection.active);
+    }
+    #[test]
+    fn held_option_c_is_one_press_and_does_not_reposition_carrier(){
+        let mut app=scene(false);*app.world_mut().resource_mut::<Flight>()=carrier::scenario(true);
+        app.world_mut().resource_mut::<Flight>().carrier.attached=false;
+        let p=app.world().resource::<Flight>().position;
+        {let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.press(KeyCode::AltRight);k.press(KeyCode::KeyC);}
+        app.update();
+        for _ in 0..4 {app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();app.update();}
+        let f=app.world().resource::<Flight>();assert!(!f.ejection.active&&!f.carrier.attached);assert_eq!(f.position,p);
+        {let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.reset_all();k.press(KeyCode::AltRight);k.press(KeyCode::ShiftRight);k.press(KeyCode::KeyC);}
+        app.update();assert!(app.world().resource::<Flight>().carrier.attached);assert!(!app.world().resource::<Flight>().ejection.active);
+    }
+
     #[test]
     fn hornet_hook_and_help_keys_do_not_change_other_aircraft_bindings() {
         let mut app = scene(false);

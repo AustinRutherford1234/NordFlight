@@ -4,6 +4,17 @@ use bevy::{
     math::{DQuat, DVec3},
     prelude::*,
 };
+/// Three distinct Option+C presses in one short real-time window.
+#[derive(Default)]
+pub struct Gesture { count:u8, first:f64, generation:u64 }
+impl Gesture {
+ pub fn reset(&mut self){self.count=0;}
+ pub fn press(&mut self,now:f64,generation:u64)->bool {
+  if self.generation!=generation||self.count==0||now-self.first>1.5||now<self.first {self.count=0;self.first=now;self.generation=generation;}
+  self.count+=1;
+  if self.count==3 {self.reset();true}else{false}
+ }
+}
 #[derive(Clone, Debug, Default)]
 pub struct Body {
     pub position: DVec3,
@@ -488,4 +499,9 @@ mod escape_regressions {
         }
         assert!((results[0] - results[2]).abs() < 1.5, "{results:?}");
     }
+}
+
+#[cfg(test)] mod gesture_tests {use super::*;
+ #[test]fn requires_three_presses_inside_one_window(){let mut g=Gesture::default();assert!(!g.press(0.,1));assert!(!g.press(0.6,1));assert!(g.press(1.4,1));assert!(!g.press(1.5,1));}
+ #[test]fn timeout_and_scenario_reset_discard_partial_gestures(){let mut g=Gesture::default();assert!(!g.press(0.,1));assert!(!g.press(2.,1));assert!(!g.press(2.2,1));assert!(!g.press(2.3,2));assert!(!g.press(2.4,2));assert!(g.press(2.5,2));}
 }

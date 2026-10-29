@@ -8,7 +8,7 @@ The previous nose-wheel-well roof intersected the cockpit floor and hid the seat
 
 ## Escape controls and stages
 
-**Alt+Shift+E** initiates the Hornet escape sequence before aircraft destruction. **R** resets the scenario. Both crew escape; no selectable command/single-seat selector is modeled.
+**Option+C three times within 1.5 seconds** initiates the Hornet escape sequence before aircraft destruction. Holding C does not count as repeated presses. Ordinary C still cycles cameras; Option+Shift+C repositions a stopped aircraft on the carrier. **R** resets the scenario. Both crew escape; no selectable command/single-seat selector is modeled.
 
 - The moving canopy and its frame separate using a derivative extracted from the existing GLB.
 - The rear seat launches at 0.30 s; the front launches at 0.55 s. Each receives a launch impulse and brief under-seat rocket boost, with visible exhaust and launch audio.
@@ -47,3 +47,7 @@ Native inspection covered forward/seat/floor/rear/exterior cockpit views and esc
 The optimized development app was rebuilt and its ad-hoc signature verified. Final executable SHA-256: `05c70566275d86a3ba44c950ff8445a81a3fab88bd732131819ce1492c73f478`. Workspace and bundled asset hashes match: rig `863988b4444347e8e14c0043e87d2296ac87c7b59d9e0f38f88fe8100d1ad982`; escape canopy `d833e32863b3b1bd6221c26ab5fecf777db1b9088bf196683f4db8946ded7003`.
 
 Manual user flight review remains pending. The native captures are deterministic render checks rather than a claim of validated real-world escape performance.
+
+### Revised escape input
+
+Ejection now requires three distinct Option+C presses inside a 1.5-second real-time window. Either Option key works; holding C does not repeat the gesture. The former Alt+Shift+E shortcut is removed. Plain C retains camera cycling. To avoid repositioning the aircraft on the first ejection press, carrier repositioning is now Option+Shift+C. The updated full regression run passed 629 tests (22.83 s), including chord counting, holding, timeout, scenario reset and carrier-shortcut separation.

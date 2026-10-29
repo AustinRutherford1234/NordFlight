@@ -12,7 +12,7 @@ The carrier runs a constant straight course at 25 knots in a sea corridor around
 - **Shift**: full throttle; **Z/X** adjust power; **Ctrl** cuts power.
 - **W/S**: pitch. S commands nose-up and W nose-down. Apply a gentle nose-up input after catapult release, then relax it. Launch rotation remains pilot-commanded with the Hornet FBW.
 - **Enter**: fire the catapult when attached, engine running, fuel available, gear down and throttle above 85%.
-- **Alt+C**: while stopped on the deck, move to the catapult and attach. This is a convenience reset for this first version, not a taxi/tow animation.
+- **Alt+Shift+C**: while stopped on the deck, move to the catapult and attach. This is a convenience reset for this first version, not a taxi/tow animation.
 - **R**: restart the selected carrier start.
 - **Shift+H**: help.
 

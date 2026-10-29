@@ -86,7 +86,7 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
  for mut t in &mut text {
   if !f.carrier.active {t.0.clear();continue;}
   let p=relative(f.position,f.elapsed);let speed=(f.velocity-velocity(f.elapsed)).length();
-  t.0=format!("CARRIER / 25 KT / H HOOK / ENTER LAUNCH / ALT+C CATAPULT / ALT+G GUIDANCE\n{}",f.status);
+  t.0=format!("CARRIER / 25 KT / H HOOK / ENTER LAUNCH / ALT+SHIFT+C CATAPULT / ALT+G GUIDANCE\n{}",f.status);
   if f.carrier.guidance&&!f.landed {let glide=DECK+(p.z-75.)*0.061+3.;t.0+=&format!("\nLINEUP {:+.1} m / GLIDE {:+.1} m / DECK SPEED {:.0} kt",p.x-lane(p.z),p.y-glide,speed*1.94384);}
  }
  if f.carrier.active {

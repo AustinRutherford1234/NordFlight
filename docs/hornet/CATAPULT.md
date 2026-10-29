@@ -36,4 +36,4 @@ Reproduce with `cargo test --locked carrier:: -- --nocapture` and `cargo test --
 
 The optimized development app was rebuilt with `./build-mac.sh dev` and its ad-hoc signature verified with `codesign --verify --deep --strict`. Binary SHA-256: `97fabcdaae09845e2a4ead092e44e31398a8fba01d15f2fab7c8fa088dbbea2f`.
 
-User flight review remains pending. Controls remain Shift for full power, Enter for launch and Alt+C for stopped-aircraft repositioning.
+User flight review remains pending. Controls remain Shift for full power, Enter for launch and Alt+Shift+C for stopped-aircraft repositioning.
