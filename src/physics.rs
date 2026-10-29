@@ -23,6 +23,7 @@ pub enum Vehicle {
 
 #[derive(Resource, Clone)]
 pub struct Flight {
+    pub water: crate::water::State,
     pub carrier: crate::carrier::State,
     pub hornet: crate::aircraft::hornet::Dynamics,
     pub aircraft: crate::aircraft::Aircraft,
@@ -101,6 +102,7 @@ impl Default for Flight {
 impl Flight {
     pub fn approach() -> Self {
         Self {
+            water: Default::default(),
             carrier: Default::default(),
             hornet: Default::default(),
             aircraft: crate::aircraft::Aircraft::Gripen,
@@ -821,6 +823,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     if f.paused {
         return;
     }
+    if crate::water::step(f,dt) {return;}
     if f.crashed {
         if f.vehicle == Vehicle::Spacecraft {
             crate::space::wreck(f, dt);
@@ -1200,6 +1203,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         return;
     }
 
+    if crate::water::step(f,dt) {return;}
     let ground = crate::carrier::ground(f,f.position);
     let clearance = crate::collision::wheel_clearance(f);
     let contact = f.altitude() < ground + clearance

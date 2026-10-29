@@ -723,7 +723,7 @@ pub fn update(
         if apu {
             own(Kind::Switch);
         }
-        if crashed {
+        if crashed && !f.water.active {
             own(Kind::Blast);
         } else if hit {
             own(Kind::Hit);

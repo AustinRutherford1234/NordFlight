@@ -18,6 +18,8 @@ pub enum Kind {
     Flame,
     Flash,
     Spark,
+    Spray,
+    Foam,
 }
 pub struct Particle {
     pub position: DVec3,
@@ -34,6 +36,7 @@ pub struct Particle {
 pub struct State {
     pub particles: Vec<Particle>,
     next_id: u64,
+    water_seen: bool,
     seen: [[bool; crate::aircraft::SURFACES]; 12],
     seen_wings: [[bool; 2]; 12],
     dead: [bool; 12],
@@ -148,6 +151,24 @@ impl State {
     }
     pub fn advance(&mut self, c: &Combat, f: &Flight, dt: f64) {
         self.clock += dt;
+        if f.water.active && !self.water_seen {
+            let up=f.water.origin.normalize();
+            let right=up.cross(DVec3::Z).normalize_or_zero();let forward=right.cross(up);
+            let energy=(f.water.sink*1.5+f.water.speed*0.12).clamp(3.,28.);
+            for i in 0..90 {
+                let angle=i as f64*2.39996;
+                let radial=right*angle.cos()+forward*angle.sin();
+                let vertical=energy*(0.45+(i%9) as f64/12.);
+                self.emit(f.water.origin+radial*(i%7) as f64*0.35+up*0.25,
+                    radial*(2.+(i%8) as f64*0.8)+up*vertical,
+                    Kind::Spray,Vec3::new(0.65,1.8,0.65)*(0.7+(i%4) as f32*0.18),5.);
+            }
+            for i in 0..28 {
+                let a=i as f64*2.39996;let radial=right*a.cos()+forward*a.sin();
+                self.emit(f.water.origin+radial*2.+up*0.08,radial*3.,Kind::Foam,Vec3::new(2.,2.,0.12),7.);
+            }
+        }
+        self.water_seen=f.water.active;
         self.emission += dt;
         let emit = self.emission >= 0.10;
         if emit {
@@ -157,9 +178,13 @@ impl State {
             part.age += dt;
             let up = part.position.normalize();
             match part.kind {
-                Kind::Fragment | Kind::Spark => {
+                Kind::Fragment | Kind::Spark | Kind::Spray => {
                     part.velocity -= up * 9.81 * dt;
                     part.velocity *= (-dt * 0.04).exp();
+                }
+                Kind::Foam => {
+                    part.velocity *= (-dt*0.7).exp();
+                    part.position=up*(RADIUS+0.08);
                 }
                 Kind::Smoke => {
                     part.velocity *= (-dt * 0.9).exp();
@@ -168,6 +193,7 @@ impl State {
                 _ => {}
             }
             part.position += part.velocity * dt;
+            if matches!(part.kind, Kind::Spray) && part.age>0.1 && part.position.length()<RADIUS {part.age=part.life;}
             if matches!(part.kind, Kind::Fragment) {
                 let ground = terrain_height(part.position.x, part.position.z).max(0.0) + 0.2;
                 if part.position.length() - RADIUS < ground {
@@ -184,8 +210,8 @@ impl State {
             f.velocity,
             f.orientation,
             &f.damage,
-            f.crashed,
-            emit,
+            f.crashed && !f.water.active,
+            emit && !f.water.active,
         );
         for (i, t) in c.targets.iter().take(11).enumerate() {
             self.aircraft(
@@ -201,7 +227,7 @@ impl State {
     }
 }
 pub fn advance(c: &mut Combat, f: &Flight, dt: f64) {
-    if f.paused || dt <= 0.0 || (!c.active && !f.damage.wing_broken.iter().any(|&broken| broken) && c.fx.particles.is_empty()) {
+    if f.paused || dt <= 0.0 || (!c.active && !f.water.active && !f.crashed && !f.damage.wing_broken.iter().any(|&broken| broken) && c.fx.particles.is_empty()) {
         return;
     }
     let mut state = std::mem::take(&mut c.fx);
@@ -237,6 +263,17 @@ pub fn controls(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn water_impact_emits_spray_and_foam_without_a_fireball() {
+        let mut f=Flight::approach();f.water.active=true;f.water.origin=f.up()*RADIUS;f.water.speed=120.;f.water.sink=12.;f.crashed=true;f.damage.fire=1.;
+        let mut state=State::default();let c=Combat::default();
+        state.advance(&c,&f,0.01);
+        assert!(state.particles.iter().any(|p|matches!(p.kind,Kind::Spray)));
+        assert!(state.particles.iter().any(|p|matches!(p.kind,Kind::Foam)));
+        assert!(!state.particles.iter().any(|p|matches!(p.kind,Kind::Flash|Kind::Flame|Kind::Smoke)));
+        for _ in 0..900 {state.advance(&c,&f,0.01);}
+        assert!(state.particles.is_empty());
+    }
     #[test]
     fn broken_wing_emits_once_in_noncombat_flight() {
         let mut f = Flight::approach();
@@ -950,19 +987,22 @@ pub fn render(
         t.scale = p.size
             * match p.kind {
                 Kind::Smoke => 1.0 + p.age as f32 * 1.5,
+                Kind::Spray => 1.0+p.age as f32*0.7,
+                Kind::Foam => 1.0+p.age as f32*1.2,
                 Kind::Flash => 1.0 + p.age as f32 * 8.0,
                 Kind::Flame => 0.8 + 0.25 * (p.age as f32 * 60. + tag.0 as f32).sin(),
                 _ => 1.0,
             };
         t.rotation =
             Quat::from_rotation_x(p.age as f32 * 2.0) * Quat::from_rotation_z(tag.0 as f32);
-        if !matches!(p.kind, Kind::Fragment) {
+        if !matches!(p.kind, Kind::Fragment | Kind::Foam) {
             if let Some(camera) = cameras.iter().next() {
                 t.rotation = camera.rotation();
             }
         }
         let fade = tint;
-        let unlit = matches!(p.kind, Kind::Smoke);
+        if matches!(p.kind,Kind::Foam) {t.rotation=Quat::from_rotation_arc(Vec3::Z,world::local(p.position+p.position.normalize(),&f)-world::local(p.position,&f));}
+        let unlit = matches!(p.kind, Kind::Smoke | Kind::Spray | Kind::Foam);
         let base_color = match p.kind {
             Kind::Fragment => Color::srgba(0.85, 0.85, 0.85, fade),
             Kind::Smoke => {
@@ -972,6 +1012,8 @@ pub fn render(
             Kind::Flame => Color::srgba(1.0, 0.35, 0.05, fade),
             Kind::Flash => Color::srgba(1.0, 0.8, 0.4, fade),
             Kind::Spark => Color::srgba(1.0, 0.7, 0.18, fade),
+            Kind::Spray => Color::srgba(0.78,0.91,1.,fade*0.35),
+            Kind::Foam => Color::srgba(0.9,0.97,1.,fade*0.65),
         };
         let emission = match p.kind {
             Kind::Flame => 650.0,

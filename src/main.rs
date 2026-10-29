@@ -16,6 +16,7 @@ mod cockpit;
 mod cockpit_controls;
 mod cockpit_labels;
 mod collision;
+mod water;
 mod carrier;
 mod combat;
 mod control_surfaces;
@@ -1123,6 +1124,16 @@ fn main() {
                 }
                 initial_flight.paused=true;
                 println!("Hornet stores capture {mode}: mass={} external_fuel={} tanks={:?} missiles={}",initial_flight.mass(),aircraft::hornet::stores::fuel(&initial_flight),initial_flight.hornet.tanks.fuel,combat.missiles.len());
+            }
+            if mode.starts_with("water-") {
+                initial_flight=carrier::scenario(false);initial_flight.carrier.active=false;
+                initial_flight.position=carrier::world(bevy::math::DVec3::new(1200.,0.5,0.),0.);
+                initial_flight.orientation=carrier::rotation(0.);initial_flight.gear=false;initial_flight.gear_extension=0.;
+                initial_flight.velocity=initial_flight.orientation*bevy::math::DVec3::new(0.,if mode.contains("fast"){-14.}else{-1.},if mode.contains("fast"){-150.}else{-40.});
+                let duration=if mode.contains("sunk"){35.}else if mode.contains("settled"){4.}else{0.45};
+                for _ in 0..(duration*240.) as usize {physics::simulate(&mut initial_flight,&initial_environment,1./240.);combat::effects::advance(&mut combat,&initial_flight,1./240.);}
+                initial_flight.paused=true;initial_view.simple=true;initial_view.index=0;
+                println!("Water capture {mode}: altitude={} crashed={} flooding={} particles={}",initial_flight.altitude(),initial_flight.crashed,initial_flight.water.flooding,combat.fx.particles.len());
             }
             if a==aircraft::Aircraft::Hornet&&mode.starts_with("hud-") {
                 if mode.contains("landing") {initial_flight=carrier::scenario(false);}
@@ -2399,6 +2410,7 @@ fn update_camera(
         p = center + look * (p - center) * v.zoom;
     }
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
+        if mode.starts_with("water-") {target=local(if mode.contains("settled")||mode.contains("sunk"){f.position.normalize()*physics::RADIUS}else{f.water.origin},&f);p=target+rot*Vec3::new(-24.,14.,-26.);up_view=f.up().as_vec3();}
         if mode.starts_with("stores-") {
             target=pos+rot*Vec3::new(0.,-0.4,0.7);p=target+rot*Vec3::new(12.,-7.,-16.);up_view=rot*Vec3::Y;
         }
