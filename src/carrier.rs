@@ -55,13 +55,25 @@ pub fn hook_point(f:&Flight)->DVec3 {
  let a=f.hornet.hook_angle;
  HOOK_PIVOT+DVec3::new(0.,-3.5*a.sin(),3.5*a.cos())
 }
+// The command gates engagement as well as the animated angle: on retraction
+// the tip remains near the deck for several frames but must not recatch a wire.
+fn hook_can_engage(f:&Flight)->bool {f.systems.hook_down&&f.hornet.hook_angle>0.6}
+fn release_raised_hook(f:&mut Flight) {
+ if f.carrier.arrested&&!hook_can_engage(f) {
+  f.carrier.arrested=false;
+  f.carrier.arrest_speed=0.;f.carrier.arrest_distance=0.;
+  // Keep dissipated energy as event history; the next catch resets it.
+  f.status="HOOK UP / ARRESTING WIRE RELEASED".into();
+ }
+}
 pub const LAUNCH_POINT:DVec3=DVec3::new(0.,-1.4,-3.61);
 pub fn after_step(f:&mut Flight,previous:DVec3,dt:f64) {
  if !f.carrier.active||f.crashed{return;}
+ release_raised_hook(f);
  let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);
  let prev_hook=relative(previous+f.orientation*hook_point(f),(f.elapsed-dt).max(0.));
  let speed=(f.velocity-velocity(f.elapsed)).length();
- if !f.carrier.arrested&&!f.carrier.attached&&f.carrier.launch.is_none()&&f.hornet.hook_angle>0.6&&f.gear_extension>0.98&&speed>15. {
+ if !f.carrier.arrested&&!f.carrier.attached&&f.carrier.launch.is_none()&&hook_can_engage(f)&&f.gear_extension>0.98&&speed>15. {
   for (i,z) in [112.,100.,88.,76.].iter().enumerate() {
    if prev_hook.z>*z&&hook.z<=*z {
     let fraction=((prev_hook.z-*z)/(prev_hook.z-hook.z)).clamp(0.,1.);let cross=prev_hook.lerp(hook,fraction);
@@ -94,7 +106,7 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
  }
  if f.carrier.active {
   for z in [112.,100.,88.,76.] {let x=lane(z);let a=world(DVec3::new(x-15.,DECK+0.12,z),f.elapsed);let b=world(DVec3::new(x+15.,DECK+0.12,z),f.elapsed);let color=Color::srgb(0.15,0.12,0.08);
-   if f.carrier.arrested && (z-[112.,100.,88.,76.][f.carrier.wire]).abs()<0.1 {
+   if f.carrier.arrested && hook_can_engage(&f) && (z-[112.,100.,88.,76.][f.carrier.wire]).abs()<0.1 {
     let hook=f.position+f.orientation*hook_point(&f);
     lines.line(crate::world::local(a,&f),crate::world::local(hook,&f),color);lines.line(crate::world::local(hook,&f),crate::world::local(b,&f),color);
    }else{lines.line(crate::world::local(a,&f),crate::world::local(b,&f),color);}}
@@ -133,6 +145,7 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
 pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
  use crate::aircraft::hornet::{Loads,mass};
  let mut loads=Loads::default();if !f.carrier.active{return loads;}
+ release_raised_hook(f);
  let (cg,_)=mass::properties(f);let basis=rotation(f.elapsed);
  let v=basis.conjugate()*(f.velocity-velocity(f.elapsed));
  let orientation=f.orientation;let to_body=|force:DVec3|orientation.conjugate()*(basis*force);
@@ -172,6 +185,32 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
   assert!(caught&&!f.crashed,"{} pitch={} rates={:?} compression={:?} contact={:?} attachment={:?}",f.status,f.pitch(),f.rates,f.gear_compression,f.hornet.diagnostic.contact,f.hornet.diagnostic.attachment);assert!((f.velocity-velocity(f.elapsed)).length()<3.);assert!(f.hornet.cable_energy>1000000.&&f.hornet.cable_energy<90000000.);
   f.carrier.arrested=true;f.carrier.deck_position.z+=160.;physics_loads(&mut f,1./240.);assert!(!f.carrier.arrested);
  }
+ }
+ #[test]fn raising_caught_hook_removes_load_before_animation_moves(){
+  for speed in [0.,40.,70.] {for angle in [0.65,0.62,0.3,0.] {
+   let mut f=scenario(false);f.orientation=rotation(0.);f.hornet.hook_angle=angle;
+   f.position=world(DVec3::new(lane(80.),DECK+2.,80.),0.);
+   f.velocity=velocity(0.)+rotation(0.)*DVec3::NEG_Z*speed;
+   f.carrier.arrested=true;f.carrier.deck_position=DVec3::new(lane(112.),DECK,112.);
+   f.carrier.arrest_distance=30.;f.carrier.arrest_speed=speed;f.hornet.cable_energy=1234.;
+   let mut free=f.clone();free.carrier.arrested=false;
+   f.systems.hook_down=false;
+   let loads=physics_loads(&mut f,1./240.);let expected=physics_loads(&mut free,1./240.);
+   assert!(!f.carrier.arrested);assert_eq!(loads.force,expected.force);assert_eq!(loads.moment,expected.moment);
+   assert_eq!(f.carrier.arrest_distance,0.);assert_eq!(f.carrier.arrest_speed,0.);assert_eq!(f.hornet.cable_energy,1234.);
+  }}
+ }
+ #[test]fn retracting_hook_cannot_recatch_until_lowered(){
+  let mut f=scenario(false);f.orientation=rotation(0.);f.hornet.hook_angle=0.65;
+  let tip=hook_point(&f);f.position=world(DVec3::new(lane(112.),DECK-tip.y,111.-tip.z),0.);
+  f.velocity=velocity(0.)+rotation(0.)*DVec3::NEG_Z*70.;let before=f.position+rotation(0.)*DVec3::Z*2.;
+  f.carrier.arrested=true;f.systems.hook_down=false;
+  after_step(&mut f,before,1./120.);assert!(!f.carrier.arrested);
+  // A still-lowered animated tip alone cannot catch on subsequent steps.
+  after_step(&mut f,before,1./120.);assert!(!f.carrier.arrested);
+  f.systems.hook_down=true;after_step(&mut f,before,1./120.);assert!(f.carrier.arrested);
+  f.hornet.hook_angle=0.3;let loads=physics_loads(&mut f,1./240.);
+  assert!(!f.carrier.arrested);assert_eq!(loads.force,DVec3::ZERO);
  }
  #[test]fn launch_mass_variation_and_abort(){for fuel in [1000.,6000.] {let mut f=scenario(true);let e=Environment{wind_enabled:false,..default()};f.fuel=fuel;f.throttle=1.;for _ in 0..960 {simulate(&mut f,&e,1./240.);}launch(&mut f);let start=f.velocity;let mut release=None;for i in 0..1440 {simulate(&mut f,&e,1./240.);if f.carrier.launch.is_none(){release=Some(i);break;}}println!("CAT fuel={} release={:?} speed={} status={}",fuel,release,(f.velocity-velocity(f.elapsed)).length(),f.status);assert!(release.is_some()&&!f.crashed);assert!((f.velocity-start).length()>50.);}
   let mut f=scenario(true);f.throttle=1.;launch(&mut f);f.throttle=0.;physics_loads(&mut f,1./240.);assert!(f.carrier.launch.is_none());
