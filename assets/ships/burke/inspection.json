@@ -1,0 +1,210 @@
+{
+  "source_sha256": "89752908a8d2cd198256636d13d76be616032ce82cd8c53a79013c6b53010290",
+  "license": "CC-BY-4.0",
+  "author": "SB-129",
+  "length_m": 155.3,
+  "source_waterline_m": 9.1,
+  "source_center_y_m": 2.2824,
+  "removed_helicopter_objects": [
+    "Object_14",
+    "Object_23",
+    "Object_3",
+    "Object_4",
+    "Object_5"
+  ],
+  "bridge_window_panes": 54,
+  "lights": [
+    {
+      "position": [
+        -4.099999904632568,
+        8.503210067749023,
+        53.0
+      ],
+      "color": [
+        1.0,
+        0.76,
+        0.48
+      ],
+      "intensity": 650.0,
+      "range": 15.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.35
+      ]
+    },
+    {
+      "position": [
+        4.099999904632568,
+        8.475465774536133,
+        53.0
+      ],
+      "color": [
+        1.0,
+        0.76,
+        0.48
+      ],
+      "intensity": 650.0,
+      "range": 15.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.35
+      ]
+    },
+    {
+      "position": [
+        -6.599999904632568,
+        14.530369758605957,
+        -21.0
+      ],
+      "color": [
+        1.0,
+        0.76,
+        0.48
+      ],
+      "intensity": 650.0,
+      "range": 15.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.35
+      ]
+    },
+    {
+      "position": [
+        6.599999904632568,
+        14.473462104797363,
+        -21.0
+      ],
+      "color": [
+        1.0,
+        0.76,
+        0.48
+      ],
+      "intensity": 650.0,
+      "range": 15.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.35
+      ]
+    }
+  ],
+  "collision_triangles": 82855,
+  "collision_sha256": "808f9c8a1fd298ae1ef8cffb3a2412ff75f2d0b9c86d19d000e67086cea433fc",
+  "lods": [
+    {
+      "file": "lod0.gltf",
+      "triangles": 86689,
+      "materials": [
+        "Burke_Mat_4",
+        "Burke_Mat_0",
+        "Burke_Mat_1",
+        "Burke_Mat_2",
+        "Burke_Mat_3",
+        "Burke_Mat_5",
+        "BurkeRubber",
+        "BurkeCrewFace",
+        "BurkePaintedSteel",
+        "BurkeCrewNavy",
+        "BurkeCrewVest",
+        "BurkeWindows",
+        "BurkeExposedSteel",
+        "BurkeWhiteLens",
+        "BurkePortLens",
+        "BurkeStarboardLens"
+      ],
+      "texture_uris": [
+        "textures/BurkePaintNormal.png",
+        "textures/Image_5.jpg",
+        "textures/Image_0.png",
+        "textures/Image_1.jpg",
+        "textures/Image_3.jpg",
+        "textures/Image_4.jpg",
+        "textures/Image_6.jpg"
+      ]
+    },
+    {
+      "file": "lod1.gltf",
+      "triangles": 37301,
+      "materials": [
+        "Burke_Mat_4",
+        "Burke_Mat_0",
+        "Burke_Mat_1",
+        "Burke_Mat_2",
+        "Burke_Mat_3",
+        "Burke_Mat_5",
+        "BurkeWindows",
+        "BurkePaintedSteel",
+        "BurkeExposedSteel",
+        "BurkeWhiteLens",
+        "BurkePortLens",
+        "BurkeStarboardLens"
+      ],
+      "texture_uris": [
+        "textures/BurkePaintNormal.png",
+        "textures/Image_5.jpg",
+        "textures/Image_0.png",
+        "textures/Image_1.jpg",
+        "textures/Image_3.jpg",
+        "textures/Image_4.jpg",
+        "textures/Image_6.jpg"
+      ]
+    },
+    {
+      "file": "lod2.gltf",
+      "triangles": 10076,
+      "materials": [
+        "Burke_Mat_4",
+        "Burke_Mat_0",
+        "Burke_Mat_1",
+        "Burke_Mat_2",
+        "Burke_Mat_3",
+        "Burke_Mat_5",
+        "BurkeWindows",
+        "BurkePaintedSteel",
+        "BurkeExposedSteel",
+        "BurkeWhiteLens",
+        "BurkePortLens",
+        "BurkeStarboardLens"
+      ],
+      "texture_uris": [
+        "textures/BurkePaintNormal.png",
+        "textures/Image_5.jpg",
+        "textures/Image_0.png",
+        "textures/Image_1.jpg",
+        "textures/Image_3.jpg",
+        "textures/Image_4.jpg",
+        "textures/Image_6.jpg"
+      ]
+    },
+    {
+      "file": "lod3.gltf",
+      "triangles": 3532,
+      "materials": [
+        "Burke_Mat_4",
+        "Burke_Mat_0",
+        "Burke_Mat_1",
+        "Burke_Mat_2",
+        "Burke_Mat_3",
+        "Burke_Mat_5",
+        "BurkeWindows",
+        "BurkePaintedSteel",
+        "BurkeExposedSteel",
+        "BurkeWhiteLens",
+        "BurkePortLens",
+        "BurkeStarboardLens"
+      ],
+      "texture_uris": [
+        "textures/BurkePaintNormal.png",
+        "textures/Image_5.jpg",
+        "textures/Image_0.png",
+        "textures/Image_1.jpg",
+        "textures/Image_3.jpg",
+        "textures/Image_4.jpg",
+        "textures/Image_6.jpg"
+      ]
+    }
+  ]
+}

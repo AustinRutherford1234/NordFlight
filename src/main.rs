@@ -1213,6 +1213,12 @@ fn main() {
             assert!(!initial_flight.crashed,"catapult sequence failed: {}",initial_flight.status);
             println!("Rail capture {mode}: bar={:?} stroke={} rail_x={} yaw_deg={}",carrier::catapult::attachment(&initial_flight),carrier::catapult::stroke(&initial_flight),carrier::catapult::X,(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).x.atan2(-(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).z).to_degrees());
         }
+        if mode.starts_with("escorts-") {
+            initial_view.simple = true;
+            if mode.contains("night") {
+                initial_environment.day_phase = 1.73;
+            }
+        }
         if mode.starts_with("collision-") {
             initial_flight.carrier.attached=false;initial_flight.carrier.launch=None;
             initial_flight.carrier.arrested=false;initial_flight.gear=false;initial_flight.gear_extension=0.;
@@ -1414,7 +1420,7 @@ fn main() {
                 )
                     .chain().in_set(FlightStage::Camera),
                 (
-                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,carrier::visual,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
+                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,carrier::visual,carrier::escorts::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
                     (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
@@ -2542,6 +2548,27 @@ fn update_camera(
         let basis=local_rot(carrier::rotation(f.elapsed),&f);
         p=target+basis*Vec3::new(260.,150.,260.);up_view=basis*Vec3::Y;
         if std::env::var("NORD_CARRIER_CAPTURE").as_deref()!=Ok("approach") {target=local(f.position,&f);p=target+basis*Vec3::new(28.,12.,30.);}
+        if let Ok(mode)=std::env::var("NORD_CARRIER_CAPTURE") {
+        if mode.starts_with("escorts-") {
+                let ship = if mode.contains("128") { 1 } else { 0 };
+                let center = carrier::escorts::position(ship, f.elapsed);
+                target = local(center, &f) + basis * Vec3::new(0., 9., 0.);
+                p = target + basis * Vec3::new(if ship == 0 { -85. } else { 85. }, 42., -115.);
+                up_view = basis * Vec3::Y;
+                if mode.contains("stern") {
+                    target = local(center, &f) + basis * Vec3::new(0., 7., 42.);
+                    p = target + basis * Vec3::new(-45., 24., 63.);
+                }
+                if mode.contains("number") {
+                    target = local(center, &f) + basis * Vec3::new(0., 7., -62.);
+                    p = target + basis * Vec3::new(if ship == 0 { -30. } else { 30. }, 4., -8.);
+                }
+                if mode == "escorts-fleet" {
+                    target = local(carrier::origin(f.elapsed), &f);
+                    p = target + basis * Vec3::new(0., 700., 1000.);
+                }
+            }
+        }
         if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("collision-")) {
             target=local(f.wreck_origin,&f);p=target+basis*Vec3::new(55.,28.,65.);up_view=basis*Vec3::Y;
             if std::env::var("NORD_CARRIER_CAPTURE").as_deref()==Ok("collision-hull") {p=target+basis*Vec3::new(65.,18.,40.);}

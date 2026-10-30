@@ -2,6 +2,7 @@
 use crate::{physics::*,aircraft::Aircraft};
 pub mod catapult;
 pub mod collider;
+pub mod escorts;
 use bevy::{prelude::*,math::{DVec3,DQuat}};
 pub const DECK:f64=21.2*(333./303.842285);
 pub const SPEED:f64=12.86; // 25 knots, constant straight course.
@@ -73,6 +74,7 @@ pub fn after_step(f:&mut Flight,previous:DVec3,dt:f64) {
 #[derive(Component)]pub(crate) struct Ship;
 #[derive(Component)]pub(crate) struct CarrierText;
 pub fn setup(mut c:Commands,server:Res<AssetServer>) {
+ escorts::setup(&mut c,&server);
  c.spawn((Ship,SceneRoot(server.load(GltfAssetLabel::Scene(0).from_asset("ships/nimitz/source.glb"))),Transform::default(),Visibility::Hidden));
  c.spawn((CarrierText,Text::new(""),TextFont{font_size:14.,..default()},TextColor(Color::srgb(1.,0.8,0.35)),Node{position_type:PositionType::Absolute,right:px(28),top:px(285),width:px(410),..default()}));
 }

@@ -7,6 +7,7 @@ pub struct Hit {
     pub fraction: f64,
     pub normal: DVec3,
     pub point: DVec3,
+    pub ship: usize,
 }
 #[derive(Clone, Copy)]
 struct Triangle {
@@ -29,8 +30,7 @@ fn overlaps(a: DVec3, b: DVec3, c: DVec3, d: DVec3) -> bool {
     !b.cmplt(c).any() && !a.cmpgt(d).any()
 }
 impl Skin {
-    fn load() -> Self {
-        let data = include_bytes!("../../assets/ships/nimitz/collision.bin");
+    fn load(data: &[u8]) -> Self {
         assert_eq!(data.len() % 36, 0);
         let mut tri = Vec::with_capacity(data.len() / 36);
         for bytes in data.chunks_exact(36) {
@@ -111,10 +111,38 @@ impl Skin {
 }
 pub fn preload() {
     let _ = skin();
+
+    let _ = burke_skin();
 }
 fn skin() -> &'static Skin {
     static SKIN: OnceLock<Skin> = OnceLock::new();
-    SKIN.get_or_init(Skin::load)
+    SKIN.get_or_init(|| Skin::load(include_bytes!("../../assets/ships/nimitz/collision.bin")))
+}
+fn burke_skin() -> &'static Skin {
+    static SKIN: OnceLock<Skin> = OnceLock::new();
+    SKIN.get_or_init(|| Skin::load(include_bytes!("../../assets/ships/burke/collision.bin")))
+}
+fn ship_skin(ship: usize) -> &'static Skin {
+    if ship == 0 { skin() } else { burke_skin() }
+}
+fn ship_offset(ship: usize) -> DVec3 {
+    if ship == 0 {
+        DVec3::ZERO
+    } else {
+        super::escorts::offset(ship - 1)
+    }
+}
+
+fn near_ship(a: DVec3, b: DVec3, pad: f64, ship: usize) -> bool {
+    if ship == 0 {
+        return near(a, b, pad);
+    }
+    overlaps(
+        a.min(b) - DVec3::splat(pad),
+        a.max(b) + DVec3::splat(pad),
+        DVec3::new(-14., -11., -80.),
+        DVec3::new(14., 50., 80.),
+    )
 }
 fn near(a: DVec3, b: DVec3, pad: f64) -> bool {
     overlaps(
@@ -124,12 +152,13 @@ fn near(a: DVec3, b: DVec3, pad: f64) -> bool {
         DVec3::new(45., 70., 170.),
     )
 }
-fn result(end_time: f64, local: (f64, DVec3), a: DVec3, b: DVec3, dt: f64) -> Hit {
+fn result(end_time: f64, local: (f64, DVec3), a: DVec3, b: DVec3, dt: f64, ship: usize) -> Hit {
     let time = end_time - dt + dt * local.0;
     Hit {
         fraction: local.0,
         normal: rotation(time) * local.1,
         point: a.lerp(b, local.0),
+        ship,
     }
 }
 /// Earliest contact of the complete, articulated aircraft skin. Rotation is
@@ -138,11 +167,17 @@ pub fn aircraft(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64) -> Option<Hi
     if !f.carrier.active {
         return None;
     }
+
+    (0..3)
+        .filter_map(|ship| aircraft_ship(f, previous, old_q, dt, ship))
+        .min_by(|a, b| a.fraction.total_cmp(&b.fraction))
+}
+fn aircraft_ship(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64, ship: usize) -> Option<Hit> {
     let start_time = f.elapsed - dt;
-    let a = relative(previous, start_time);
-    let b = relative(f.position, f.elapsed);
+    let a = relative(previous, start_time) - ship_offset(ship);
+    let b = relative(f.position, f.elapsed) - ship_offset(ship);
     let radius = f.aircraft.spec().length.max(20.);
-    if !near(a, b, radius) {
+    if !near_ship(a, b, radius, ship) {
         return None;
     }
     let qa = rotation(start_time).conjugate() * old_q;
@@ -171,7 +206,7 @@ pub fn aircraft(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64) -> Option<Hi
                 + (r * (DVec3::Z * half.z)).abs()
                 + DVec3::splat(margin);
             let c = origin + r * center;
-            skin().query(
+            ship_skin(ship).query(
                 c.min(c + delta) - extent,
                 c.max(c + delta) + extent,
                 |tri| {
@@ -203,12 +238,12 @@ pub fn aircraft(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64) -> Option<Hi
             for (point, radius) in [(wheel, tire_radius), ((mount + wheel) * 0.5, 0.12)] {
                 let ga = a + qa * point;
                 let gb = b + qb * point;
-                skin().query(
+                ship_skin(ship).query(
                     ga.min(gb) - DVec3::splat(radius),
                     ga.max(gb) + DVec3::splat(radius),
                     |tri| {
                         let normal = (tri.p[1] - tri.p[0]).cross(tri.p[2] - tri.p[0]).normalize();
-                        if tri.hi.y < DECK + 0.6 {
+                        if ship == 0 && tri.hi.y < DECK + 0.6 {
                             // Suspension owns the top face. A wheel rolling off the bow must also
                             // be able to leave a side face from the inside of the supporting deck.
                             if normal.y.abs() > 0.6 || (gb - ga).dot(normal) > 1e-9 {
@@ -226,7 +261,7 @@ pub fn aircraft(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64) -> Option<Hi
         }
     }
 
-    first.map(|h| result(f.elapsed, h, previous, f.position, dt))
+    first.map(|h| result(f.elapsed, h, previous, f.position, dt, ship))
 }
 /// Swept world-space sphere used by debris, projectiles and wreck transport.
 pub fn sweep(f: &Flight, a: DVec3, b: DVec3, dt: f64, radius: f64) -> Option<Hit> {
@@ -243,13 +278,19 @@ pub fn sweep_at(
     if !active {
         return None;
     }
-    let start = relative(a, end_time - dt);
-    let end = relative(b, end_time);
-    if !near(start, end, radius) {
+
+    (0..3)
+        .filter_map(|ship| sweep_ship(end_time, a, b, dt, radius, ship))
+        .min_by(|a, b| a.fraction.total_cmp(&b.fraction))
+}
+fn sweep_ship(end_time: f64, a: DVec3, b: DVec3, dt: f64, radius: f64, ship: usize) -> Option<Hit> {
+    let start = relative(a, end_time - dt) - ship_offset(ship);
+    let end = relative(b, end_time) - ship_offset(ship);
+    if !near_ship(start, end, radius, ship) {
         return None;
     }
     let mut first: Option<(f64, DVec3)> = None;
-    skin().query(
+    ship_skin(ship).query(
         start.min(end) - DVec3::splat(radius),
         start.max(end) + DVec3::splat(radius),
         |tri| {
@@ -260,7 +301,7 @@ pub fn sweep_at(
             }
         },
     );
-    first.map(|h| result(end_time, h, a, b, dt))
+    first.map(|h| result(end_time, h, a, b, dt, ship))
 }
 fn sphere_triangle(a: DVec3, b: DVec3, r: f64, p: [DVec3; 3]) -> Option<(f64, DVec3)> {
     let delta = b - a;
@@ -471,6 +512,51 @@ mod tests {
             if let (Some(a), Some(b)) = (accelerated, brute) {
                 assert!((a - b).abs() < 1e-10);
             }
+        }
+    }
+    #[test]
+    fn both_escort_hulls_intercept_objects_and_gaps_remain_empty() {
+        let f = flight(60.);
+        for (ship, x) in [(1, -500.), (2, 500.)] {
+            let a = world(DVec3::new(x + 30., 4., 0.), 59.9);
+            let b = world(DVec3::new(x - 30., 4., 0.), 60.);
+            let hit = sweep(&f, a, b, 0.1, 0.2).expect("escort hull contact");
+            assert_eq!(hit.ship, ship);
+            assert!(hit.fraction > 0. && hit.fraction < 1.);
+        }
+        assert!(
+            sweep(
+                &f,
+                world(DVec3::new(250., 50., 0.), 59.9),
+                world(DVec3::new(250., -5., 0.), 60.),
+                0.1,
+                0.2
+            )
+            .is_none()
+        );
+    }
+    #[test]
+    fn fleet_queries_choose_the_first_ship_along_the_trajectory() {
+        let f = flight(1.);
+        let hit = sweep(
+            &f,
+            world(DVec3::new(-600., 4., 0.), 0.9),
+            world(DVec3::new(600., 4., 0.), 1.),
+            0.1,
+            0.1,
+        )
+        .unwrap();
+        assert_eq!(hit.ship, 1);
+        assert!(hit.fraction < 0.2);
+    }
+    #[test]
+    fn airframe_strikes_both_destroyer_decks_in_their_own_frames() {
+        for (ship, x) in [(1, -500.), (2, 500.)] {
+            let mut f = flight(3.);
+            let a = world(DVec3::new(x, 30., 40.), 2.9);
+            f.position = world(DVec3::new(x, -5., 40.), 3.);
+            let hit = aircraft(&f, a, rotation(2.9), 0.1).unwrap();
+            assert_eq!(hit.ship, ship);
         }
     }
     #[test]
