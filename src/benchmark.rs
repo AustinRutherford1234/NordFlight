@@ -217,6 +217,14 @@ pub fn exercise(
         }
         return;
     }
+    if script=="ocean" {
+        // Approved render comparison: move the formation and wave clock without
+        // integrating flight physics, identically in the reference and new path.
+        let previous_time=f.elapsed;
+        f.position+=crate::carrier::origin(wall)-crate::carrier::origin(previous_time);
+        f.elapsed=wall;f.paused=true;f.orientation=crate::carrier::rotation(wall);
+        return;
+    }
     if script=="carrier-approach" {
         // Diagnostic-only repeated final approach; never alters normal flight.
         let z=2300.-(wall*70.)%2000.;

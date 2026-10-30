@@ -12,10 +12,12 @@ pub fn step(f:&mut Flight,dt:f64)->bool {
  if !f.water.active {
   if !surface(f){return false;}
   let reach=crate::collision::wheel_clearance(f).max(0.65+f.aircraft.spec().span*0.5*f.roll().sin().abs());
-  if f.altitude()>reach{return false;}
-  let up=f.up();let vertical=f.velocity.dot(up);let speed=(f.velocity-up*vertical).length();
+  if f.altitude()>reach+5.2{return false;}
+  let sea=crate::ocean::sample(f.position,f.elapsed);
+  if f.altitude()>reach+sea.height{return false;}
+  let up=f.up();let vertical=(f.velocity-sea.velocity).dot(up);let speed=(f.velocity-up*vertical).length();
   let gentle=speed<=85. && vertical>=-6. && f.roll().abs()<20f64.to_radians() && f.pitch()>-5f64.to_radians() && f.pitch()<18f64.to_radians();
-  f.water=State{active:true,age:0.,flooding:if gentle{0.}else{0.65},origin:up*RADIUS,speed,sink:(-vertical).max(0.)};
+  f.water=State{active:true,age:0.,flooding:if gentle{0.}else{0.65},origin:up*(RADIUS+sea.height),speed,sink:(-vertical).max(0.)};
   if !gentle && !f.crashed {crate::collision::destroy(f,"WATER IMPACT",up);}
   if gentle {
    f.integrity=(f.integrity-0.06-speed.powi(2)*0.000025-(-vertical).max(0.).powi(2)*0.003).max(0.15);
@@ -34,13 +36,15 @@ pub fn step(f:&mut Flight,dt:f64)->bool {
  // Flooding progressively removes displaced-air volume. Water drag is
  // integrated exponentially so a fast impact cannot reverse velocity.
  f.water.flooding=(f.water.flooding+dt*(0.022+if f.damage.wing_broken.iter().any(|b|*b){0.018}else{0.})).min(1.);
- let immersion=((1.1-f.altitude())/1.8).clamp(0.,1.);
+ let sea=crate::ocean::sample(f.position,f.elapsed);
+ let immersion=((1.1+sea.height-f.altitude())/1.8).clamp(0.,1.);
  let v=f.velocity.dot(up);let tangent=f.velocity-up*v;
  let horizontal=tangent*(-dt*(0.10+0.009*tangent.length())*immersion).exp();
  let buoyancy=9.81*1.12*immersion*(1.-0.95*f.water.flooding);
- let vertical=(v+(buoyancy-9.81)*dt)*(-dt*2.2*immersion).exp();
+ let surface_speed=sea.velocity.dot(up);
+ let vertical=(v+(buoyancy-9.81)*dt-surface_speed)*(-dt*2.2*immersion).exp()+surface_speed;
  f.velocity=horizontal+up*vertical;f.position+=f.velocity*dt;
- let body_up=f.orientation.conjugate()*up;
+ let body_up=f.orientation.conjugate()*sea.normal;
  f.rates+=(DVec3::Y.cross(body_up)*1.4-f.rates*2.)*dt;
  f.orientation=(f.orientation*DQuat::from_scaled_axis(f.rates*dt)).normalize();
  f.airspeed=f.velocity.length();f.g_load=buoyancy/9.81;

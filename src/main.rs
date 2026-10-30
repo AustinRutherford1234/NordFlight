@@ -18,6 +18,7 @@ mod cockpit_labels;
 mod collision;
 mod crash_scene;
 mod water;
+mod ocean;
 mod ejection;
 mod carrier;
 mod combat;
@@ -1213,6 +1214,12 @@ fn main() {
             assert!(!initial_flight.crashed,"catapult sequence failed: {}",initial_flight.status);
             println!("Rail capture {mode}: bar={:?} stroke={} rail_x={} yaw_deg={}",carrier::catapult::attachment(&initial_flight),carrier::catapult::stroke(&initial_flight),carrier::catapult::X,(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).x.atan2(-(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).z).to_degrees());
         }
+        if mode.starts_with("ocean-") {
+            initial_view.simple=true;
+            if mode.contains("sunset"){initial_environment.day_phase=1.42;}
+            if mode.contains("night"){initial_environment.day_phase=1.73;}
+            if mode.contains("motion"){initial_flight.elapsed=6.;initial_flight.position+=carrier::origin(6.)-carrier::origin(0.);}
+        }
         if mode.starts_with("escorts-") {
             initial_view.simple = true;
             if mode.contains("night") {
@@ -1327,6 +1334,7 @@ fn main() {
         .add_plugins(performance::PerformancePlugin)
         .add_plugins(aircraft::visual::hornet::HeatPlugin)
         .add_plugins(earth_gpu::EarthGpuPlugin)
+        .add_plugins(ocean::OceanPlugin)
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
         .add_plugins(terrain_ready::TerrainReadyPlugin)
         .add_systems(
@@ -1412,7 +1420,7 @@ fn main() {
                     ),
                 ).chain().in_set(FlightStage::World),
                 (
-                    (update_camera, atmospheric_render::synchronize, earth::update).chain(),
+                    (update_camera, atmospheric_render::synchronize, earth::update, ocean::update).chain(),
                     combat::capture_camera,
                     sound::update,
                     sound::diagnostics,
@@ -2567,6 +2575,15 @@ fn update_camera(
                     target = local(carrier::origin(f.elapsed), &f);
                     p = target + basis * Vec3::new(0., 700., 1000.);
                 }
+            }
+        }
+        if let Ok(mode)=std::env::var("NORD_CARRIER_CAPTURE") {
+            if mode.starts_with("ocean-") {
+                let center=carrier::world(DVec3::new(160.,0.,260.),f.elapsed);
+                target=local(center,&f);p=target+basis*Vec3::new(25.,5.,40.);
+                if mode.contains("approach"){target=local(carrier::origin(f.elapsed),&f)+basis*Vec3::Y*20.;p=target+basis*Vec3::new(40.,65.,450.);}
+                if mode.contains("altitude"){target=local(carrier::origin(f.elapsed),&f);p=target+basis*Vec3::new(0.,1400.,1700.);}
+                up_view=basis*Vec3::Y;
             }
         }
         if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("collision-")) {

@@ -271,6 +271,7 @@ pub fn setup_world(
         crate::earth::setup_region(&mut c, &mut meshes, &mut materials, &mut images);
     }
     crate::terrain::setup(&mut c, &mut meshes, &mut materials, &mut images, &f);
+    if !crate::ocean::enabled() {
     let water = materials.add(StandardMaterial {
         base_color: Color::srgb(0.025, 0.13, 0.18),
         metallic: 0.55,
@@ -289,6 +290,7 @@ pub fn setup_world(
             rotation: DQuat::IDENTITY,
         },
     ));
+    }
     let cube = meshes.add(Cuboid::default());
     let asphalt = mat(&mut materials, Color::srgb(0.075, 0.088, 0.105), 0.08, 0.92);
     let white = mat(&mut materials, Color::srgb(0.87, 0.88, 0.81), 0.0, 0.85);

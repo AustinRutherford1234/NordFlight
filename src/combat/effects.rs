@@ -184,7 +184,7 @@ impl State {
                 }
                 Kind::Foam => {
                     part.velocity *= (-dt*0.7).exp();
-                    part.position=up*(RADIUS+0.08);
+                    part.position=up*(RADIUS+crate::ocean::sample(part.position,f.elapsed).height+0.08);
                 }
                 Kind::Smoke => {
                     part.velocity *= (-dt * 0.9).exp();
@@ -201,9 +201,9 @@ impl State {
                     part.velocity=ship+(rel-hit.normal*rel.dot(hit.normal).min(0.)*1.2)*(-dt*2.).exp();
                 }
             }
-            if matches!(part.kind, Kind::Spray) && part.age>0.1 && part.position.length()<RADIUS {part.age=part.life;}
+            if matches!(part.kind, Kind::Spray) && part.age>0.1 && part.position.length()<RADIUS+3. && part.position.length()<RADIUS+crate::ocean::sample(part.position,f.elapsed).height {part.age=part.life;}
             if matches!(part.kind, Kind::Fragment) {
-                let ground = terrain_height(part.position.x, part.position.z).max(0.0) + 0.2;
+                let ground = if in_lake(part.position.x,part.position.z)||crate::carrier::sea(part.position.x,part.position.z) {crate::ocean::sample(part.position,f.elapsed).height+0.2} else {terrain_height(part.position.x, part.position.z).max(0.0) + 0.2};
                 if part.position.length() - RADIUS < ground {
                     part.position = up * (RADIUS + ground);
                     part.velocity -= up * part.velocity.dot(up).min(0.0) * 1.2;

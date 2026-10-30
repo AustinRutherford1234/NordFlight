@@ -41,7 +41,7 @@ pub struct Scene {
 // The airport's thin render slabs stand above its spherical collision terrain.
 // Keep visual fragments above those surfaces, without changing aircraft contacts.
 fn support(f: &Flight, p: DVec3) -> f64 {
-    let base = carrier::ground(f, p);
+    let base = if carrier::deck(f,p).is_none() && (crate::physics::in_lake(p.x,p.z)||carrier::sea(p.x,p.z)) {crate::ocean::sample(p,f.elapsed).height} else {carrier::ground(f,p)};
     if carrier::deck(f, p).is_some() {
         return base;
     }
