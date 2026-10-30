@@ -271,7 +271,10 @@ fn in_import(mut entity: Entity, parents: &Query<&ChildOf>, roots: &Query<(), Wi
     }
 }
 
-pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut hook: Local<f32>, mut wheel_spin: Local<f32>, parents: Query<&ChildOf>,
+// Visual angular velocity, not a claim to reproduce F414 rotor RPM.
+fn intake_fan_rate(spool:f64)->f32 {140.*spool.clamp(0.,1.) as f32}
+
+pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut hook: Local<f32>, mut wheel_spin: Local<f32>, mut fan_phase: Local<[f32;2]>, parents: Query<&ChildOf>,
     roots: Query<(),With<ImportedHornet>>, mut nodes: Query<(Entity,&Name,&mut Transform,&mut Visibility),Without<ImportedHornet>>) {
     if f.vehicle != Vehicle::Gripen || f.aircraft != Aircraft::Hornet { return; }
     let desired=if f.systems.hook_down {0.65} else {0.};
@@ -280,12 +283,18 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
     if f.landed && f.gear_extension > 0.98 {
         *wheel_spin = (*wheel_spin - f.velocity.length() as f32*dt/0.32).rem_euclid(std::f32::consts::TAU);
     }
+    for i in 0..2 {
+        let spool=if f.hornet.initialized {f.hornet.engines[i].spool} else if f.engine&&f.systems.engine_on[i] {f.spool} else {0.};
+        fan_phase[i]=(fan_phase[i]+intake_fan_rate(spool)*dt).rem_euclid(std::f32::consts::TAU);
+    }
     let angles=super::super::angles(&f);
     let retract=(1.-f.gear_extension.clamp(0.,1.)) as f32;
     for (entity,name,mut transform,mut visible) in &mut nodes {
         let name=name.as_str();
         if !(name.starts_with("Hornet") || name.starts_with("F18-landing") || name.starts_with("F18-cockpit") || name.starts_with("F18-hud") || name.starts_with("F18-airframe") || name.starts_with("F18-canopy")) || !in_import(entity,&parents,&roots) {continue;}
         let rotation=match name {
+            "HornetIntakeRotorL" => Some(Quat::from_rotation_x(fan_phase[0])),
+            "HornetIntakeRotorR" => Some(Quat::from_rotation_x(fan_phase[1])),
             "HornetCanopyPivot" | "HornetCanopyFrame" => Some(Quat::from_rotation_z(f.systems.hornet_canopy as f32*0.48)),
             "HornetHookPivot" => Some(Quat::from_rotation_z(*hook)),
             "HornetWingTipPivotL" => Some(Quat::from_rotation_x(-(f.systems.hornet_wing_fold as f32)*1.3)),
@@ -343,6 +352,26 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
 mod tests {
     use super::*;
 
+    #[test]
+    fn intake_rotors_follow_independent_engine_spools_and_pause() {
+        let mut app=App::new();let mut f=Flight::runway();f.aircraft=Aircraft::Hornet;
+        f.paused=false;f.hornet.initialized=true;f.hornet.engines[0].spool=0.2;f.hornet.engines[1].spool=0.8;
+        app.insert_resource(f).init_resource::<crate::ViewState>().init_resource::<Time>().add_systems(Update,update);
+        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(10));
+        let root=app.world_mut().spawn((ImportedHornet,Transform::default(),Visibility::Inherited)).id();
+        let rotors=["HornetIntakeRotorL","HornetIntakeRotorR"].map(|n|app.world_mut().spawn((Name::new(n),Transform::default(),Visibility::Inherited,ChildOf(root))).id());
+        app.update();
+        for (i,spool) in [0.2,0.8].iter().enumerate() {
+            let actual=app.world().get::<Transform>(rotors[i]).unwrap().rotation;
+            assert!(actual.angle_between(Quat::from_rotation_x(intake_fan_rate(*spool)*0.01))<1e-4);
+        }
+        let before=app.world().get::<Transform>(rotors[0]).unwrap().rotation;
+        app.world_mut().resource_mut::<Flight>().hornet.engines[0].spool=0.;app.update();
+        assert_eq!(app.world().get::<Transform>(rotors[0]).unwrap().rotation,before);
+        app.world_mut().resource_mut::<Flight>().paused=true;
+        let before=app.world().get::<Transform>(rotors[1]).unwrap().rotation;app.update();
+        assert_eq!(app.world().get::<Transform>(rotors[1]).unwrap().rotation,before);
+    }
     #[test]
     fn stabilator_nose_up_raises_trailing_edges() {
         let mut app=App::new();let mut f=Flight::runway();f.aircraft=Aircraft::Hornet;

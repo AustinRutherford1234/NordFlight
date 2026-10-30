@@ -36,11 +36,13 @@ def inspect(path):
 
 _, source_area = inspect(root / 'source.glb')
 names, rig_area = inspect(root / 'rigged.glb')
+required|={'HornetIntakeRotorL','HornetIntakeRotorR','HornetIntakeDuctL','HornetIntakeDuctR','HornetFanBladesL','HornetFanBladesR'}
 missing = required - names
 if missing:
     raise RuntimeError('Missing rig nodes: ' + ', '.join(sorted(missing)))
 relative = abs(rig_area-source_area)/source_area
-expected_area=source_area-json.loads((root / "rig_metadata.json").read_text())["removed_bay_area"]
+metadata=json.loads((root / "rig_metadata.json").read_text())
+expected_area=source_area-metadata["removed_bay_area"]-metadata.get("removed_intake_area",0.)
 if abs(rig_area-expected_area)/source_area > 1e-4:
     raise RuntimeError(f'Unexpected airframe area after bay cutouts: {source_area} -> {rig_area}')
 print(f'Rig nodes present; neutral area {source_area:.3f} -> {rig_area:.3f}, relative error {relative:.2g}')
@@ -49,18 +51,24 @@ print(f'Rig nodes present; neutral area {source_area:.3f} -> {rig_area:.3f}, rel
 for obj in bpy.data.objects:
     if obj.type == 'MESH' and obj.parent and obj.parent.name.startswith('F18-landingOn_'):
         raise RuntimeError('Residual source gear fragment: '+obj.name)
-# The generated hinge knuckles must actually adjoin their own panel.
+# Each barrel must connect to its curved shell through its own hinge foot.
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 for obj in bpy.data.objects:
-    if obj.type!='MESH' or ' hinge' not in obj.name: continue
+    if obj.type!='MESH' or ' hinge' not in obj.name or 'foot' in obj.name:continue
     root=obj.parent
     panel=next((c for c in root.children if c.name==root.name+'Mesh'),None)
-    if panel is None: raise RuntimeError('Hinge without panel: '+obj.name)
-    points=[panel.matrix_world@Vector(v) for v in panel.bound_box]
-    center=obj.matrix_world.translation
-    for axis in range(3):
-        if not min(v[axis] for v in points)-.4 <= center[axis] <= max(v[axis] for v in points)+.4:
-            raise RuntimeError('Floating hinge: '+obj.name)
+    if panel is None:raise RuntimeError('Hinge without panel: '+obj.name)
+    def tree(mesh):
+        return BVHTree.FromPolygons([mesh.matrix_world@v.co for v in mesh.data.vertices],[tuple(f.vertices) for f in mesh.data.polygons])
+    panel_tree=tree(panel);barrel_tree=tree(obj)
+    feet=[c for c in root.children if c.type=='MESH' and 'hinge foot' in c.name]
+    connected=False
+    for foot in feet:
+        points=[foot.matrix_world@v.co for v in foot.data.vertices]
+        distances=[min(t.find_nearest(p)[3] for p in points) for t in (panel_tree,barrel_tree)]
+        if max(distances)<.20:connected=True;break
+    if not connected:raise RuntimeError('Floating hinge without connected foot: '+obj.name)
 print('No residual source gear meshes or detached door hinges')
 
 # Blender authors Z, exported as glTF Y. Reject an authoring change

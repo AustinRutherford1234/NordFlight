@@ -9,6 +9,8 @@ import math
 import json
 import bpy
 import bmesh
+from mathutils.bvhtree import BVHTree
+from mathutils.geometry import barycentric_transform
 from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -209,19 +211,47 @@ gear_mesh = next(o for o in gear_parent.children if o.type == "MESH")
 # throughout the cycle instead of switching abruptly at full retraction.
 closed_parent = next(o for o in bpy.data.objects if o.name.startswith("F18-landingOff_"))
 closed_mesh = next(o for o in closed_parent.children if o.type == "MESH")
+# Sample the original outer skin and closed-state covers before any cuts.
+# A Coons patch through the measured perimeter keeps every panel edge on the
+# surrounding hull; negative camber bows the shell outward, below the belly.
+bpy.context.view_layer.update()
+verts=[];polygons=[];skin_uv=[]
+for source in (airframe,closed_mesh):
+    offset=len(verts)
+    verts.extend(source.matrix_world@v.co for v in source.data.vertices)
+    source.data.calc_loop_triangles()
+    polygons.extend(tuple(offset+i for i in f.vertices) for f in source.data.loop_triangles)
+    layer=source.data.uv_layers.active.data
+    skin_uv.extend([Vector((*layer[i].uv,0.)) for i in f.loops] for f in source.data.loop_triangles)
+skin_tree=BVHTree.FromPolygons(verts,polygons)
+def belly(x,y):
+    hit,_,_,_=skin_tree.ray_cast(Vector((x,y,-30.)),Vector((0.,0.,1.)))
+    if hit is None:raise RuntimeError(f'Missing belly reference at {x}, {y}')
+    return hit.z
+
+def conformal_height(x0,x1,y0,y1,u,v):
+    # Sample just outside the cut edge, never the original empty well roof.
+    eps=.03
+    x=x0+(x1-x0)*u;y=y0+(y1-y0)*v
+    a=belly(x,y0-eps);b=belly(x,y1+eps)
+    c=belly(x0-eps,y);d=belly(x1+eps,y)
+    corners=[belly(x0-eps,y0-eps),belly(x1+eps,y0-eps),
+             belly(x0-eps,y1+eps),belly(x1+eps,y1+eps)]
+    bilinear=(1-u)*(1-v)*corners[0]+u*(1-v)*corners[1]+(1-u)*v*corners[2]+u*v*corners[3]
+    return (1-v)*a+v*b+(1-u)*c+u*d-bilinear-.48*math.sin(math.pi*u)*math.sin(math.pi*v)
+
 # Clean watertight bay panels replace the source's overlapping state meshes.
-# Dimensions match the lower-skin openings; separate leg panels stay open
-# around deployed struts while the large wheel-cover panels close.
-door_paint=metal('Hornet bay exterior',(0.54,0.56,0.57,1.),0.25)
+# Dimensions match the lower-skin openings. Doors stay open around the
+# deployed struts and close only after the tyres are fully inside the wells.
+door_paint=airframe.data.materials[0]
 inner_paint=metal('Bay panel inner face',(0.64,0.66,0.64,1.),0.15)
 fastener=metal('Door hinge hardware',(0.22,0.24,0.25,1.),0.8)
-def door_panel(name,x0,x1,y0,y1,z,hinge):
+def door_panel(name,x0,x1,y0,y1,hinge):
     # A continuous cambered shell replaces detached rectangular patches.
-    nx,ny=12,12
+    nx,ny=32,16
     def skin(u,v):
-        inset=.48*abs(2*v-1)**8
-        return (x0+inset+(x1-x0-2*inset)*u,y0+(y1-y0)*v,
-                z+.36*math.sin(math.pi*v))
+        return (x0+(x1-x0)*u,y0+(y1-y0)*v,
+                conformal_height(x0,x1,y0,y1,u,v))
     vertices=[];faces=[]
     for layer in (0,1):
         for i in range(nx+1):
@@ -243,6 +273,15 @@ def door_panel(name,x0,x1,y0,y1,z,hinge):
     for i,face in enumerate(mesh.polygons):
         face.material_index=1 if i<nx*ny*2 and i%2 else 0
         face.use_smooth=i<nx*ny*2
+    uv=mesh.uv_layers.new(name='Original fleet finish')
+    for face in mesh.polygons:
+        for loop in face.loop_indices:
+            point=Vector(mesh.vertices[mesh.loops[loop].vertex_index].co)
+            nearest,_,index,_=skin_tree.find_nearest(point)
+            tri=polygons[index]
+            if len(tri)!=3:raise RuntimeError('Skin UV source must be triangulated')
+            value=barycentric_transform(nearest,verts[tri[0]],verts[tri[1]],verts[tri[2]],*skin_uv[index])
+            uv.data[loop].uv=(value.x,value.y)
     hinge_obj=pivot(name,hinge);world_parent(obj,hinge_obj)
     for fraction in (.28,.72):
         for j in range(10):
@@ -256,25 +295,61 @@ def door_panel(name,x0,x1,y0,y1,z,hinge):
     for fraction in (.22,.78):
         x=x0+(x1-x0)*fraction
         cylinder(name+' hinge',(x-.22,hinge[1],hinge[2]),(x+.22,hinge[1],hinge[2]),.12,fastener,hinge_obj)
+        v=0. if abs(y0-hinge[1])<abs(y1-hinge[1]) else 1.
+        foot=skin(fraction,v)
+        cylinder(name+' hinge foot',(x,hinge[1],hinge[2]),(foot[0],foot[1],foot[2]+.12),.09,fastener,hinge_obj)
 for side in (-1,1):
     suffix='L' if side<0 else 'R'
     y0,y1=sorted((side*2.,side*11.))
     # One connected cover, hinged along the inboard edge. The former
     # inner/outer/leg patches rotated about distant axes and looked detached.
-    door_panel('HornetMainDoorFore'+suffix,-9.6,14.,y0,y1,-6.0,(5.,side*2.,-6.0))
+    door_panel('HornetMainDoorFore'+suffix,-9.6,14.,y0,y1,(5.,side*2.,belly(5.,side*2.)))
     lo,hi=sorted((0.,side*3.6))
-    door_panel('HornetNoseDoor'+suffix,65.,81.,lo,hi,-4.4,(73.,side*3.6,-4.4))
-    door_panel('HornetNoseLegDoor'+suffix,48.,65.,lo,hi,-4.4,(61.5,side*3.6,-4.4))
+    door_panel('HornetNoseDoor'+suffix,65.,83.5,lo,hi,(73.,side*3.6,belly(73.,side*3.6)))
+    door_panel('HornetNoseLegDoor'+suffix,48.,65.,lo,hi,(61.5,side*3.6,belly(61.5,side*3.6)))
+# Continuous closure land around each opening, tucked behind the panel.
+for x0,x1,y0,y1 in [(48.,83.5,-3.6,3.6),(-9.6,14.,-11.,-2.),(-9.6,14.,2.,11.)]:
+    points=[];faces=[];n=32
+    for edge in range(4):
+        for j in range(n+1):
+            t=j/n
+            for margin in (-.25,.32):
+                if edge==0:x=x0+(x1-x0)*t;y=y0+margin
+                elif edge==1:x=x1-margin;y=y0+(y1-y0)*t
+                elif edge==2:x=x1-(x1-x0)*t;y=y1-margin
+                else:x=x0+margin;y=y1-(y1-y0)*t
+                # Clamp the sampling point to the perimeter: the strip itself
+                # overlaps the cut and the retained skin on either side.
+                xx=min(x1,max(x0,x));yy=min(y1,max(y0,y))
+                points.append((x,y,belly(xx,yy)+.10))
+            if j:
+                k=len(points)-2;faces.append((k-2,k-1,k+1,k))
+    mesh=bpy.data.meshes.new('Bay closure flange');mesh.from_pydata(points,[],faces);mesh.update()
+    obj=bpy.data.objects.new('HornetBayClosureLand',mesh);bpy.context.scene.collection.objects.link(obj)
+    mesh.materials.append(inner_paint)
 bpy.data.objects.remove(closed_mesh,do_unlink=True)
 # Opaque bay wells prevent seeing through the aircraft between the doors.
 well_paint=metal('Gear well interior',(0.27,0.29,0.29,1.),0.2)
-for x0,x1,y0,y1,z0,z1 in [(48.,81.,-3.6,3.6,-4.4,-1.6),(-9.6,14.,-11.,-2.,-6.0,1.),(-9.6,14.,2.,11.,-6.0,1.)]:
-    for loc,dim in [(((x0+x1)/2,(y0+y1)/2,z1),(x1-x0,y1-y0,.16)),((x0,(y0+y1)/2,(z0+z1)/2),(.16,y1-y0,z1-z0)),((x1,(y0+y1)/2,(z0+z1)/2),(.16,y1-y0,z1-z0)),(((x0+x1)/2,y0,(z0+z1)/2),(x1-x0,.16,z1-z0)),(((x0+x1)/2,y1,(z0+z1)/2),(x1-x0,.16,z1-z0))]:
-        bpy.ops.mesh.primitive_cube_add(size=1.,location=loc)
-        obj=bpy.context.object;obj.name='HornetBayWell';obj.dimensions=dim;obj.data.materials.append(well_paint)
+for x0,x1,y0,y1,z0,z1 in [(48.,83.5,-3.6,3.6,-7.2,1.),(-9.6,14.,-11.,-2.,-9.5,-2.2),(-9.6,14.,2.,11.,-9.5,-2.2)]:
+    # Follow the actual sill along all four walls; flat-bottomed boxes hang
+    # below the hull at shallow corners and leave gaps at deep corners.
+    vertices=[];faces=[]
+    for edge in range(4):
+        for j in range(33):
+            t=j/32
+            if edge==0:x=x0+(x1-x0)*t;y=y0
+            elif edge==1:x=x1;y=y0+(y1-y0)*t
+            elif edge==2:x=x1-(x1-x0)*t;y=y1
+            else:x=x0;y=y1-(y1-y0)*t
+            vertices.extend([(x,y,belly(x,y)+.06),(x,y,z1)])
+            if j:
+                k=len(vertices)-2;faces.append((k-2,k,k+1,k-1))
+    k=len(vertices);vertices.extend([(x0,y0,z1),(x1,y0,z1),(x1,y1,z1),(x0,y1,z1)]);faces.append((k,k+1,k+2,k+3))
+    mesh=bpy.data.meshes.new('Conformal gear well');mesh.from_pydata(vertices,[],faces);mesh.update();mesh.materials.append(well_paint)
+    obj=bpy.data.objects.new('HornetBayWell',mesh);bpy.context.scene.collection.objects.link(obj)
 # Roof-mounted stiffeners and service conduits stay above the swept wheel
 # envelope. These are representative visual details, not a maintenance drawing.
-for bay,x0,x1,y0,y1,roof in [('Nose',48.,81.,-3.6,3.6,-1.6),('MainL',-9.6,14.,-11.,-2.,1.),('MainR',-9.6,14.,2.,11.,1.)]:
+for bay,x0,x1,y0,y1,roof in [('Nose',48.,83.5,-3.6,3.6,1.),('MainL',-9.6,14.,-11.,-2.,-2.2),('MainR',-9.6,14.,2.,11.,-2.2)]:
     fixed=pivot('HornetWellDetail'+bay,(0.,0.,0.))
     for fraction in (.12,.36,.64,.88):
         x=x0+(x1-x0)*fraction
@@ -361,7 +436,7 @@ for leg in ('Nose','MainL','MainR'):
                 world_parent(ring,obj)
 # Open the actual lower skin, rather than allowing gear to pass through it.
 removed_bay_area=0.
-for x0,x1,y0,y1 in [(48.,81.,-3.6,3.6),(-9.6,14.,-11.,-2.),(-9.6,14.,2.,11.)]:
+for x0,x1,y0,y1 in [(48.,83.5,-3.6,3.6),(-9.6,14.,-11.,-2.),(-9.6,14.,2.,11.)]:
     bm=bmesh.new();bm.from_mesh(airframe.data)
     inv=airframe.matrix_world.inverted()
     nm=airframe.matrix_world.to_3x3().transposed()
@@ -399,7 +474,9 @@ obj.matrix_world=airframe.matrix_world.copy()
 for mat in airframe.data.materials:obj.data.materials.append(mat)
 world_parent(obj,pivot('HornetHookPivot',(-26.,0.,-2.)))
 
+exec(compile((ROOT/'scripts/fa18f/intake_geometry.py').read_text(),str(ROOT/'scripts/fa18f/intake_geometry.py'),'exec'))
+
 bpy.ops.export_scene.gltf(filepath=str(OUTPUT), export_format='GLB', export_animations=False,
                           export_yup=True, export_apply=False)
-(OUTPUT.parent / "rig_metadata.json").write_text(json.dumps({"removed_bay_area":removed_bay_area},indent=2)+"\n")
+(OUTPUT.parent / "rig_metadata.json").write_text(json.dumps({"removed_bay_area":removed_bay_area,"removed_intake_area":removed_intake_area},indent=2)+"\n")
 print("Prepared", OUTPUT)

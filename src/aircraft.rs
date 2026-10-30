@@ -590,7 +590,9 @@ pub fn station(a: Aircraft, i: usize) -> DVec3 {
             0 => (6.48, 0.12, 2.15),
             1 => (4.40, -0.48, 1.45),
             2 => (3.46, -0.55, 1.30),
-            _ => (0.88, -0.60, 0.05),
+            // Shoulder ejector stations sit ahead of the main-wheel envelope.
+            // Shared with mass properties and released-weapon origins.
+            _ => (1.22, -0.52, -0.85),
         };
         return DVec3::new(side * span, height, aft);
     }

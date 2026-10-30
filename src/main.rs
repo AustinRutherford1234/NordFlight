@@ -1086,6 +1086,11 @@ fn main() {
                 initial_flight.gear=!mode.contains("retract");initial_flight.gear_extension=if initial_flight.gear{0.}else{1.};initial_flight.gear_door=0.;initial_flight.gear_phase=0;
                 for _ in 0..t*12 {collision::update_gear(&mut initial_flight,1./1200.);}
             }
+            if mode.starts_with("intake-") {
+                initial_view.simple=true;initial_flight.engine=!mode.contains("off");
+                initial_flight.spool=if mode.contains("idle"){0.25}else if mode.contains("off"){0.}else{1.};
+                initial_flight.gear_extension=0.;initial_flight.gear_door=0.;
+            }
             if mode.starts_with("nozzle-") {
                 initial_view.yaw=0.10;initial_view.pitch=-0.03;initial_view.zoom=0.40;
                 initial_flight.engine=false;initial_flight.spool=0.;initial_flight.thrust=0.;
@@ -2551,6 +2556,7 @@ fn update_camera(
         if mode.starts_with("nozzle-") {target=pos+rot*Vec3::new(0.,0.,7.05);p=target+rot*Vec3::new(1.2,1.1,6.8);up_view=rot*Vec3::Y;}
         if mode=="gear-main-close" {target=pos+rot*Vec3::new(1.15,-1.1,1.7);p=target+rot*Vec3::new(2.7,-0.8,3.0);up_view=rot*Vec3::Y;}
         if mode=="gear-nose-close" {target=pos+rot*Vec3::new(0.,-1.1,-5.5);p=target+rot*Vec3::new(2.1,-0.6,2.8);up_view=rot*Vec3::Y;}
+        if mode.starts_with("intake-") {target=pos+rot*Vec3::new(-0.60,0.48,3.8);p=pos+rot*Vec3::new(-0.90,0.03,-1.5);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") {target=pos+rot*Vec3::new(0.,-0.65,-1.5);p=target+rot*Vec3::new(8.,-4.,9.);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") && mode.contains("nose") {target=pos+rot*Vec3::new(0.,-0.65,-4.4);p=target+rot*Vec3::new(2.8,-2.2,3.5);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") && mode.contains("main") {target=pos+rot*Vec3::new(1.0,-0.5,1.8);p=target+rot*Vec3::new(3.3,-2.1,3.5);up_view=rot*Vec3::Y;}
@@ -2728,7 +2734,7 @@ fn update_camera(
         }
         t.set_if_neq(Transform::from_translation(p).looking_at(target, up_view));
         let reference_capture=std::env::var("NORD_FLEET_CAPTURE").ok().filter(|s|s.starts_with("detail-reference-")||s=="detail-plan-top"||s.starts_with("detail-mainbay"));
-        let fov = if let Some(mode)=reference_capture { if mode.ends_with("1"){14_f32.to_radians()}else{29_f32.to_radians()} }else if index == 1 {
+        let fov = if std::env::var("NORD_FLEET_CAPTURE").is_ok_and(|s|s.starts_with("intake-")) {30_f32.to_radians()}else if let Some(mode)=reference_capture { if mode.ends_with("1"){14_f32.to_radians()}else{29_f32.to_radians()} }else if index == 1 {
             (75.0 * v.zoom).clamp(30.0, 85.0).to_radians()
         } else if index==3&&f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::F22 {
             (72.0*v.zoom).clamp(38.0,82.0).to_radians()

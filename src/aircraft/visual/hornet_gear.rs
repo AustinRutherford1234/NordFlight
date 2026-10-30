@@ -6,8 +6,14 @@ fn main_axle(side:f32,r:f32)->Vec3 {
  let lift=((r-0.45)/0.55).clamp(0.,1.);
  p(6.1,side*(16.03-9.53*tuck),-20.3+4.3*tuck+12.0*lift)
 }
+// One transverse hinge: the nose leg swings forward/up in its vertical
+// plane. Both tyres retain their axle direction throughout the stroke.
+fn nose_swing(point:Vec3,r:f32)->Vec3 {
+ let mount=p(63.,0.,-3.5);
+ mount+Quat::from_rotation_z(1.68*r)*(point-mount)
+}
 fn nose_axle(side:f32,r:f32)->Vec3 {
- p(61.7+12.95*r+side*2.85*(r/0.45).clamp(0.,1.),side*2.12*(1.-((r-0.4)/0.45).clamp(0.,1.)),-20.17+17.37*r)
+ nose_swing(p(61.7,side*2.12,-20.17),r)
 }
 pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
  // Bevy gives primitive children names such as `...Mesh.airframe`.
@@ -25,17 +31,22 @@ pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
  if name.starts_with("HornetWheel") {
   let nose=name.contains("Nose");
   let root=if nose {p(63.,0.,-6.)} else {p(7.,side*8.,-6.)};
-  return Some(Transform::from_translation((if nose {nose_axle(side,r)}else{main_axle(side,r)})-root).with_rotation(if nose {Quat::from_rotation_x(side*((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2)}else{Quat::from_rotation_x(side*((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2)}));
+  return Some(Transform::from_translation((if nose {nose_axle(side,r)}else{main_axle(side,r)})-root).with_rotation(if nose {Quat::IDENTITY}else{Quat::from_rotation_x(side*((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2)}));
  }
  if name.starts_with("HornetStrut") {
   let nose=name.contains("Nose");
   let mount=if nose {p(63.,0.,-3.5)}else{p(7.,side*8.,-5.5)};
-  let knee=if nose {p(63.,0.,-13.).lerp(p(68.,0.,-3.5),r)}else{p(8.,side*12.,-13.).lerp(p(11.,side*7.,-3.),r)};
-  let axle=if nose {p(61.7,0.,-20.17).lerp(p(74.65,0.,-2.8),r)}else{main_axle(side,r)};
+  let knee=if nose {nose_swing(p(63.,0.,-13.),r)}else{p(8.,side*12.,-13.).lerp(p(11.,side*7.,-3.),r)};
+  let axle=if nose {nose_axle(0.,r)}else{main_axle(side,r)};
   let scissor=knee.lerp(axle,0.45)+Vec3::new(1.2,0.,0.);
   let (a,b)=if name.contains("Fork"){(axle,nose_axle(if name.contains("ForkL"){-1.}else{1.},r))}else if name.contains("Upper"){(mount,knee)}else if name.contains("Brace"){(mount+Vec3::new(5.,0.,if nose{0.9}else{0.}),knee)}else if name.contains("ScissorA"){(knee,scissor)}else if name.contains("ScissorB"){(scissor,axle)}else if name.contains("Hose"){(mount+Vec3::Z*0.8,axle+Vec3::Z*0.8)}else{(knee,axle)};
   let delta=b-a;
-  return Some(Transform::from_translation((a+b)*0.5).with_rotation(Quat::from_rotation_arc(Vec3::Y,delta.normalize()).normalize()).with_scale(Vec3::new(1.,delta.length(),1.)));
+  // A basis construction remains accurate when a link points almost exactly
+  // opposite local Y; the shortest-arc quaternion loses precision there.
+  let y=delta.normalize();let reference=if y.z.abs()<0.9 {Vec3::Z}else{Vec3::X};
+  let x=y.cross(reference).normalize();let z=x.cross(y);
+  let orientation=Quat::from_mat3(&Mat3::from_cols(x,y,z)).normalize();
+  return Some(Transform::from_translation((a+b)*0.5).with_rotation(orientation).with_scale(Vec3::new(1.,delta.length(),1.)));
  }
  None
 }
@@ -67,14 +78,14 @@ mod tests {
   assert!(t.transform_point(Vec3::Y*0.5).distance(p(63.,0.,-13.))<1e-4);
  }
  #[test]
- fn stowed_nose_tire_envelope_clears_the_well_roof() {
+ fn stowed_nose_tires_remain_upright_and_fit_the_deepened_well() {
   for side in [-1.,1.] {
    let n=if side<0.{"HornetWheelNoseL"}else{"HornetWheelNoseR"};
-   let t=pose(n,0.,0.).unwrap();
-   let axle=p(63.,0.,-6.)+t.translation;
-   // Stowed tire rotates flat; its half-width is about .6 units.
-   assert!(axle.y+1.0< -1.68);
-   assert!(axle.y-1.0> -3.86);
+   let t=pose(n,0.,0.).unwrap();let axle=p(63.,0.,-6.)+t.translation;
+   assert_eq!(t.rotation,Quat::IDENTITY);
+   assert!(axle.y+2.75<1.);assert!(axle.y-2.75> -6.5);
+   assert!(axle.x+2.75<83.5);assert!(axle.x-2.75>48.);
+   assert!((-axle.z).abs()+1.01<3.6);
   }
  }
  #[test]
@@ -85,8 +96,16 @@ mod tests {
   }
  }
  #[test]
- fn flattened_nose_wheels_clear_the_narrow_bay_during_stowage(){
-  for step in 0..=1000{let r=step as f32/1000.;let t=pose("HornetWheelNoseR",1.-r,1.).unwrap();let center=p(63.,0.,-6.)+t.translation;let angle=((r-0.45)/0.55).clamp(0.,1.)*std::f32::consts::FRAC_PI_2;let vertical=2.75*angle.cos()+1.0*angle.sin();let lateral=2.75*angle.sin()+1.0*angle.cos();if center.y+vertical> -4.4{assert!((-center.z).abs()+lateral<3.6);assert!(center.y+vertical< -1.68);}}
+ fn nose_gear_uses_one_rigid_hinge_without_lateral_twist(){
+  let mount=p(63.,0.,-3.5);let radius=mount.distance(nose_axle(1.,0.));
+  for step in 0..=1000 {
+   let r=step as f32/1000.;let left=nose_axle(-1.,r);let right=nose_axle(1.,r);
+   assert!((mount.distance(right)-radius).abs()<1e-4);
+   assert!((right-left-p(0.,4.24,0.)).length()<1e-4);
+   assert_eq!(pose("HornetWheelNoseR",1.-r,1.).unwrap().rotation,Quat::IDENTITY);
+   let lower=pose("HornetStrutLowerNose",1.-r,1.).unwrap();
+   assert!(lower.transform_point(Vec3::Y*0.5).distance(nose_axle(0.,r))<1e-4,"r={r} endpoint={:?} expected={:?}",lower.transform_point(Vec3::Y*0.5),nose_axle(0.,r));
+  }
  }
  #[test]
  fn primitive_children_keep_their_authored_offsets() {
