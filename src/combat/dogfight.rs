@@ -399,6 +399,10 @@ impl Combat {
         if f.paused {
             return;
         }
+        for target in &mut self.targets {
+            target.dynamics.carrier.active=f.carrier.active;
+            if f.carrier.active {target.dynamics.elapsed=(f.elapsed-dt).max(0.);}
+        }
         if self.bvr.is_some() {
             super::bvr::advance(self, f, dt);
             return;
@@ -652,6 +656,11 @@ impl Combat {
             };
             m.gnc.wind = self.environment.wind(m.position);
             super::guidance::fly(m, contact, support, self.sun, dt);
+            if let Some(hit)=crate::carrier::collider::sweep(f,old,m.position,dt,0.12) {
+                m.position=hit.point;m.alive=false;
+                self.impacts.push(Impact{position:hit.point,age:0.,hit:false});
+                continue;
+            }
             let (closest, _) =
                 super::damage::closest_relative(old - fight.last_player, m.position - f.position);
             let distance = closest.length();
@@ -693,6 +702,9 @@ impl Combat {
             round.age += dt;
             round.velocity -= round.position.normalize() * 9.81 * dt;
             round.position += round.velocity * dt;
+        if let Some(hit)=crate::carrier::collider::sweep(f,old,round.position,dt,0.02) {
+            round.position=hit.point;round.alive=false;continue;
+        }
             if round.hostile && !f.crashed {
                 let start = f.orientation.conjugate() * (old - fight.last_player);
                 let end = f.orientation.conjugate() * (round.position - f.position);

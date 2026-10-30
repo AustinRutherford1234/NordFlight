@@ -68,15 +68,24 @@ pub fn start(f: &mut Flight) -> bool {
     f.status = "EJECTION / CANOPY JETTISON / REAR THEN FRONT".into();
     true
 }
-fn fall(b: &mut Body, dt: f64, drag: f64) {
+fn fall(b: &mut Body, dt: f64, drag: f64, carrier:bool, elapsed:f64) {
     if b.grounded {
+        b.position+=b.velocity*dt;
         return;
     }
     let up = b.position.normalize();
     let v = b.velocity.dot(up);
     let horizontal = b.velocity - up * v;
     b.velocity = horizontal * (-drag * dt).exp() + up * ((v - 9.81 * dt) * (-drag * dt).exp());
+    let before=b.position;
     b.position += b.velocity * dt;
+    if let Some(hit)=crate::carrier::collider::sweep_at(carrier,elapsed,before,b.position,dt,0.4) {
+        b.position=hit.point+hit.normal*0.015;
+        let ship=crate::carrier::velocity(elapsed);let rel=b.velocity-ship;
+        b.velocity=ship+rel-hit.normal*rel.dot(hit.normal).min(0.)*1.1;
+        b.grounded=hit.normal.dot(up)>0.6;
+        if b.grounded {b.velocity=ship;}
+    }
     let ground = terrain_height(b.position.x, b.position.z).max(0.) + 0.4;
     if b.position.length() < RADIUS + ground {
         b.position = up * (RADIUS + ground);
@@ -103,7 +112,7 @@ fn advance_step(f: &mut Flight, dt: f64) {
     f.controls = DVec3::ZERO;
     f.autopilot = false;
     let q = f.ejection.attitude;
-    fall(&mut f.ejection.canopy, dt, 0.14);
+    fall(&mut f.ejection.canopy, dt, 0.14, f.carrier.active,f.elapsed+dt);
     for i in 0..2 {
         let t = f.ejection.age - delay(i);
         if t < 0. {
@@ -119,11 +128,11 @@ fn advance_step(f: &mut Flight, dt: f64) {
             f.ejection.pilots[i].velocity += q * DVec3::Y * 36. * dt;
         }
         let inflation = ((t - 2.) / 0.9).clamp(0., 1.);
-        fall(&mut f.ejection.pilots[i], dt, 0.06 + 1.55 * inflation);
+        fall(&mut f.ejection.pilots[i], dt, 0.06 + 1.55 * inflation,f.carrier.active,f.elapsed+dt);
         if t < 1.35 {
             f.ejection.seats[i] = f.ejection.pilots[i].clone();
         } else {
-            fall(&mut f.ejection.seats[i], dt, 0.10);
+            fall(&mut f.ejection.seats[i], dt, 0.10,f.carrier.active,f.elapsed+dt);
         }
     }
     f.status = if f.ejection.pilots[0].grounded {
@@ -581,4 +590,15 @@ mod idle_visual_regression {
                 .is_finite()
         );
     }
+}
+
+#[cfg(test)] mod carrier_contact_tests {
+ use super::*;
+ #[test]fn falling_body_lands_and_moves_with_carrier(){
+  let mut b=Body{position:crate::carrier::world(DVec3::new(-10.,crate::carrier::DECK+2.,0.),0.),velocity:crate::carrier::rotation(0.)*DVec3::NEG_Y*50.,grounded:false};
+  fall(&mut b,0.1,0.1,true,0.1);assert!(b.grounded);
+  assert!(crate::carrier::relative(b.position,0.1).y>crate::carrier::DECK);
+  let p=b.position;fall(&mut b,1.,0.1,true,1.1);
+  assert!(b.position.distance(p)>12.);
+ }
 }

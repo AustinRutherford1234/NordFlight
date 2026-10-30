@@ -677,6 +677,11 @@ impl Combat {
             };
             missile.gnc.wind = self.environment.wind(missile.position);
             guidance::fly(missile, tracked, support, self.sun, dt);
+            if let Some(hit)=crate::carrier::collider::sweep(f,old,missile.position,dt,0.12) {
+                missile.position=hit.point;missile.alive=false;
+                self.impacts.push(Impact{position:hit.point,age:0.,hit:false});
+                continue;
+            }
             let (miss, _) = damage::closest_relative(
                 old - old_targets[missile.target],
                 missile.position - target.position,

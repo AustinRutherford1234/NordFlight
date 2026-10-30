@@ -121,7 +121,11 @@ pub fn advance(f: &mut Flight, dt: f64) {
         let rho = atmosphere(d.position.length() - RADIUS).2;
         d.velocity +=
             (-d.position.normalize() * 9.81 - air * air.length() * rho * 0.16 / d.mass) * dt;
+        let before=d.position;
         d.position += d.velocity * dt;
+        if let Some(hit)=crate::carrier::collider::sweep(f,before,d.position,dt,TANK_RADIUS) {
+            d.position=hit.point;d.alive=false;continue;
+        }
         d.orientation = (d.orientation
             * DQuat::from_scaled_axis(DVec3::new(0.13, 0.04, 0.08) * dt))
         .normalize();
@@ -139,6 +143,15 @@ mod tests {
         let mut f = Flight::approach();
         crate::aircraft::select(&mut f, crate::aircraft::Aircraft::Hornet);
         f
+    }
+    #[test]
+    fn dropped_tank_stops_on_carrier_instead_of_passing_through() {
+        let mut f=flight();f.carrier.active=true;f.elapsed=1.;
+        f.position=crate::carrier::world(DVec3::new(-10.,crate::carrier::DECK+8.,0.),1.);
+        f.orientation=crate::carrier::rotation(1.);f.velocity=f.orientation*DVec3::NEG_Y*180.;
+        fit(&mut f);jettison(&mut f,Some(0));advance(&mut f,0.1);
+        let d=f.hornet.tanks.dropped[0].as_ref().unwrap();
+        assert!(!d.alive);assert!(crate::carrier::relative(d.position,1.).y>crate::carrier::DECK);
     }
     #[test]
     fn tank_fuel_mass_inertia_drag_and_release_remain_consistent() {

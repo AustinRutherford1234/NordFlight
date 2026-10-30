@@ -907,6 +907,11 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             c.sun,
             dt,
         );
+            if let Some(hit)=crate::carrier::collider::sweep(f,before,m.position,dt,0.12) {
+                m.position=hit.point;m.alive=false;
+                c.impacts.push(Impact{position:hit.point,age:0.,hit:false});
+                continue;
+            }
         let target_old = shot
             .target
             .map_or(f.position - f.velocity * dt, |i| old[i].0);
@@ -1022,6 +1027,9 @@ fn cannon(c: &mut Combat, f: &Flight, dt: f64, enemies: usize) {
         r.position += r.velocity * dt;
         if !r.alive {
             continue;
+        }
+        if let Some(hit)=crate::carrier::collider::sweep(f,r.previous,r.position,dt,0.02) {
+            r.position=hit.point;r.alive=false;continue;
         }
         for (index, t) in c.targets.iter_mut().enumerate().filter(|(_, t)| t.alive) {
             if let Some(body) = dogfight::target_bullet_hit(t, r.previous, r.position, dt) {

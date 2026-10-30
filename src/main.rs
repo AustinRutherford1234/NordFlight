@@ -1213,6 +1213,23 @@ fn main() {
             assert!(!initial_flight.crashed,"catapult sequence failed: {}",initial_flight.status);
             println!("Rail capture {mode}: bar={:?} stroke={} rail_x={} yaw_deg={}",carrier::catapult::attachment(&initial_flight),carrier::catapult::stroke(&initial_flight),carrier::catapult::X,(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).x.atan2(-(carrier::rotation(initial_flight.elapsed).conjugate()*initial_flight.forward()).z).to_degrees());
         }
+        if mode.starts_with("collision-") {
+            initial_flight.carrier.attached=false;initial_flight.carrier.launch=None;
+            initial_flight.carrier.arrested=false;initial_flight.gear=false;initial_flight.gear_extension=0.;
+            initial_flight.engine=false;initial_flight.throttle=0.;initial_flight.assist=false;
+            initial_flight.systems.hook_down=false;initial_flight.hornet.hook_angle=0.;
+            let (point,speed)=match mode.as_str() {
+                "collision-island"=>(DVec3::new(-10.,40.,60.),DVec3::X*150.),
+                "collision-hull"=>(DVec3::new(60.,8.,0.),DVec3::NEG_X*150.),
+                "collision-fast"=>(DVec3::new(-10.,carrier::DECK+100.,0.),DVec3::NEG_Y*1000.),
+                _=>(DVec3::new(-10.,carrier::DECK+12.,0.),DVec3::NEG_Y*100.),
+            };
+            initial_flight.position=carrier::world(point,0.);initial_flight.orientation=carrier::rotation(0.);
+            initial_flight.velocity=carrier::velocity(0.)+carrier::rotation(0.)*speed;
+            for _ in 0..2400 {simulate(&mut initial_flight,&initial_environment,1./240.);if initial_flight.crashed {break;}}
+            assert!(initial_flight.crashed&&initial_flight.status.contains("CARRIER COLLISION"),"missed carrier capture {mode}: {}",initial_flight.status);
+            println!("Carrier mesh collision {mode}: ship_position={:?} status={}",carrier::relative(initial_flight.position,initial_flight.elapsed),initial_flight.status);
+        }
         println!("Carrier capture {mode}: status={} altitude={} ship_velocity={:?} pitch={} rates={:?} hook={:?} payout={} absorbed_J={}",initial_flight.status,initial_flight.altitude(),initial_flight.velocity-carrier::velocity(initial_flight.elapsed),initial_flight.pitch(),initial_flight.rates,carrier::hook_point(&initial_flight),initial_flight.carrier.arrest_distance,initial_flight.hornet.cable_energy);
         initial_flight.paused=true;initial_view.help=false;initial_view.scenario=if mode=="approach"{11}else{12};initial_view.index=0;
         initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
@@ -2525,6 +2542,11 @@ fn update_camera(
         let basis=local_rot(carrier::rotation(f.elapsed),&f);
         p=target+basis*Vec3::new(260.,150.,260.);up_view=basis*Vec3::Y;
         if std::env::var("NORD_CARRIER_CAPTURE").as_deref()!=Ok("approach") {target=local(f.position,&f);p=target+basis*Vec3::new(28.,12.,30.);}
+        if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("collision-")) {
+            target=local(f.wreck_origin,&f);p=target+basis*Vec3::new(55.,28.,65.);up_view=basis*Vec3::Y;
+            if std::env::var("NORD_CARRIER_CAPTURE").as_deref()==Ok("collision-hull") {p=target+basis*Vec3::new(65.,18.,40.);}
+            if std::env::var("NORD_CARRIER_CAPTURE").as_deref()==Ok("collision-island") {p=target+basis*Vec3::new(-45.,24.,50.);}
+        }
         if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("catapult-")) {
             let at=(carrier::catapult::START+carrier::catapult::END)*0.5;target=local(carrier::world(at,f.elapsed),&f);p=target+basis*Vec3::new(0.,155.,0.01);up_view=basis*Vec3::NEG_Z;
             if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.ends_with("close")){target=local(f.position,&f);p=target+basis*Vec3::new(12.,6.,-13.);up_view=basis*Vec3::Y;}

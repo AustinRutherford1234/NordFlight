@@ -240,8 +240,9 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     f.panel_attachment = f.hornet.flow.iter().map(|s| s.attached).sum::<f64>() / 8.;
     f.systems.engines = f.damage.engines;
     crate::carrier::after_step(f, before, dt);
+    crate::collision::check_airframe_dt(f, before, previous_orientation, dt);
+    if f.crashed {return;}
     if crate::water::step(f,dt) {return;}
-    crate::collision::check_airframe(f, before, previous_orientation);
     if (crate::carrier::sea(f.position.x, f.position.z) || in_lake(f.position.x, f.position.z))
         && f.altitude() < 0.7
     {

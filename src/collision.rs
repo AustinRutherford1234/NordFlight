@@ -248,6 +248,15 @@ fn boxes() -> [(DVec3, DVec3); 5] {
     ]
 }
 pub fn check_airframe(f: &mut Flight, previous: DVec3, previous_rotation: bevy::math::DQuat) {
+    check_airframe_dt(f, previous, previous_rotation, 0.);
+}
+pub fn check_airframe_dt(f:&mut Flight,previous:DVec3,previous_rotation:bevy::math::DQuat,dt:f64) {
+    if f.crashed{return;}
+    if let Some(hit)=crate::carrier::collider::aircraft(f,previous,previous_rotation,dt) {
+        f.position=previous.lerp(f.position,(hit.fraction-1e-5).max(0.));
+        f.orientation=previous_rotation.slerp(f.orientation,hit.fraction);
+        destroy(f,"CARRIER COLLISION",hit.normal);return;
+    }
     let _measure = crate::performance::span(12);
     let end = f.position;
     let angle = previous_rotation.angle_between(f.orientation);
@@ -395,7 +404,14 @@ pub fn simulate_wreck(f: &mut Flight, dt: f64) {
     f.wreck_age += dt;
     let up = f.up();
     f.velocity -= up * (MU / f.position.length_squared()) * dt;
+    let before=f.position;
     f.position += f.velocity * dt;
+    if let Some(hit)=crate::carrier::collider::sweep(f,before,f.position,dt,0.65) {
+        f.position=hit.point+hit.normal*0.02;
+        let ship=crate::carrier::velocity(f.elapsed);let mut relative=f.velocity-ship;
+        let vn=relative.dot(hit.normal);if vn<0.{relative-=hit.normal*vn*1.08;}
+        f.velocity=ship+relative*(-dt*2.).exp();f.rates*=(-dt*3.).exp();
+    }
     let ground = terrain_height(f.position.x, f.position.z).max(0.0) + 0.65;
     if f.altitude() < ground {
         f.position = up * (RADIUS + ground);

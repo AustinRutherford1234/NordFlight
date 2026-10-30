@@ -2,7 +2,7 @@
 
 From the flight setup menu choose **CARRIER APPROACH** or **CARRIER CATAPULT**. Both use the F/A-18F. The Nimitz model by Larcenie Grant / k26_k29 is licensed CC BY 4.0; see `assets/ships/nimitz/README.md`.
 
-The carrier runs a constant straight course at 25 knots in a sea corridor around x=20 km, starting at z=-16 km in the existing local terrain. The visual deck and the convex contact outline were measured from the imported asset. The 333 m scale, island collider, angled landing lane and wire stations remain simulation estimates. The active catapult follows the measured port bow rail in the imported model; this is not a surveyed real-carrier layout.
+The carrier runs a constant straight course at 25 knots in a sea corridor around x=20 km, starting at z=-16 km in the existing local terrain. The visual deck and the convex contact outline were measured from the imported asset. The 333 m scale, angled landing lane and wire stations remain simulation estimates. A collision skin exported from the imported mesh now covers the hull, deck, island and equipment, using swept contacts in the moving ship frame; see [carrier collision validation](hornet/CARRIER_COLLISION_2026-10-29.md). The active catapult follows the measured port bow rail in the imported model; this is not a surveyed real-carrier layout.
 
 ## Controls
 

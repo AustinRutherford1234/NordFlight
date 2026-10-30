@@ -1,0 +1,59 @@
+{
+  "source_sha256": "846b8d9b42f3efdb09bb9ffdcd928ff3c08897e79ac89ced22df65848e9443a2",
+  "collision_sha256": "fab87b1409245a5027cace6d6847b8ba31f6cdd71db228b330975a45d63a6647",
+  "format": "little endian f32, three xyz vertices per triangle; metres in carrier local frame",
+  "planar_dissolve_degrees": 0.5,
+  "triangles": 69799,
+  "meshes": [
+    {
+      "mesh": "Object_10",
+      "material": "material",
+      "triangles": 828
+    },
+    {
+      "mesh": "Object_15",
+      "material": "black",
+      "triangles": 18666
+    },
+    {
+      "mesh": "Object_16",
+      "material": "white",
+      "triangles": 7169
+    },
+    {
+      "mesh": "Object_17",
+      "material": "metallic",
+      "triangles": 25222
+    },
+    {
+      "mesh": "Object_18",
+      "material": "darker_gray",
+      "triangles": 4104
+    },
+    {
+      "mesh": "Object_20",
+      "material": "door",
+      "triangles": 3764
+    },
+    {
+      "mesh": "Object_4",
+      "material": "underbody_material",
+      "triangles": 2121
+    },
+    {
+      "mesh": "Object_5",
+      "material": "concrete_baked",
+      "triangles": 188
+    },
+    {
+      "mesh": "Object_7",
+      "material": "hull_texture",
+      "triangles": 4789
+    },
+    {
+      "mesh": "Object_8",
+      "material": "island_material",
+      "triangles": 2948
+    }
+  ]
+}

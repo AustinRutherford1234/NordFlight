@@ -163,7 +163,8 @@ impl Scene {
         // Contact is substepped independently from rendering; no long-frame tunnelling.
         let steps = (dt / (1. / 120.)).ceil().max(1.) as usize;
         let h = dt / steps as f64;
-        for _ in 0..steps {
+        for substep in 0..steps {
+            let end_time=f.elapsed-dt+(substep+1)as f64*h;
             self.age += h;
             for (i, p) in self.fragments.iter_mut().enumerate() {
                 let up = p.p.normalize();
@@ -176,7 +177,14 @@ impl Scene {
                 let gv = carrier::ground_velocity(f, p.p);
                 p.v -= up * 9.81 * h;
                 p.v *= (-h * 0.09).exp();
+                let before=p.p;
                 p.p += p.v * h;
+                if let Some(hit)=carrier::collider::sweep_at(f.carrier.active,end_time,before,p.p,h,extent.max(0.04)) {
+                    p.p=hit.point+hit.normal*0.02;
+                    let gv=carrier::velocity(f.elapsed);let rel=p.v-gv;let vn=rel.dot(hit.normal);
+                    p.v=gv+(rel-hit.normal*vn.min(0.)*1.17)*(-h*1.9).exp();
+                    p.spin*=(-h*4.).exp();
+                }
                 if p.p.length() - RADIUS < support {
                     p.p = p.p.normalize() * (RADIUS + support);
                     if self.contact.is_none() && !self.water {
@@ -714,6 +722,18 @@ mod tests {
                     .filter(|(p, _)| (72..120).contains(&p.0) || p.0 == 121)
                     .all(|(_, v)| *v == Visibility::Hidden)
             );
+        }
+    }
+    #[test]
+    fn wreck_debris_does_not_fall_through_moving_deck() {
+        let mut f=impact();f.carrier.active=true;f.elapsed=0.;
+        f.position=carrier::world(DVec3::new(-10.,carrier::DECK+4.,0.),0.);
+        f.wreck_origin=f.position;f.orientation=carrier::rotation(0.);
+        f.wreck_velocity=carrier::velocity(0.)-f.up()*20.;
+        let mut scene=Scene::default();scene.start(&f);
+        for _ in 0..600 {f.elapsed+=1./120.;scene.step(&f,1./120.);}
+        for p in scene.fragments {let q=carrier::relative(p.p,f.elapsed);
+            if carrier::inside(q){assert!(q.y>=carrier::DECK-0.05,"debris below deck: {q:?}");}
         }
     }
     #[test]

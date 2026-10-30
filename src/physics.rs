@@ -1354,7 +1354,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         );
         f.structure.advance_panels_with_motion(&config, &panel_loads, &panel_motion, dt);
     }
-    crate::collision::check_airframe(f, previous, previous_rotation);
+    crate::collision::check_airframe_dt(f, previous, previous_rotation, dt);
     if !f.landed && !f.crashed {
         let status = if f.autopilot {
             "APPROACH ASSIST  •  FOLLOWING GLIDESLOPE"

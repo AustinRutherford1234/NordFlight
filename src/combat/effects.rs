@@ -192,7 +192,15 @@ impl State {
                 }
                 _ => {}
             }
+            let before=part.position;
             part.position += part.velocity * dt;
+            if matches!(part.kind,Kind::Fragment|Kind::Spark) {
+                if let Some(hit)=crate::carrier::collider::sweep(f,before,part.position,dt,0.2) {
+                    part.position=hit.point+hit.normal*0.01;
+                    let ship=crate::carrier::velocity(f.elapsed);let rel=part.velocity-ship;
+                    part.velocity=ship+(rel-hit.normal*rel.dot(hit.normal).min(0.)*1.2)*(-dt*2.).exp();
+                }
+            }
             if matches!(part.kind, Kind::Spray) && part.age>0.1 && part.position.length()<RADIUS {part.age=part.life;}
             if matches!(part.kind, Kind::Fragment) {
                 let ground = terrain_height(part.position.x, part.position.z).max(0.0) + 0.2;

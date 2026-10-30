@@ -501,6 +501,31 @@ impl Hull {
         })
     }
     /// Continuous separating-axis test of a convex piece translated past an AABB.
+    /// Continuous convex-versus-triangle SAT in a common frame. The margin bounds
+    /// rotational motion between attitude samples; translation is swept exactly.
+    pub fn sweep_triangle(&self,origin:DVec3,delta:DVec3,rotation:DQuat,tri:[DVec3;3],margin:f64)->Option<(f64,DVec3)> {
+        let edges=[tri[1]-tri[0],tri[2]-tri[1],tri[0]-tri[2]];
+        let face=edges[0].cross(-edges[2]).normalize_or_zero();
+        let mut enter=0f64;let mut leave=1f64;let mut normal=face;
+        let mut test=|axis:DVec3| {
+            if axis.length_squared()<1e-16 {return true;}
+            let axis=axis.normalize();let local=rotation.conjugate()*axis;
+            let shift=origin.dot(axis);
+            let mut lo=f64::INFINITY;let mut hi=f64::NEG_INFINITY;
+            for p in &self.vertices {let v=p.dot(local)+shift;lo=lo.min(v);hi=hi.max(v);}
+            let tlo=tri.iter().map(|p|p.dot(axis)).fold(f64::INFINITY,f64::min)-margin;
+            let thi=tri.iter().map(|p|p.dot(axis)).fold(f64::NEG_INFINITY,f64::max)+margin;
+            let speed=delta.dot(axis);
+            if speed.abs()<1e-12 {return lo<=thi&&hi>=tlo;}
+            let a=(tlo-hi)/speed;let b=(thi-lo)/speed;
+            if a.min(b)>enter {enter=a.min(b);normal=-axis*speed.signum();}
+            leave=leave.min(a.max(b));enter<=leave
+        };
+        if !test(face){return None;}
+        for n in &self.normals {if !test(rotation* *n){return None;}}
+        for e in &self.edges {for t in edges {if !test((rotation* *e).cross(t)){return None;}}}
+        (enter<=1.&&leave>=0.).then_some((enter,if normal.dot(delta)>0.{-normal}else{normal}))
+    }
     pub fn sweep_box(
         &self,
         origin: DVec3,

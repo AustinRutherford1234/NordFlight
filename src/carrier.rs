@@ -1,6 +1,7 @@
 //! First playable carrier: estimated deck contacts, forgiving wire and catapult mechanics.
 use crate::{physics::*,aircraft::Aircraft};
 pub mod catapult;
+pub mod collider;
 use bevy::{prelude::*,math::{DVec3,DQuat}};
 pub const DECK:f64=21.2*(333./303.842285);
 pub const SPEED:f64=12.86; // 25 knots, constant straight course.
@@ -27,6 +28,7 @@ pub fn ground_velocity(f:&Flight,p:DVec3)->DVec3 {if deck(f,p).is_some(){velocit
 // Angled landing lane: target x=-8 at z=75; bow is -Z.
 pub fn lane(z:f64)->f64 {-8.+(z-75.)*0.14}
 pub fn scenario(deck_start:bool)->Flight {
+ collider::preload();
  let mut f=Flight::approach();crate::aircraft::select(&mut f,Aircraft::Hornet);
  f.carrier.active=true;f.flaps=0.55;f.systems.hook_down=!deck_start;f.hornet.hook_angle=if deck_start{0.}else{0.65};
  if deck_start {f.carrier.attached=true;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;f.throttle=0.;f.spool=0.;f.thrust=0.;place_locked(&mut f);f.status="CATAPULT READY / SHIFT FULL POWER THEN ENTER".into();}
@@ -53,9 +55,6 @@ pub fn hook_point(f:&Flight)->DVec3 {
 pub const LAUNCH_POINT:DVec3=DVec3::new(0.,-1.4,-3.61);
 pub fn after_step(f:&mut Flight,previous:DVec3,dt:f64) {
  if !f.carrier.active||f.crashed{return;}
- let p=relative(f.position,f.elapsed);
- // Island collision, estimated bound; open deck collision uses the sampled outline.
- if (14. ..34.).contains(&p.x)&&(-25. ..55.).contains(&p.z)&&p.y<DECK+34.&&p.y>DECK {crate::collision::destroy(f,"CARRIER ISLAND IMPACT",rotation(f.elapsed)*DVec3::Y);return;}
  let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);
  let prev_hook=relative(previous+f.orientation*hook_point(f),(f.elapsed-dt).max(0.));
  let speed=(f.velocity-velocity(f.elapsed)).length();
