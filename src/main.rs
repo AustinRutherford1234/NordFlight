@@ -16,6 +16,7 @@ mod cockpit;
 mod cockpit_controls;
 mod cockpit_labels;
 mod collision;
+mod crash_scene;
 mod water;
 mod ejection;
 mod carrier;
@@ -1126,6 +1127,15 @@ fn main() {
                 initial_flight.paused=true;
                 println!("Hornet stores capture {mode}: mass={} external_fuel={} tanks={:?} missiles={}",initial_flight.mass(),aircraft::hornet::stores::fuel(&initial_flight),initial_flight.hornet.tanks.fuel,combat.missiles.len());
             }
+            if mode.starts_with("crash-") {
+                initial_flight=Flight::runway();aircraft::select(&mut initial_flight,a);
+                initial_flight.position+=initial_flight.up()*1.;
+                initial_flight.velocity=initial_flight.forward()*85.-initial_flight.up()*12.;
+                if mode.contains("dry"){initial_flight.fuel=0.;}
+                let up=initial_flight.up();collision::destroy(&mut initial_flight,"CRASH VISUAL CHECK",up);
+                initial_flight.wreck_age=mode.rsplit('-').next().and_then(|s|s.parse().ok()).unwrap_or(0.);
+                initial_flight.paused=true;initial_view.simple=true;initial_view.index=0;
+            }
             if mode.starts_with("escape-") {
                 initial_flight.position=initial_flight.up()*(physics::RADIUS+1200.);initial_flight.velocity=initial_flight.forward()*120.;
                 initial_flight.paused=false;
@@ -1318,7 +1328,7 @@ fn main() {
                 carrier::setup,
                 setup_view,
                 setup_ui,
-                setup_destruction,
+                (setup_destruction, crash_scene::setup).chain(),
                 navball::setup,
                 (aircraft::visual::setup,hangar::setup).chain(),
                 cockpit::setup_ball,
@@ -1375,6 +1385,7 @@ fn main() {
                         update_rcs,
                         update_stars,
                         update_destruction,
+                        crash_scene::update,
                     ),
                 ).chain().in_set(FlightStage::World),
                 (
@@ -2288,6 +2299,7 @@ fn update_camera(
     e: Res<Environment>,
     v: Res<ViewState>,
     combat: Res<combat::Combat>,
+    wreck: Option<Res<crash_scene::Scene>>,
     mut cameras: Query<
         (
             Entity,
@@ -2424,6 +2436,13 @@ fn update_camera(
     if index == 0 {
         let center = pos;
         p = center + look * (p - center) * v.zoom;
+    }
+    if f.crashed && f.vehicle==Vehicle::Gripen && f.aircraft==aircraft::Aircraft::Hornet {
+        if let Some((center,distance))=wreck.as_ref().and_then(|s|s.framing()) {
+            target=local(center,&f);
+            let direction=Quat::from_rotation_y(v.yaw)*Vec3::new(0.,0.42,1.).normalize();
+            p=target+direction*distance*v.zoom.max(0.85);up_view=Vec3::Y;
+        }
     }
     if f.ejection.active {target=local((f.ejection.pilots[0].position+f.ejection.pilots[1].position)*0.5,&f);let d=(f.ejection.pilots[0].position.distance(f.ejection.pilots[1].position)as f32*0.75+7.).clamp(7.,50.);p=target+Vec3::new(d*0.75,d*0.32,d*0.9);up_view=f.ejection.pilots[0].position.normalize().as_vec3();}
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {

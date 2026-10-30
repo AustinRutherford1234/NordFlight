@@ -1082,7 +1082,7 @@ pub fn update_destruction(
             *vis = desired;
         }
     }
-    if combat.as_ref().is_some_and(|c| c.active) {
+    if (f.aircraft == crate::aircraft::Aircraft::Hornet && f.vehicle == Vehicle::Gripen) || f.water.active || combat.as_ref().is_some_and(|c| c.active) {
         for (_, _, mut vis) in &mut pieces {
             *vis = Visibility::Hidden;
         }

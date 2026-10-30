@@ -204,15 +204,19 @@ impl State {
             }
         }
         self.particles.retain(|p| p.age < p.life);
-        self.aircraft(
-            0,
-            f.position,
-            f.velocity,
-            f.orientation,
-            &f.damage,
-            f.crashed && !f.water.active,
-            emit && !f.water.active,
-        );
+        // The dedicated Hornet wreck scene owns player breakup/fire; keep AI effects
+        // and the existing water plume, without a second overlapping explosion.
+        if !(f.aircraft == crate::aircraft::Aircraft::Hornet && f.vehicle == Vehicle::Gripen && f.crashed) {
+            self.aircraft(
+                0,
+                f.position,
+                f.velocity,
+                f.orientation,
+                &f.damage,
+                f.crashed && !f.water.active,
+                emit && !f.water.active,
+            );
+        }
         for (i, t) in c.targets.iter().take(11).enumerate() {
             self.aircraft(
                 i + 1,
