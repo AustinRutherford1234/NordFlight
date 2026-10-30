@@ -1,0 +1,278 @@
+diff --git a/src/main.rs b/src/main.rs
+index 2d47167..51b0967 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1533,1 +1533,1 @@
+-    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
++    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"ocean":ocean::diagnostics(),"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
+diff --git a/src/ocean.rs b/src/ocean.rs
+index 04ce8d4..65178ed 100644
+--- a/src/ocean.rs
++++ b/src/ocean.rs
+@@ -10,0 +11,1 @@
++    ecs::system::SystemParamItem,
+@@ -18,0 +20,9 @@
++    render::render_resource::{
++        AsBindGroupError, BindGroupLayout, BindGroupLayoutEntry, Buffer, BufferId,
++        BufferInitDescriptor, BufferUsages, OwnedBindingResource, UnpreparedBindGroup, encase,
++    },
++    render::{
++        Render, RenderApp, RenderSystems,
++        extract_resource::{ExtractResource, ExtractResourcePlugin},
++        renderer::{RenderDevice, RenderQueue},
++    },
+@@ -20,0 +31,4 @@
++use std::sync::{
++    Arc, Mutex,
++    atomic::{AtomicU64, Ordering},
++};
+@@ -136,2 +150,2 @@
+-#[derive(Asset, AsBindGroup, TypePath, Debug, Clone)]
+-pub struct Extension {
++#[derive(AsBindGroup, Debug, Clone)]
++pub struct Bindings {
+@@ -143,0 +158,114 @@
++type LiveBuffer = Arc<Mutex<Option<Buffer>>>;
++#[derive(Asset, TypePath, Debug, Clone)]
++pub struct Extension {
++    bindings: Bindings,
++    live: LiveBuffer,
++    streamed: bool,
++}
++static PREPARATIONS: AtomicU64 = AtomicU64::new(0);
++static UPLOADS: AtomicU64 = AtomicU64::new(0);
++fn streamed() -> bool {
++    std::env::var_os("NORD_OCEAN_ASSET_UNIFORMS").is_none()
++}
++impl AsBindGroup for Extension {
++    type Data = <Bindings as AsBindGroup>::Data;
++    type Param = <Bindings as AsBindGroup>::Param;
++    fn label() -> &'static str {
++        "ocean parameters"
++    }
++    fn bind_group_data(&self) -> Self::Data {
++        self.bindings.bind_group_data()
++    }
++    fn bind_group_layout_entries(
++        device: &RenderDevice,
++        force_no_bindless: bool,
++    ) -> Vec<BindGroupLayoutEntry> {
++        Bindings::bind_group_layout_entries(device, force_no_bindless)
++    }
++    fn unprepared_bind_group(
++        &self,
++        layout: &BindGroupLayout,
++        device: &RenderDevice,
++        param: &mut SystemParamItem<'_, '_, Self::Param>,
++        force_no_bindless: bool,
++    ) -> Result<UnpreparedBindGroup, AsBindGroupError> {
++        let mut group =
++            self.bindings
++                .unprepared_bind_group(layout, device, param, force_no_bindless)?;
++        if self.streamed {
++            // Derived uniforms use UNIFORM only. The persistent binding must
++            // explicitly allow COPY_DST for queue writes during render prepare.
++            let mut encoded = encase::UniformBuffer::new(Vec::new());
++            encoded
++                .write(&self.bindings.parameters)
++                .expect("ocean parameter layout");
++            let buffer = device.create_buffer_with_data(&BufferInitDescriptor {
++                label: Some("streamed ocean uniform"),
++                contents: encoded.as_ref(),
++                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
++            });
++            let binding = group
++                .bindings
++                .iter_mut()
++                .find(|(index, _)| *index == 100)
++                .expect("ocean uniform buffer binding");
++            binding.1 = OwnedBindingResource::Buffer(buffer.clone());
++            *self.live.lock().expect("ocean buffer lock") = Some(buffer);
++        }
++        PREPARATIONS.fetch_add(1, Ordering::Relaxed);
++        Ok(group)
++    }
++}
++#[derive(Resource, Clone, ExtractResource)]
++pub(crate) struct UniformSnapshot {
++    parameters: Parameters,
++    live: LiveBuffer,
++    streamed: bool,
++    active: bool,
++}
++impl Default for UniformSnapshot {
++    fn default() -> Self {
++        Self {
++            parameters: parameters(DVec3::Y * RADIUS, 0., false),
++            live: Arc::new(Mutex::new(None)),
++            streamed: streamed(),
++            active: false,
++        }
++    }
++}
++// The buffer is written in render preparation, after material assets are ready,
++// using the snapshot extracted for this frame. Never write from the main world
++// into a buffer that a pipelined previous frame may still be preparing.
++fn upload(
++    snapshot: Option<Res<UniformSnapshot>>,
++    queue: Res<RenderQueue>,
++    mut bytes: Local<Vec<u8>>,
++    mut previous: Local<Option<(BufferId, Parameters)>>,
++) {
++    let Some(snapshot) = snapshot else {
++        return;
++    };
++    if !snapshot.streamed || !snapshot.active {
++        return;
++    }
++    let Some(buffer) = snapshot.live.lock().expect("ocean buffer lock").clone() else {
++        return;
++    };
++    if previous
++        .as_ref()
++        .is_some_and(|(id, parameters)| *id == buffer.id() && *parameters == snapshot.parameters)
++    {
++        return;
++    }
++    let mut staging = encase::UniformBuffer::new(std::mem::take(&mut *bytes));
++    staging
++        .write(&snapshot.parameters)
++        .expect("ocean parameter layout");
++    queue.write_buffer(&buffer, 0, staging.as_ref());
++    *bytes = staging.into_inner();
++    *previous = Some((buffer.id(), snapshot.parameters));
++    UPLOADS.fetch_add(1, Ordering::Relaxed);
++}
++pub fn diagnostics() -> serde_json::Value {
++    serde_json::json!({"streamed":streamed(),"whole_run_extension_preparations":PREPARATIONS.load(Ordering::Relaxed),"whole_run_buffer_writes":UPLOADS.load(Ordering::Relaxed)})
++}
+@@ -165,1 +293,5 @@
+-        app.add_plugins(MaterialPlugin::<OceanMaterial>::default())
++        app.init_resource::<UniformSnapshot>()
++            .add_plugins((
++                MaterialPlugin::<OceanMaterial>::default(),
++                ExtractResourcePlugin::<UniformSnapshot>::default(),
++            ))
+@@ -166,0 +299,3 @@
++        if let Some(render) = app.get_sub_app_mut(RenderApp) {
++            render.add_systems(Render, upload.in_set(RenderSystems::PrepareResources));
++        }
+@@ -345,0 +481,1 @@
++    snapshot: Res<UniformSnapshot>,
+@@ -361,2 +497,6 @@
+-            parameters: parameters(DVec3::Y * RADIUS, 0., false),
+-            detail: images.add(detail_image()),
++            bindings: Bindings {
++                parameters: snapshot.parameters,
++                detail: images.add(detail_image()),
++            },
++            live: snapshot.live.clone(),
++            streamed: snapshot.streamed,
+@@ -388,0 +529,1 @@
++    mut snapshot: ResMut<UniformSnapshot>,
+@@ -397,0 +539,3 @@
++        if snapshot.active != show {
++            snapshot.active = show;
++        }
+@@ -425,0 +570,3 @@
++        if snapshot.parameters != desired {
++            snapshot.parameters = desired;
++        }
+@@ -427,1 +574,1 @@
+-            m.extension.parameters != desired
++            (!snapshot.streamed && m.extension.bindings.parameters != desired)
+@@ -433,1 +580,1 @@
+-                m.extension.parameters = desired;
++                m.extension.bindings.parameters = desired;
+@@ -442,0 +590,91 @@
++    fn update_app(streaming: bool) -> (App, Handle<OceanMaterial>) {
++        let mut app = App::new();
++        app.add_plugins(MinimalPlugins);
++        let mut snapshot = UniformSnapshot::default();
++        snapshot.streamed = streaming;
++        let mut assets = Assets::<OceanMaterial>::default();
++        let handle = assets.add(OceanMaterial {
++            base: StandardMaterial::default(),
++            extension: Extension {
++                bindings: Bindings {
++                    parameters: snapshot.parameters,
++                    detail: Handle::default(),
++                },
++                live: snapshot.live.clone(),
++                streamed: streaming,
++            },
++        });
++        app.insert_resource(crate::carrier::scenario(true))
++            .insert_resource(crate::ViewState::default())
++            .insert_resource(snapshot)
++            .insert_resource(assets)
++            .add_systems(Update, update);
++        app.world_mut().spawn((
++            Ocean,
++            Transform::default(),
++            Visibility::Visible,
++            MeshMaterial3d(handle.clone()),
++        ));
++        app.world_mut()
++            .spawn((crate::FlightCamera, Transform::default()));
++        (app, handle)
++    }
++    #[test]
++    fn animation_updates_snapshot_without_mutating_streamed_material() {
++        for streaming in [false, true] {
++            let (mut app, handle) = update_app(streaming);
++            app.update();
++            let original = app
++                .world()
++                .resource::<Assets<OceanMaterial>>()
++                .get(&handle)
++                .unwrap()
++                .extension
++                .bindings
++                .parameters;
++            app.world_mut().resource_mut::<Flight>().elapsed = 3.5;
++            app.update();
++            let current = app.world().resource::<UniformSnapshot>();
++            assert_ne!(original, current.parameters);
++            let material = app
++                .world()
++                .resource::<Assets<OceanMaterial>>()
++                .get(&handle)
++                .unwrap();
++            if streaming {
++                assert_eq!(original, material.extension.bindings.parameters);
++            } else {
++                assert_eq!(current.parameters, material.extension.bindings.parameters);
++            }
++        }
++    }
++    #[test]
++    fn paused_snapshot_is_unchanged_and_reset_and_map_are_current() {
++        let (mut app, _) = update_app(true);
++        app.update();
++        let tick = app
++            .world()
++            .get_resource_ref::<UniformSnapshot>()
++            .unwrap()
++            .last_changed();
++        app.update();
++        assert_eq!(
++            tick,
++            app.world()
++                .get_resource_ref::<UniformSnapshot>()
++                .unwrap()
++                .last_changed()
++        );
++        app.world_mut().resource_mut::<Flight>().elapsed = 10.;
++        app.update();
++        let advanced = app.world().resource::<UniformSnapshot>().parameters;
++        *app.world_mut().resource_mut::<Flight>() = crate::physics::Flight::runway();
++        app.update();
++        assert_ne!(
++            advanced,
++            app.world().resource::<UniformSnapshot>().parameters
++        );
++        app.world_mut().resource_mut::<crate::ViewState>().map = true;
++        app.update();
++        assert!(!app.world().resource::<UniformSnapshot>().active);
++    }

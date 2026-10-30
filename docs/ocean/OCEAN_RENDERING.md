@@ -1,5 +1,7 @@
 # Gaussian ocean surface
 
+See [the optimization investigation](OPTIMIZATION_2026-10-30.md) for the subsequent rejected candidates and profiling limits. The original runtime was retained after that investigation; the measurements below describe this initial delivery.
+
 The former local water was a smooth StandardMaterial on a 90 km grid with 900 m cells. The new local surface uses a seeded 24-mode Gaussian random field, directional log-spaced wavelengths from 12 to 220 m, and deep-water angular frequency `sqrt(g * |k|)`. Spectrum normalization gives an offshore significant wave height estimate of 1.8 m (`4 * sigma`, linear-sea approximation). This is a visual engineering model, not a calibrated regional sea forecast. Inland water is reduced to one tenth of offshore amplitude; the carrier sea boundary blends smoothly.
 
 ## Cost decisions made before integration
