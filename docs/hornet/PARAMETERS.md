@@ -54,6 +54,7 @@
 | Tyre friction / rolling / brake | lateral μ .65 land / .35 deck; 14,000 N s/m cornering stiffness; rolling .016; added brake μ .55 | Engineering estimate, low | lateral .4–.9, rolling .01–.03 |
 | Carrier speed / outline / deck altitude | 12.86 m/s; measured polygon; 23.23 m nominal local height | Existing mode specification and Grant's mesh, medium | Outline is coarse; not a deck survey |
 | Hook pivot / shank / lowering angle | body (0,.15,5.16) m; 3.5 m; .65 rad | Imported pivot plus shank estimate, medium/low | tip location ±.2 m |
+| Arrest reaction point | Hook pivot (0,.15,5.16) m; tip remains the crossing/payout geometry | Reduced-order articulated-hook estimate, low; explicit hinge/damper moments omitted | Pivot ±.2 m; joint torque model unvalidated |
 | Launch attachment | (0,-1.4,-3.61) m | Nose gear rig / launch-bar estimate, low | ±.2 m |
 | Nose wheel steering | 2 rad/s steering/caster rate, ±.5 rad caster limit above 20 m/s with released steering | Engineering approximation, very low; not a verified F/A-18F NWS law | Rate ±50%; threshold 10–30 m/s |
 | Catapult | 131.865 m modeled-rail stroke, 78 m/s design deck-relative speed; force cap 800 kN; down-component ratio .38 | Rail length measured from the imported asset; energy/stroke schedule estimated, low; mass, drag, engines integrated normally | ±20%; no proprietary catapult curve |

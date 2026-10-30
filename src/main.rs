@@ -1220,6 +1220,18 @@ fn main() {
             if mode.contains("night"){initial_environment.day_phase=1.73;}
             if mode.contains("motion"){initial_flight.elapsed=6.;initial_flight.position+=carrier::origin(6.)-carrier::origin(0.);}
         }
+        if mode.starts_with("landing-roll-") {
+            initial_flight=carrier::scenario(false);
+            initial_flight.orientation=carrier::rotation(0.)*bevy::math::DQuat::from_rotation_y(0.14)*bevy::math::DQuat::from_rotation_x(0.07)*bevy::math::DQuat::from_rotation_z(1f64.to_radians());
+            let clear=collision::wheel_clearance(&initial_flight);
+            initial_flight.position=carrier::world(DVec3::new(carrier::lane(125.)+6.,carrier::DECK+clear+0.45,125.),0.);
+            initial_flight.velocity=carrier::velocity(0.)+carrier::rotation(0.)*DVec3::new(-9.8,-4.,-70.);initial_flight.throttle=0.45;
+            let duration=match mode.as_str(){"landing-roll-touch"=>0.2,"landing-roll-decel"=>2.,"landing-roll-slow"=>4.,_=>12.};
+            for _ in 0..(duration*240.)as usize{simulate(&mut initial_flight,&initial_environment,1./240.);}
+            assert!(!initial_flight.crashed,"landing review: {}",initial_flight.status);
+            println!("LANDING REVIEW time={} roll={} pitch={} deck_speed={} compression={:?}",initial_flight.elapsed,initial_flight.roll().to_degrees(),initial_flight.pitch().to_degrees(),(initial_flight.velocity-carrier::velocity(initial_flight.elapsed)).length(),initial_flight.gear_compression);
+            initial_view.simple=true;
+        }
         if mode.starts_with("escorts-") {
             initial_view.simple = true;
             if mode.contains("night") {
@@ -2585,6 +2597,9 @@ fn update_camera(
                 if mode.contains("altitude"){target=local(carrier::origin(f.elapsed),&f);p=target+basis*Vec3::new(0.,1400.,1700.);}
                 up_view=basis*Vec3::Y;
             }
+        }
+        if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("landing-roll-")) {
+            target=local(f.position,&f)+basis*Vec3::new(0.,-0.8,0.);p=target+basis*Vec3::new(22.,4.,-5.);up_view=basis*Vec3::Y;
         }
         if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.starts_with("collision-")) {
             target=local(f.wreck_origin,&f);p=target+basis*Vec3::new(55.,28.,65.);up_view=basis*Vec3::Y;

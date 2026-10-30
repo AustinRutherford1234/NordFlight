@@ -613,3 +613,6 @@ mod numerical_envelope {
         assert!((final_momentum - momentum).length() / momentum.length() < 0.01);
     }
 }
+
+#[cfg(test)]
+mod deck_stability;

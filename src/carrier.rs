@@ -46,12 +46,14 @@ pub fn scenario(deck_start:bool)->Flight {
 fn place_locked(f:&mut Flight) {let clearance=crate::collision::wheel_clearance(f);let mut p=f.carrier.deck_position;p.y=DECK+clearance-0.12;f.position=world(p,f.elapsed);f.orientation=rotation(f.elapsed);f.velocity=velocity(f.elapsed);f.rates=DVec3::ZERO;f.landed=true;f.airspeed=SPEED;f.alpha=0.;f.beta=0.;}
 pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.launch_stroke=catapult::stroke(f).max(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
 pub fn attach(f:&mut Flight) {if f.carrier.active&&f.landed&&(f.velocity-velocity(f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
-/// Hook-tip geometry derived from the imported pivot and shank. Shared by
-/// attachment loads, crossing detection and wire rendering; animated angle is
-/// integrated by the physics clock rather than render time.
+/// Airframe attachment of the articulated hook (body coordinates).
+pub const HOOK_PIVOT:DVec3=DVec3::new(0.,0.15,5.16);
+/// Deployed tip used for wire crossing, payout geometry and wire rendering.
+/// The reaction on the airframe uses HOOK_PIVOT as a reduced-order articulated
+/// load path; hinge/damper reaction moments are not yet modeled explicitly.
 pub fn hook_point(f:&Flight)->DVec3 {
  let a=f.hornet.hook_angle;
- DVec3::new(0.,0.15-3.5*a.sin(),5.16+3.5*a.cos())
+ HOOK_PIVOT+DVec3::new(0.,-3.5*a.sin(),3.5*a.cos())
 }
 pub const LAUNCH_POINT:DVec3=DVec3::new(0.,-1.4,-3.61);
 pub fn after_step(f:&mut Flight,previous:DVec3,dt:f64) {
@@ -138,10 +140,14 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
  if f.carrier.arrested {
   let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);
   let center=f.carrier.deck_position;let left=DVec3::new(center.x-15.,DECK,center.z)-hook;let right=DVec3::new(center.x+15.,DECK,center.z)-hook;
-  let payout=(left.length()+right.length()-30.).max(0.)*0.5;let arm=hook_point(f)-cg;
-  let hook_velocity=v+basis.conjugate()*(f.orientation*f.rates.cross(arm));
+  let payout=(left.length()+right.length()-30.).max(0.)*0.5;
+  // The point catches the wire, but an articulated hook transfers the
+  // arrest load at its airframe pivot. A rigid tip lever falsely applies a
+  // large nose-down and rolling moment through the freely pivoting shank.
+  let arm=HOOK_PIVOT-cg;
+  let attachment_velocity=v+basis.conjugate()*(f.orientation*f.rates.cross(arm));
   let direction=(left.normalize_or_zero()+right.normalize_or_zero()).normalize_or_zero();
-  let separating=(-hook_velocity.dot(direction)).max(0.);
+  let separating=(-attachment_velocity.dot(direction)).max(0.);
   f.carrier.arrest_distance=payout;f.carrier.arrest_speed=v.length();
   // Hydraulic absorber resists payout without elastic recoil. Static hold is
   // velocity-proportional; it never injects the cable's dissipated energy.
