@@ -246,6 +246,7 @@ impl State {
             if !t.alive || self.clock < r.next_shot {
                 continue;
             }
+            if r.role==Role::Bomber&&r.bay<0.98{continue;}
             let range = t.position.distance(carrier::ship_origin(f, 0, f.elapsed));
             let player = f.position - t.position;
             let engage_player = r.aam > 0
@@ -277,7 +278,7 @@ impl State {
                 } else {
                     Kind::AntiShip
                 };
-                let p = t.position - t.position.normalize() * 2.;
+                let p = if r.role==Role::Bomber{t.position+t.orientation*super::bomber::release_station(r.stores)}else{t.position-t.position.normalize()*2.};
                 if self.round(source, target, kind, p, t.velocity) {
                     let r = &mut self.raiders[i];
                     if engage_player {
@@ -740,5 +741,16 @@ mod defense_tests {
 }
 
 #[cfg(test)]mod raid_target_tests{use super::*;
- #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
+ #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
+}
+#[cfg(test)]mod bay_interlock_tests{use super::*;
+ #[test]fn bomber_release_waits_for_open_bays_and_empty_bays_close(){
+  let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.retain(|r|r.role==Role::Bomber);
+  for r in &mut n.raiders{r.next_shot=0.;r.bay=0.;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(1000.,3000.,-18000.),0.);t.velocity=carrier::rotation(0.)*DVec3::Z*220.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());ai::initialize(t);}
+  n.hostile_launches(&c,&f);assert!(n.rounds.is_empty());
+  for _ in 0..240{n.pilots(&mut c,&f,1./120.);n.clock+=1./120.;}
+  assert!(n.raiders.iter().all(|r|r.bay>0.99));n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);
+  for m in &n.rounds{let TargetId::Aircraft(id)=m.source else{panic!("aircraft source")};let r=n.raiders.iter().find(|r|r.id==id).unwrap();let t=&c.targets[r.slot];assert!(m.position.distance(t.position+t.orientation*super::super::bomber::release_station(2))<1e-6);}
+  for r in &mut n.raiders{r.stores=0;r.withdrew=true;}for _ in 0..240{n.pilots(&mut c,&f,1./120.);}assert!(n.raiders.iter().all(|r|r.bay<0.01));
+ }
 }

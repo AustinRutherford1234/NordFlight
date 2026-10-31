@@ -192,9 +192,11 @@ for side, base in ((-1, 0), (1, 4)):
             ((-39.,0.,0.),(-1.,0.,0.)),((0.,0.,-3.),(0.,0.,1.)),((0.,0.,6.),(0.,0.,-1.))]
     partition_surface(airframe, 'HornetPanel%d' % base, planes, (-44.,side*17.,0.))
     # Rudders on the aft portion of each canted vertical tail.
+    # Full trailing rudder, rather than the former X=-42 fin-tip sliver.
+    # Swept hinge: x + .478*z = -24.654; fin cant grows .307 lateral/up.
     planes=[((0.,side*7.,0.),(0.,side,0.)),((0.,side*26.,0.),(0.,-side,0.)),
-            ((-42.,0.,0.),(-1.,0.,0.)),((0.,0.,7.),(0.,0.,1.))]
-    partition_surface(airframe, 'HornetPanel%d' % (base+3), planes, (-42.,side*14.,15.))
+            ((-28.,0.,7.),(-1.,0.,-.478)),((0.,0.,7.),(0.,0.,1.))]
+    partition_surface(airframe, 'HornetPanel%d' % (base+3), planes, (-28.,side*11.5,7.))
     # Small leading-edge-root spoiler panel, approximated from the source skin.
     planes=[((22.,0.,0.),(1.,0.,0.)),((32.,0.,0.),(-1.,0.,0.)),
             ((0.,side*7.,0.),(0.,side,0.)),((0.,side*13.,0.),(0.,-side,0.)),

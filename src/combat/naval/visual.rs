@@ -108,6 +108,7 @@ pub fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    server:Res<AssetServer>,
 ) {
     commands.init_resource::<Speech>();
     let skin = materials.add(StandardMaterial {
@@ -186,7 +187,8 @@ pub fn setup(
         ]);
     }
     let surfaces = meshes.add(mesh(wings));
-    let bomber = meshes.add(bomber());
+    super::bomber::setup(&mut commands,&server);
+    let bomber = std::env::var_os("NORD_BOMBER_REFERENCE").map(|_|meshes.add(bomber()));
     let standard = meshes.add(Capsule3d::new(0.18, 4.2));
     let small = meshes.add(Capsule3d::new(0.13, 2.7));
     let sphere = meshes.add(Sphere::new(1.).mesh().uv(12, 8));
@@ -214,6 +216,7 @@ pub fn setup(
                     Transform::default(),
                 ));
             });
+        if let Some(bomber)=&bomber{
         commands
             .spawn((
                 NavalVisual { kind: 1, index },
@@ -229,6 +232,7 @@ pub fn setup(
                     Transform::from_xyz(0., 1.4, -12.).with_scale(Vec3::new(1.1, 0.5, 2.4)),
                 ));
             });
+        }
     }
     for index in 0..WEAPON_LIMIT {
         commands.spawn((

@@ -1005,6 +1005,10 @@ fn main() {
                 if mode=="belly-gear" {initial_flight.gear=true;initial_flight.gear_extension=1.;initial_flight.gear_door=0.;}
             }
             if mode=="external"{initial_flight.systems.external_stores=true;}
+            if a==aircraft::Aircraft::Hornet&&mode.starts_with("rudder-") {
+                initial_flight.hornet.initialized=true;let angle=if mode.ends_with("left"){-0.4}else if mode.ends_with("right"){0.4}else{0.};
+                initial_flight.hornet.angles[3]=angle;initial_flight.hornet.angles[7]=angle;initial_flight.engine=false;initial_flight.thrust=0.;initial_flight.paused=true;initial_view.simple=true;
+            }
             if a==aircraft::Aircraft::Hornet&&mode.starts_with("stabilator-") {
                 initial_flight.hornet.initialized=true;
                 let angle=if mode.ends_with("up"){0.3}else{-0.3};
@@ -1448,7 +1452,7 @@ fn main() {
                     step.in_set(FlightStage::Simulation),
                 (
                     combat::camera_controls.run_if(start_screen::flight_controls),
-                    combat::naval::draw,
+                    (combat::naval::bomber::register,combat::naval::bomber::update,combat::naval::draw).chain(),
                     (
                         terrain::update,
                         update_world,
@@ -2646,6 +2650,9 @@ fn update_camera(
             if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.ends_with("close")){target=local(f.position,&f);p=target+basis*Vec3::new(12.,6.,-13.);up_view=basis*Vec3::Y;}
         }
     }
+    if std::env::var("NORD_FLEET_CAPTURE").is_ok_and(|m|m.starts_with("rudder-")) {
+        target=pos+rot*Vec3::new(0.,2.,6.4);p=target+rot*Vec3::new(3.2,1.8,7.5);up_view=rot*Vec3::Y;
+    }
     if let Some(missile) = v
         .missile_follow
         .and_then(|follow| combat.render_missile(follow.missile))
@@ -2701,6 +2708,7 @@ fn update_camera(
         up_view=q*Vec3::Y;
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
+    if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {if mode.starts_with("bomber-"){if let Some(t)=combat.targets.get(2){let q=world::local_rot(t.orientation,&f);let center=local(t.position,&f);target=center;let offset=if mode.contains("belly"){Vec3::new(3.,-48.,5.)}else if mode.contains("top"){Vec3::new(0.,65.,0.01)}else if mode.contains("rear"){Vec3::new(14.,10.,55.)}else{Vec3::new(40.,18.,-45.)};p=center+q*offset;up_view=q*if mode.contains("belly")||mode.contains("top"){Vec3::NEG_Z}else{Vec3::Y};}}}
     let mut sun_pose = None;
     for (
         entity,

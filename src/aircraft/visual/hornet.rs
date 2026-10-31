@@ -271,6 +271,9 @@ fn in_import(mut entity: Entity, parents: &Query<&ChildOf>, roots: &Query<(), Wi
     }
 }
 
+// Source +Z up exports to glTF +Y. Follow both fin cant and hinge sweep.
+fn rudder_axis(index:usize)->Vec3 {Vec3::new(-0.478,1.,if index==3{0.307}else{-0.307}).normalize()}
+
 // Visual angular velocity, not a claim to reproduce F414 rotor RPM.
 fn intake_fan_rate(spool:f64)->f32 {140.*spool.clamp(0.,1.) as f32}
 
@@ -311,7 +314,7 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
             "HornetWheelMainL" | "HornetWheelMainR" => Some(Quat::from_rotation_z(*wheel_spin)),
             _ if name.starts_with("HornetPanel") => name.strip_prefix("HornetPanel").and_then(|s|s.parse::<usize>().ok()).filter(|i|*i<angles.len()).map(|i| {
                 let value=crate::control_surfaces::effective_angle(&f.damage,i,angles[i]) as f32;
-                if i==3 || i==7 {Quat::from_rotation_y(value)} else {Quat::from_rotation_z(if i==0 || i==4 {-value}else{value})}
+                if i==3 || i==7 {Quat::from_axis_angle(rudder_axis(i),value)} else {Quat::from_rotation_z(if i==0 || i==4 {-value}else{value})}
             }),
             _=>None,
         };
@@ -570,4 +573,16 @@ mod tests {
         assert_ne!(*app.world().get::<Transform>(e).unwrap(),pose);
     }
 
+}
+
+#[cfg(test)]mod rudder_tests {
+ use super::*;
+ #[test]fn rudders_follow_both_signed_actuator_angles_about_swept_canted_hinges(){
+  let mut app=App::new();let mut f=Flight::runway();f.aircraft=Aircraft::Hornet;f.hornet.initialized=true;
+  app.insert_resource(f).init_resource::<crate::ViewState>().init_resource::<Time>().add_systems(Update,update);
+  let root=app.world_mut().spawn((ImportedHornet,Transform::default(),Visibility::Inherited)).id();
+  let rudders=[3,7].map(|i|app.world_mut().spawn((Name::new(format!("HornetPanel{i}")),Transform::default(),Visibility::Inherited,ChildOf(root))).id());
+  for angle in [-0.4,0.,0.4]{for i in [3,7]{app.world_mut().resource_mut::<Flight>().hornet.angles[i]=angle;}app.update();for (entity,i)in rudders.into_iter().zip([3,7]){let q=app.world().get::<Transform>(entity).unwrap().rotation;assert!(q.angle_between(Quat::from_axis_angle(rudder_axis(i),angle as f32))<1e-5);let axis=rudder_axis(i);assert!((q*axis-axis).length()<1e-5);if angle!=0.{assert!((q*Vec3::NEG_X-Vec3::NEG_X).length()>0.3);}}}
+ }
+ #[test]fn yaw_commands_actuate_both_rudders_without_visual_overrides(){let mut f=Flight::runway();f.aircraft=Aircraft::Hornet;f.assist=false;f.controls.y=1.;f.hornet.initialized=true;for _ in 0..240{crate::aircraft::hornet::aero::advance_actuators(&mut f,10000.,1./240.);}assert!(f.hornet.angles[3]< -0.2&&f.hornet.angles[7]< -0.2);}
 }

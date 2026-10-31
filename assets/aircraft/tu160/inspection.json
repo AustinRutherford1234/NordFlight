@@ -1,0 +1,80 @@
+{
+  "author": "SIpriv",
+  "license": "CC BY 4.0",
+  "source": "https://sketchfab.com/3d-models/lowpoly-tu-160-6cdcef13c1a244978cba2957e0394c88",
+  "source_sha256": "3232b2f4bb7a6959a1d7c1ea82f44f8bfea676454a22534cad8b1b9b7566d7f0",
+  "length_m": 54.1,
+  "removed_loose_objects": [
+    "Object_310",
+    "Object_312",
+    "Object_315",
+    "Object_318",
+    "Object_321",
+    "Object_324",
+    "Object_327",
+    "Object_330"
+  ],
+  "hinges_body": [
+    {
+      "name": "BomberBay0",
+      "position": [
+        -1.7242904901504517,
+        -1.0233852863311768,
+        4.0267181396484375
+      ]
+    },
+    {
+      "name": "BomberBay1",
+      "position": [
+        1.7242904901504517,
+        -0.8259475231170654,
+        4.0267181396484375
+      ]
+    },
+    {
+      "name": "BomberBay2",
+      "position": [
+        -1.4018279314041138,
+        -1.2076609134674072,
+        -11.174407958984375
+      ]
+    },
+    {
+      "name": "BomberBay3",
+      "position": [
+        1.4018279314041138,
+        -1.2076609134674072,
+        -11.174407958984375
+      ]
+    }
+  ],
+  "lods": [
+    {
+      "level": 0,
+      "triangles": 12271,
+      "bytes": 889456
+    },
+    {
+      "level": 1,
+      "triangles": 6175,
+      "bytes": 515372
+    },
+    {
+      "level": 2,
+      "triangles": 2274,
+      "bytes": 246780
+    }
+  ],
+  "bounds_blender": [
+    [
+      -21.48322105407715,
+      -27.05000114440918,
+      -2.546947717666626
+    ],
+    [
+      21.48322105407715,
+      27.050003051757812,
+      6.712888717651367
+    ]
+  ]
+}

@@ -5,6 +5,7 @@ pub mod damage;
 mod radio;
 mod visual;
 mod weapons;
+pub mod bomber;
 pub use radio::Speech;
 pub use visual::{draw, setup};
 pub const AIRCRAFT_LIMIT: usize = 12;
@@ -61,6 +62,7 @@ pub struct Raider {
     pub slot: usize,
     pub role: Role,
     pub stores: u8,
+    pub bay:f64,
     pub aam: u8,
     pub next_shot: f64,
     pub withdrew: bool,
@@ -243,6 +245,7 @@ impl State {
                 slot,
                 role,
                 stores: if role == Role::Bomber { 2 } else { 1 },
+                bay:0.,
                 aam: if role == Role::Fighter { 4 } else { 0 },
                 next_shot: self.clock + 10.,
                 withdrew: false,
@@ -258,6 +261,8 @@ impl State {
                 continue;
             };
             let ship = carrier::ship_origin(f, 0, f.elapsed);
+            let open=r.role==Role::Bomber&&r.stores>0&&!r.withdrew&&!self.ended&&t.position.distance(ship)<28000.;
+            let desired=if open{1.}else{0.};r.bay+=(desired-r.bay).clamp(-0.5*dt,0.5*dt);
             let outward = (t.position - ship).normalize();
             let player = f.position - t.position;
             let hunt = r.role == Role::Fighter
@@ -909,6 +914,11 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
         n.report(f);
         println!("NAVAL native review {mode}: {}", n.report);
         c.naval = Some(n);
+    }
+    if mode.starts_with("bomber-"){
+        if let Some(n)=&mut c.naval{for r in &mut n.raiders{if r.role==Role::Bomber{r.bay=if mode.contains("open"){1.}else if mode.contains("half"){0.5}else{0.};}}}
+        v.restore_camera();v.follow_aircraft(2);v.yaw=if mode.contains("rear"){0.4}else{2.5};v.pitch=if mode.contains("belly"){0.7}else{-0.3};v.zoom=2.1;
+        f.paused=std::env::var_os("NORD_NAVAL_LIVE").is_none();return;
     }
     if mode == "hud" {
         *f = flight(false);
