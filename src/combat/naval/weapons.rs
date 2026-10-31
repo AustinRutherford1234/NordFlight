@@ -829,3 +829,21 @@ mod defense_tests {
   f.landed=false;assert!(!n.service(&mut c,&mut f));assert_eq!(n.ship_chaff[0],15);
  }
 }
+
+#[cfg(test)] mod larger_bomber_load_tests {
+ use super::*;
+ #[test] fn each_bomber_releases_full_load_before_withdrawing_and_opening_the_next_raid() {
+  let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();
+  for r in &mut n.raiders {r.next_shot=0.;r.aam=0;if r.role!=Role::Bomber {r.stores=0;continue;}
+   assert_eq!(r.stores,BOMBER_MISSILES);assert_eq!(c.targets[r.slot].dynamics.bomber_stores,BOMBER_MISSILES);
+   r.bay=1.;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);
+   t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());
+  }
+  for shot in 0..BOMBER_MISSILES {n.clock=shot as f64*5.;n.hostile_launches(&c,&f);
+   assert_eq!(n.rounds.len(),(shot as usize+1)*2);
+   assert!(n.raiders.iter().filter(|r|r.role==Role::Bomber).all(|r|r.withdrew==(shot+1==BOMBER_MISSILES)));
+   if shot+1<BOMBER_MISSILES {n.spawn(&mut c,&f);assert_eq!(n.waves,1);}
+  }
+  n.spawn(&mut c,&f);assert_eq!(n.waves,2);
+ }
+}

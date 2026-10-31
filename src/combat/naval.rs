@@ -11,6 +11,7 @@ mod ordnance;
 pub(super) mod tactics;
 pub use radio::Speech;
 pub use visual::{draw, setup};
+pub const BOMBER_MISSILES: u8 = 24;
 pub const AIRCRAFT_LIMIT: usize = 12;
 pub const WEAPON_LIMIT: usize = 96;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -251,7 +252,7 @@ impl State {
             };
             ai::initialize(&mut t);
             crate::aircraft::select(&mut t.dynamics, crate::aircraft::Aircraft::Su27);
-            if role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,2);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
+            if role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,BOMBER_MISSILES);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
 
             if slot == c.targets.len() {
                 c.targets.push(t);
@@ -263,7 +264,7 @@ impl State {
                 id,
                 slot,
                 role,
-                stores: if role == Role::Bomber { 2 } else { 1 },
+                stores: if role == Role::Bomber { BOMBER_MISSILES } else { 1 },
                 bay:0.,
                 aam: if role == Role::Fighter { 4 } else { 0 },
                 next_shot: self.clock + 10.,
@@ -874,7 +875,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
             t.orientation = facing(t.velocity.normalize(), t.position.normalize());
             ai::initialize(t);
             crate::aircraft::select(&mut t.dynamics, crate::aircraft::Aircraft::Su27);
-            if r.role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,2);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
+            if r.role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,BOMBER_MISSILES);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
 
         }
         for _ in 0..if mode=="map-guidance-hostile" {1800}else{600} {

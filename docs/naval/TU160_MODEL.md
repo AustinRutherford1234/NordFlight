@@ -47,3 +47,9 @@ The initial matched pair gave 63.5 FPS for the old model and 58.6 FPS for the Tu
 The initial GPU-counter-enabled attempt failed in Metal with `Cannot allocate sample buffer` / `Parent device is lost`. The successful comparisons used the existing `NORD_BENCH_FPS_ONLY` path; no GPU pass-cost claims are made. Machine-readable samples are in `tu160-validation.json`; local raw captures/logs remain under `tests/bomber-performance/`.
 
 The existing Mac app was rebuilt with `./build-mac.sh dev` and its ad-hoc signature verified. A currently running flight retains its loaded executable/assets until relaunch. User flight review remains separate from the scripted evidence above.
+
+## Expanded mission loadout
+
+Carrier Defense now assigns 24 anti-ship missiles to each bomber (48 per two-bomber raid). This is a requested gameplay loadout, not a claim about the installed model's real missile capacity. The existing 1,500 kg simulation mass per store is included in the aircraft plant. Releases alternate the two bay origins at the existing five-second cadence, retain door/geometry interlocks, and consume ammunition only on accepted launches. The 96-airborne-weapon cap remains unchanged. Withdrawal and next-raid eligibility still require the bombers to expend their load or be destroyed.
+
+Validation: all 35 naval tests passed, including a complete 48-missile release/inventory/next-wave test and an extended 800-second physical approach, full-load release and withdrawal test. No new native-app diagnostics were run for this inventory change. The existing Mac app was rebuilt and signature-verified.

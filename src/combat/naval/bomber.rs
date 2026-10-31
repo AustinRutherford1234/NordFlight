@@ -138,7 +138,7 @@ pub fn update(
     }
 }
 pub fn release_station(remaining: u8) -> DVec3 {
-    model_alignment().as_dquat() * DVec3::new(0., -1.8, if remaining >= 2 { -11.12 } else { 3.63 })
+    model_alignment().as_dquat() * DVec3::new(0., -1.8, if remaining % 2 == 0 { -11.12 } else { 3.63 })
 }
 #[cfg(test)]
 mod tests {
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(level(400., Some(0)), 1);
         assert_eq!(level(1900., Some(1)), 1);
         assert_eq!(level(2100., Some(1)), 2);
-        for n in [1, 2] {
+        for n in 1..=super::BOMBER_MISSILES {
             let p = release_station(n);
             assert!(p.y < -1.33 && p.x.abs() < 0.9);
         }

@@ -169,7 +169,8 @@ mod tests {
         let mut peak_bomber_g: f64 = 0.;
         let mut peak_bomber_rate: f64 = 0.;
         let mut samples = vec![];
-        for k in 0..12000 {
+        // Allow the full 24-store salvo at the existing five-second cadence.
+        for k in 0..16000 {
             let dt = 0.05;
             f.elapsed += dt;
             n.clock += dt;
