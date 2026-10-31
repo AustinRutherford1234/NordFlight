@@ -1166,6 +1166,17 @@ fn main() {
                 initial_flight.hornet.hud.mode=if mode.contains("air"){cockpit::hornet_hud::MasterMode::Air}else if mode.contains("ground"){cockpit::hornet_hud::MasterMode::Ground}else{cockpit::hornet_hud::MasterMode::Nav};
                 if mode.contains("ground") {initial_flight.orientation*=bevy::math::DQuat::from_rotation_x(-0.18);initial_flight.velocity=initial_flight.forward()*150.;}
                 if mode.contains("air") {combat.start(&initial_flight,initial_view.generation);if mode.contains("radar"){combat.weapon=combat::Weapon::Radar;}combat.targets[0].position=initial_flight.position+initial_flight.forward()*1600.;combat.targets[0].velocity=initial_flight.velocity;combat.lock=2.;}
+                if mode.contains("lock-review") {
+                    combat.lock=0.;
+                    if mode.contains("blocked"){combat.radar.powered=false;}
+                    let duration=if mode.contains("acquiring"){0.25}else{2.};
+                    for _ in 0..(duration*120.) as usize {combat.advance(&initial_flight,1./120.);}
+                    let state=cockpit::hornet_hud::acquisition(&initial_flight,&combat);
+                    println!("HUD LOCK REVIEW mode={mode} lock={} fraction={} reason={:?}",combat.lock,state.fraction,state.reason);
+                    if mode.contains("blocked"){assert!(state.reason.is_some()&&!state.locked);}
+                    else if mode.contains("acquiring"){assert!(state.reason.is_none()&&!state.locked&&state.fraction>0.);}
+                    else{assert!(state.locked);}
+                }
                 if mode.contains("bank") {initial_flight.orientation*=bevy::math::DQuat::from_rotation_z(30_f64.to_radians());}
                 if mode.contains("reject") {initial_flight.hornet.hud.reject=2;}
                 if mode.contains("off") {initial_flight.battery=false;}
@@ -1945,6 +1956,9 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
     f.best_landing = best;
     let aircraft=if matches!(scenario,11|12){aircraft::Aircraft::Hornet}else{aircraft};
     if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11|12) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
+    if aircraft==aircraft::Aircraft::Hornet && matches!(scenario,4..=8) {
+        f.hornet.hud.mode=cockpit::hornet_hud::MasterMode::Air;
+    }
     if aircraft==aircraft::Aircraft::F22{f.systems.external_stores=external_stores;}
     if f.vehicle==Vehicle::Gripen&&aircraft==aircraft::Aircraft::Hornet&&hornet_tanks {aircraft::hornet::stores::configure_scenario(f);}
     v.generation = v.generation.wrapping_add(1);

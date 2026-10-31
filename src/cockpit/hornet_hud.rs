@@ -463,6 +463,28 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
         c.text(caution, 213., 65., 1.5);
     }
 }
+#[derive(Debug)]
+pub(crate) struct Acquisition {
+    pub reason: Option<&'static str>,
+    pub fraction: f32,
+    pub locked: bool,
+    pub ready: bool,
+}
+pub(crate) fn acquisition(f:&Flight,combat:&Combat)->Acquisition {
+    let reason=if combat.active {combat.cue(f).err()}else{Some("SELECT COMBAT SCENARIO")};
+    let fraction=if reason.is_none(){crate::combat::hud::lock_fraction(combat)}else{0.};
+    let locked=reason.is_none()&&combat.lock>=combat.weapon.lock_time();
+    Acquisition{reason,fraction,locked,ready:locked&&!f.paused&&combat.ammo[combat.weapon.index()]>0}
+}
+// Use both azimuth and elevation. A target below the HUD must cue downward,
+// even when its azimuth is zero. Behind targets use an angular turn cue.
+fn target_direction(f:&Flight,delta:DVec3)->Vec2 {
+    let body=f.orientation.conjugate()*delta;
+    let az=body.x.atan2(-body.z);
+    let el=body.y.atan2(body.x.hypot(body.z));
+    let direction=Vec2::new(az as f32,-el as f32);
+    if direction.length_squared()>1e-10 {direction.normalize()}else{Vec2::NEG_Y}
+}
 fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
     let heat = combat.weapon == Weapon::Heat;
     c.text(if heat { "9X" } else { "120" }, 20., 297., 1.6);
@@ -477,15 +499,24 @@ fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
         1.2,
     );
     let bore = project(f, f.forward()).unwrap_or(Vec2::new(256., 192.));
-    c.circle(bore, if heat { 45. } else { 66. });
-    if !combat.active {
-        return;
-    }
+    let track=acquisition(f,combat);
+    // A tracking IR seeker follows the actual designated contact. Keeping
+    // its reticle nailed to boresight falsely looks like a failed lock.
+    let seeker=if heat&&track.reason.is_none() {
+        combat.targets.get(combat.selected).and_then(|t|project(f,t.position-f.position)).filter(|p|in_field(*p))
+    }else{None};
+    if let Some(p)=seeker {c.circle(p,if track.locked{13.}else{20.});}
+    else if !track.locked {c.circle(bore,if heat{45.}else{66.});}
+    c.text(if track.locked {"LOCK"}else if track.reason.is_none(){"ACQ"}else{"NO LOCK"},220.,320.,1.5);
+    if let Some(reason)=track.reason {c.text(reason,150.,298.,1.0);}
+    else if !track.locked {c.text(&format!("ACQ {:02.0}%",track.fraction*100.),215.,300.,1.2);}
+    c.text(if track.ready {"RDY"}else{"INHIBIT"},419.,311.,1.2);
+    if !combat.active {return;}
+    c.text(&format!("T{:02} / TAB NEXT",combat.selected+1),200.,280.,1.0);
     if let Some(t) = combat.targets.get(combat.selected).filter(|t| t.alive) {
         let range = t.position.distance(f.position);
         let closure = crate::combat::hud::closing(f, t);
-        let acquired = combat.cue(f).is_ok();
-        let locked = acquired && combat.lock >= combat.weapon.lock_time();
+        let locked = track.locked;
         if let Some(p) = project(f, t.position - f.position).filter(|p| in_field(*p)) {
             c.box_at(p - Vec2::splat(9.), Vec2::splat(18.));
             if locked {
@@ -498,9 +529,7 @@ fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
                 }
             }
         } else {
-            let body = f.orientation.conjugate() * (t.position - f.position);
-            let angle = body.x.atan2(-body.z) as f32;
-            let d = Vec2::new(angle.sin(), -angle.cos());
+            let d = target_direction(f,t.position-f.position);
             let p = Vec2::new(256., 185.) + d * 90.;
             c.line(p, p - d * 15. + Vec2::new(-d.y, d.x) * 5.);
             c.line(p, p - d * 15. - Vec2::new(-d.y, d.x) * 5.);
@@ -508,29 +537,9 @@ fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
         }
         c.text(&format!("R {:.1}", range / 1852.), 418., 270., 1.4);
         c.text(&format!("VC {:+.0}", closure * 1.943844), 406., 290., 1.2);
-        c.text(
-            if locked {
-                "LOCK"
-            } else if acquired {
-                "ACQ"
-            } else {
-                "NO LOCK"
-            },
-            220.,
-            320.,
-            1.5,
-        );
-        // Readiness from the existing weapon logic. No invented NEZ / PK scale.
-        c.text(
-            if locked && combat.ammo[combat.weapon.index()] > 0 {
-                "RDY"
-            } else {
-                "INHIBIT"
-            },
-            419.,
-            311.,
-            1.2,
-        );
+        if locked && f.paused {c.text("RESUME TO FIRE",210.,300.,1.0);}
+        else if locked && combat.ammo[combat.weapon.index()]==0 {c.text("NO MISSILES",215.,300.,1.0);}
+
     }
 }
 fn ground(c: &mut Canvas, f: &Flight, combat: &Combat) {
@@ -585,6 +594,14 @@ mod tests {
             (calibrated_speed(1. + 1e-7, 50000.) - calibrated_speed(1. - 1e-7, 50000.)).abs()
                 < 0.001
         );
+    }
+    #[test]
+    fn offscreen_target_cues_include_elevation_and_bearing() {
+        let f=flight();
+        for (body,expected) in [(DVec3::new(0.,1.,-1.),Vec2::NEG_Y),(DVec3::new(0.,-1.,-1.),Vec2::Y),(DVec3::new(1.,0.,-1.),Vec2::X),(DVec3::new(-1.,0.,-1.),Vec2::NEG_X)] {
+            assert!(target_direction(&f,f.orientation*body).distance(expected)<1e-6);
+        }
+        assert!(target_direction(&f,-f.forward()).is_finite());
     }
     #[test]
     fn projection_and_landing_bracket_signs() {

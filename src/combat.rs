@@ -2975,3 +2975,6 @@ mod tests {
 
 #[cfg(test)]
 mod side_bay_tests;
+
+#[cfg(test)]
+mod hornet_lock_tests;
