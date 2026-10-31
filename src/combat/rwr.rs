@@ -105,6 +105,7 @@ fn emissions(c: &Combat, f: &Flight) -> Vec<(usize, DVec3, Level)> {
             ));
         }
     }
+    if let Some(n)=&c.naval {for m in n.rounds.iter().filter(|m|m.alive&&m.kind==super::naval::Kind::AirToAir&&m.target==super::naval::TargetId::Player&&m.age>1.){if guidance::terrain_visible(m.position,f.position){result.push((100000+(m.id%100000)as usize,m.position,Level::Missile));}}}
     // A passive RF receiver sees a missile only after its radar seeker radiates.
     for (i, m) in c.missiles_for_draw().enumerate() {
         let hostile = c.bvr.as_ref().map_or(i >= c.missiles.len(), |b| {

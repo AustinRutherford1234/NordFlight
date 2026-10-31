@@ -68,7 +68,8 @@ pub fn start(f: &mut Flight) -> bool {
     f.status = "EJECTION / CANOPY JETTISON / REAR THEN FRONT".into();
     true
 }
-fn fall(b: &mut Body, dt: f64, drag: f64, carrier:bool, elapsed:f64) {
+#[cfg(test)]fn fall(b:&mut Body,dt:f64,drag:f64,active:bool,elapsed:f64){let carrier=crate::carrier::State{active,..Default::default()};fall_state(b,dt,drag,&carrier,elapsed);}
+fn fall_state(b: &mut Body, dt: f64, drag: f64, carrier:&crate::carrier::State, elapsed:f64) {
     if b.grounded {
         b.position+=b.velocity*dt;
         return;
@@ -79,9 +80,9 @@ fn fall(b: &mut Body, dt: f64, drag: f64, carrier:bool, elapsed:f64) {
     b.velocity = horizontal * (-drag * dt).exp() + up * ((v - 9.81 * dt) * (-drag * dt).exp());
     let before=b.position;
     b.position += b.velocity * dt;
-    if let Some(hit)=crate::carrier::collider::sweep_at(carrier,elapsed,before,b.position,dt,0.4) {
+    if let Some(hit)=crate::carrier::collider::sweep_state(carrier,elapsed,before,b.position,dt,0.4) {
         b.position=hit.point+hit.normal*0.015;
-        let ship=crate::carrier::velocity(elapsed);let rel=b.velocity-ship;
+        let ship=crate::carrier::state_velocity(carrier,hit.ship,b.position,elapsed);let rel=b.velocity-ship;
         b.velocity=ship+rel-hit.normal*rel.dot(hit.normal).min(0.)*1.1;
         b.grounded=hit.normal.dot(up)>0.6;
         if b.grounded {b.velocity=ship;}
@@ -112,7 +113,7 @@ fn advance_step(f: &mut Flight, dt: f64) {
     f.controls = DVec3::ZERO;
     f.autopilot = false;
     let q = f.ejection.attitude;
-    fall(&mut f.ejection.canopy, dt, 0.14, f.carrier.active,f.elapsed+dt);
+    fall_state(&mut f.ejection.canopy, dt, 0.14, &f.carrier,f.elapsed+dt);
     for i in 0..2 {
         let t = f.ejection.age - delay(i);
         if t < 0. {
@@ -128,11 +129,11 @@ fn advance_step(f: &mut Flight, dt: f64) {
             f.ejection.pilots[i].velocity += q * DVec3::Y * 36. * dt;
         }
         let inflation = ((t - 2.) / 0.9).clamp(0., 1.);
-        fall(&mut f.ejection.pilots[i], dt, 0.06 + 1.55 * inflation,f.carrier.active,f.elapsed+dt);
+        fall_state(&mut f.ejection.pilots[i], dt, 0.06 + 1.55 * inflation,&f.carrier,f.elapsed+dt);
         if t < 1.35 {
             f.ejection.seats[i] = f.ejection.pilots[i].clone();
         } else {
-            fall(&mut f.ejection.seats[i], dt, 0.10,f.carrier.active,f.elapsed+dt);
+            fall_state(&mut f.ejection.seats[i], dt, 0.10,&f.carrier,f.elapsed+dt);
         }
     }
     f.status = if f.ejection.pilots[0].grounded {

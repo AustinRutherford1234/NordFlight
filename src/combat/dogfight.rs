@@ -282,6 +282,26 @@ impl Combat {
             difficulty.label()
         ));
     }
+    pub(super) fn install_naval_weapons(&mut self,f:&Flight){let difficulty=Difficulty::Balanced;
+        self.fight = Some(Fight {
+            difficulty,
+            enemy_missiles: vec![],
+            decoys: vec![],
+            rounds: vec![],
+            flares: 24,
+            chaff: 24,
+            gun: f.aircraft.spec().gun,
+            next_decoy: 1,
+            flare_at: -10.0,
+            chaff_at: -10.0,
+            gun_at: 0.0,
+            gun_held: false,
+            last_player: f.position,
+            launched: 0,
+            diverted: 0,
+            gun_hits: 0,
+        });
+    }
     pub fn difficulty(&self) -> Option<Difficulty> {
         self.fight.as_ref().map(|f| f.difficulty)
     }
@@ -388,6 +408,7 @@ impl Combat {
     pub fn tick(&mut self, f: &mut Flight, dt: f64) {
         if f.paused {return;}
         self.tick_combat(f,dt);
+        if let Some(mut naval)=self.naval.take(){naval.advance(self,f,dt);self.naval=Some(naval);}
         // The rail pose belongs to the completed aircraft step. Release at
         // that endpoint, after existing missiles advance, so a new round is
         // not integrated through an interval preceding its actual release.
@@ -401,6 +422,7 @@ impl Combat {
         }
         for target in &mut self.targets {
             target.dynamics.carrier.active=f.carrier.active;
+            target.dynamics.carrier.motion=f.carrier.motion;
             if f.carrier.active {target.dynamics.elapsed=(f.elapsed-dt).max(0.);}
         }
         if self.bvr.is_some() {
@@ -436,6 +458,7 @@ impl Combat {
         let live_missiles = fight.enemy_missiles.iter().filter(|m| m.alive).count();
         let mut permitted = fight.difficulty.salvo_limit().saturating_sub(live_missiles);
         for (i, t) in self.targets.iter_mut().enumerate() {
+            if self.naval.is_some(){break;}
             if !t.alive || f.crashed {
                 continue;
             }
@@ -743,6 +766,7 @@ impl Combat {
                             target.alive = false;
                             target.wreck_age = 0.0;
                             self.hits += 1;
+                            if let Some(n)=&mut self.naval{n.player_kills+=1;}
                             self.impacts.push(Impact {
                                 position: target.position,
                                 age: 0.0,
@@ -1305,7 +1329,7 @@ pub fn draw(
 ) {
     let active = combat.fight.is_some() && combat.active && !v.map && f.vehicle == Vehicle::Gripen;
     for mut panel in &mut panels {
-        panel.display = if active && !v.simple && v.index != 3 {
+        panel.display = if active && !v.simple && v.index != 3 && v.ship_follow.is_none() {
             Display::Flex
         } else {
             Display::None

@@ -152,11 +152,11 @@ fn near(a: DVec3, b: DVec3, pad: f64) -> bool {
         DVec3::new(45., 70., 170.),
     )
 }
-fn result(end_time: f64, local: (f64, DVec3), a: DVec3, b: DVec3, dt: f64, ship: usize) -> Hit {
+fn result(f:Option<&State>,end_time: f64, local: (f64, DVec3), a: DVec3, b: DVec3, dt: f64, ship: usize) -> Hit {
     let time = end_time - dt + dt * local.0;
     Hit {
         fraction: local.0,
-        normal: rotation(time) * local.1,
+        normal: f.map_or_else(||rotation(time),|s|state_rotation(s,ship,time)) * local.1,
         point: a.lerp(b, local.0),
         ship,
     }
@@ -174,14 +174,14 @@ pub fn aircraft(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64) -> Option<Hi
 }
 fn aircraft_ship(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64, ship: usize) -> Option<Hit> {
     let start_time = f.elapsed - dt;
-    let a = relative(previous, start_time) - ship_offset(ship);
-    let b = relative(f.position, f.elapsed) - ship_offset(ship);
+    let a = ship_relative(f,ship,previous,start_time);
+    let b = ship_relative(f,ship,f.position,f.elapsed);
     let radius = f.aircraft.spec().length.max(20.);
     if !near_ship(a, b, radius, ship) {
         return None;
     }
-    let qa = rotation(start_time).conjugate() * old_q;
-    let qb = rotation(f.elapsed).conjugate() * f.orientation;
+    let qa = ship_rotation(f,ship,start_time).conjugate() * old_q;
+    let qb = ship_rotation(f,ship,f.elapsed).conjugate() * f.orientation;
     let angle = qa.angle_between(qb);
     let steps = (angle / 0.025).ceil().clamp(1., 128.) as usize;
     let margin = radius * (angle / steps as f64 * 0.5).sin().abs() + 0.012;
@@ -261,12 +261,14 @@ fn aircraft_ship(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64, ship: usize
         }
     }
 
-    first.map(|h| result(f.elapsed, h, previous, f.position, dt, ship))
+    first.map(|h| result(Some(&f.carrier),f.elapsed, h, previous, f.position, dt, ship))
 }
 /// Swept world-space sphere used by debris, projectiles and wreck transport.
 pub fn sweep(f: &Flight, a: DVec3, b: DVec3, dt: f64, radius: f64) -> Option<Hit> {
-    sweep_at(f.carrier.active, f.elapsed, a, b, dt, radius)
+    if !f.carrier.active{return None;}
+    (0..3).filter_map(|ship|sweep_ship(Some(&f.carrier),f.elapsed,a,b,dt,radius,ship)).min_by(|a,b|a.fraction.total_cmp(&b.fraction))
 }
+pub fn sweep_state(s:&State,end_time:f64,a:DVec3,b:DVec3,dt:f64,radius:f64)->Option<Hit>{if !s.active{return None;}(0..3).filter_map(|ship|sweep_ship(Some(s),end_time,a,b,dt,radius,ship)).min_by(|a,b|a.fraction.total_cmp(&b.fraction))}
 pub fn sweep_at(
     active: bool,
     end_time: f64,
@@ -280,12 +282,12 @@ pub fn sweep_at(
     }
 
     (0..3)
-        .filter_map(|ship| sweep_ship(end_time, a, b, dt, radius, ship))
+        .filter_map(|ship| sweep_ship(None,end_time, a, b, dt, radius, ship))
         .min_by(|a, b| a.fraction.total_cmp(&b.fraction))
 }
-fn sweep_ship(end_time: f64, a: DVec3, b: DVec3, dt: f64, radius: f64, ship: usize) -> Option<Hit> {
-    let start = relative(a, end_time - dt) - ship_offset(ship);
-    let end = relative(b, end_time) - ship_offset(ship);
+fn sweep_ship(f:Option<&State>,end_time: f64, a: DVec3, b: DVec3, dt: f64, radius: f64, ship: usize) -> Option<Hit> {
+    let start = f.map_or_else(||relative(a,end_time-dt)-ship_offset(ship),|s|state_relative(s,ship,a,end_time-dt));
+    let end = f.map_or_else(||relative(b,end_time)-ship_offset(ship),|s|state_relative(s,ship,b,end_time));
     if !near_ship(start, end, radius, ship) {
         return None;
     }
@@ -301,7 +303,7 @@ fn sweep_ship(end_time: f64, a: DVec3, b: DVec3, dt: f64, radius: f64, ship: usi
             }
         },
     );
-    first.map(|h| result(end_time, h, a, b, dt, ship))
+    first.map(|h| result(f,end_time, h, a, b, dt, ship))
 }
 fn sphere_triangle(a: DVec3, b: DVec3, r: f64, p: [DVec3; 3]) -> Option<(f64, DVec3)> {
     let delta = b - a;

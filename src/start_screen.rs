@@ -69,6 +69,7 @@ impl Menu {
         m
     }
     fn scenario_id(&self) -> u8 {
+        if matches!(self.scenario,13|14){return 13+match self.difficulty{Difficulty::Training=>0,Difficulty::Balanced=>2,Difficulty::Hard=>4}+u8::from(self.scenario==14);}
         if self.scenario == 5 {
             match self.difficulty {
                 Difficulty::Training => 5,
@@ -335,7 +336,7 @@ pub fn controls(
     scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
     mut panels: Query<&mut ScrollPosition, With<Root>>,
 ) {
-    let esc = keys.just_pressed(KeyCode::Escape);
+    let esc = keys.just_pressed(KeyCode::Escape) && !combat.naval.as_ref().is_some_and(|n|n.radio_open);
     if !menu.open {
         if esc && !hangar.open && !bvr.open {
             menu.saved_pause = f.paused;
@@ -343,7 +344,7 @@ pub fn controls(
             menu.space = f.vehicle == Vehicle::Spacecraft;
             menu.scenario = if (5..=7).contains(&view.scenario) {
                 5
-            } else {
+            } else if (13..=18).contains(&view.scenario) {13+(view.scenario-13)%2} else {
                 view.scenario
             };
             menu.fbw = f.assist;
@@ -355,6 +356,9 @@ pub fn controls(
                 5 => Difficulty::Training,
                 6 => Difficulty::Balanced,
                 7 => Difficulty::Hard,
+                13|14 => Difficulty::Training,
+                15|16 => Difficulty::Balanced,
+                17|18 => Difficulty::Hard,
                 _ => bvr.difficulty,
             };
             f.paused = true;
@@ -397,7 +401,7 @@ pub fn controls(
                 menu.scenario = if menu.space { 3 } else { 1 };
             }
             10..=14 => menu.aircraft = Aircraft::ALL[(id - 10) as usize],
-            100..=112 => {menu.scenario = (id - 100) as u8;if matches!(id,111|112){menu.aircraft=Aircraft::Hornet;}},
+            100..=114 => {menu.scenario = (id - 100) as u8;if matches!(id,111..=114){menu.aircraft=Aircraft::Hornet;}},
             200..=202 => {
                 menu.difficulty = match id {
                     200 => Difficulty::Training,
@@ -568,12 +572,13 @@ pub fn ui(
                 row(p,|p| {for (id,name) in [(0,"COLD & DARK"),(1,"TAKEOFF"),(2,"APPROACH")] {button(p,100+id,name,menu.scenario==id as u8);}});
                 heading(p,"CARRIER / F/A-18F");
                 row(p,|p| {button(p,111,"CARRIER APPROACH",menu.scenario==11);button(p,112,"CARRIER CATAPULT",menu.scenario==12);});
+                row(p,|p| {button(p,113,"DEFENSE / DECK",menu.scenario==13);button(p,114,"DEFENSE / AIRBORNE",menu.scenario==14);});
                 heading(p,"COMBAT / TARGET PRACTICE");
                 row(p,|p| {button(p,104,"TARGET PRACTICE",menu.scenario==4);button(p,105,"AIR COMBAT",menu.scenario==5);});
                 heading(p,"BEYOND VISUAL RANGE");
                 row(p,|p| {for (i,name) in ["1 vs 2","2 vs 2","2 vs 4","4 vs 8"].into_iter().enumerate() {button(p,210+i as u16,name,menu.scenario==8&&menu.formation==i);}});
-                if (5..=8).contains(&menu.scenario) {
-                    row(p,|p| {for (i,d) in [Difficulty::Training,Difficulty::Balanced,Difficulty::Hard].into_iter().enumerate(){button(p,200+i as u16,d.label(),menu.difficulty==d);}});
+                if (5..=8).contains(&menu.scenario) || matches!(menu.scenario,13|14) {
+                    row(p,|p| {for (i,d) in [Difficulty::Training,Difficulty::Balanced,Difficulty::Hard].into_iter().enumerate(){button(p,200+i as u16,if matches!(menu.scenario,13|14){["EASY","NORMAL","HARD"][i]}else{d.label()},menu.difficulty==d);}});
                 }
                 if menu.scenario==8 {row(p,|p| {button(p,220,"ELIMINATION",!menu.defense);button(p,221,"INTERCEPT / DEFEND",menu.defense);});}
             }

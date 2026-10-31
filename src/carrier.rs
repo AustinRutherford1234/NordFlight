@@ -8,8 +8,21 @@ pub const DECK:f64=21.2*(333./303.842285);
 pub const SPEED:f64=12.86; // 25 knots, constant straight course.
 const SCALE:f32=333./303.842285;
 #[derive(Clone,Debug)]
-pub struct State {pub active:bool,pub guidance:bool,pub attached:bool,pub launch:Option<f64>,pub launch_stroke:f64,pub arrested:bool,pub arrest_speed:f64,pub arrest_distance:f64,pub wire:usize,pub deck_position:DVec3}
-impl Default for State {fn default()->Self {Self{active:false,guidance:true,attached:false,launch:None,launch_stroke:0.,arrested:false,arrest_speed:0.,arrest_distance:0.,wire:0,deck_position:DVec3::ZERO}}}
+pub struct State {pub defense:bool,pub operational:bool,pub motion:[Motion;3],pub active:bool,pub guidance:bool,pub attached:bool,pub launch:Option<f64>,pub launch_stroke:f64,pub arrested:bool,pub arrest_speed:f64,pub arrest_distance:f64,pub wire:usize,pub deck_position:DVec3}
+impl Default for State {fn default()->Self {Self{defense:false,operational:true,motion:[Motion::default();3],active:false,guidance:true,attached:false,launch:None,launch_stroke:0.,arrested:false,arrest_speed:0.,arrest_distance:0.,wire:0,deck_position:DVec3::ZERO}}}
+/// Damage displacement relative to the original straight-course carrier frame.
+#[derive(Clone,Copy,Debug)]
+pub struct Motion {pub offset:DVec3,pub rotation:DQuat,pub linear:DVec3,pub angular:DVec3,pub at:f64}
+impl Default for Motion {fn default()->Self{Self{offset:DVec3::ZERO,rotation:DQuat::IDENTITY,linear:DVec3::ZERO,angular:DVec3::ZERO,at:0.}}}
+pub fn state_origin(s:&State,ship:usize,t:f64)->DVec3 {let m=s.motion[ship];world((if ship==0{DVec3::ZERO}else{escorts::offset(ship-1)})+m.offset+m.linear*(t-m.at),t)}
+pub fn state_rotation(s:&State,ship:usize,t:f64)->DQuat {let m=s.motion[ship];rotation(t)*m.rotation*DQuat::from_scaled_axis(m.angular*(t-m.at))}
+pub fn state_relative(s:&State,ship:usize,p:DVec3,t:f64)->DVec3 {state_rotation(s,ship,t).conjugate()*(p-state_origin(s,ship,t))}
+pub fn state_velocity(s:&State,ship:usize,p:DVec3,t:f64)->DVec3 {velocity(t)+rotation(t)*s.motion[ship].linear+(rotation(t)*s.motion[ship].angular).cross(p-state_origin(s,ship,t))}
+pub fn ship_origin(f:&Flight,ship:usize,t:f64)->DVec3 {state_origin(&f.carrier,ship,t)}
+pub fn ship_rotation(f:&Flight,ship:usize,t:f64)->DQuat {state_rotation(&f.carrier,ship,t)}
+pub fn ship_world(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3{ship_origin(f,ship,t)+ship_rotation(f,ship,t)*p}
+pub fn ship_relative(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3{state_relative(&f.carrier,ship,p,t)}
+pub fn ship_velocity(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3 {state_velocity(&f.carrier,ship,p,t)}
 pub fn origin(t:f64)->DVec3 {surface_point(20000.,-16000.-SPEED*t,0.)}
 pub fn rotation(t:f64)->DQuat {DQuat::from_rotation_arc(DVec3::Y,origin(t).normalize())}
 pub fn velocity(t:f64)->DVec3 {rotation(t)*DVec3::NEG_Z*SPEED}
@@ -20,12 +33,12 @@ const HULL:&[(f64,f64)]=&[(-39.17,36.52),(-37.84,-60.21),(-12.52,-162.53),(-10.3
 pub fn inside(p:DVec3)->bool {(0..HULL.len()).all(|i| {let a=HULL[i];let b=HULL[(i+1)%HULL.len()];(b.0-a.0)*(p.z-a.1)-(b.1-a.1)*(p.x-a.0)>=0.})}
 pub fn deck(f:&Flight,p:DVec3)->Option<(f64,DVec3)> {
  if !f.carrier.active{return None;}
- let q=relative(p,f.elapsed);
- (inside(q)&&q.y>DECK-4.).then(||((world(DVec3::new(q.x,DECK,q.z),f.elapsed).length()-RADIUS),rotation(f.elapsed)*DVec3::Y))
+ let q=ship_relative(f,0,p,f.elapsed);
+ (inside(q)&&q.y>DECK-4.).then(||((ship_world(f,0,DVec3::new(q.x,DECK,q.z),f.elapsed).length()-RADIUS),ship_rotation(&f,0,f.elapsed)*DVec3::Y))
 }
 pub fn ground(f:&Flight,p:DVec3)->f64 {deck(f,p).map_or_else(||terrain_height(p.x,p.z).max(0.),|v|v.0)}
 pub fn normal(f:&Flight,p:DVec3)->DVec3 {deck(f,p).map_or_else(||crate::terrain::normal(p),|v|v.1)}
-pub fn ground_velocity(f:&Flight,p:DVec3)->DVec3 {if deck(f,p).is_some(){velocity(f.elapsed)}else{DVec3::ZERO}}
+pub fn ground_velocity(f:&Flight,p:DVec3)->DVec3 {if deck(f,p).is_some(){ship_velocity(f,0,p,f.elapsed)}else{DVec3::ZERO}}
 // Angled landing lane: target x=-8 at z=75; bow is -Z.
 pub fn lane(z:f64)->f64 {-8.+(z-75.)*0.14}
 pub fn scenario(deck_start:bool)->Flight {
@@ -43,9 +56,9 @@ pub fn scenario(deck_start:bool)->Flight {
  }
  f
 }
-fn place_locked(f:&mut Flight) {let clearance=crate::collision::wheel_clearance(f);let mut p=f.carrier.deck_position;p.y=DECK+clearance-0.12;f.position=world(p,f.elapsed);f.orientation=rotation(f.elapsed);f.velocity=velocity(f.elapsed);f.rates=DVec3::ZERO;f.landed=true;f.airspeed=SPEED;f.alpha=0.;f.beta=0.;}
-pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.launch_stroke=catapult::stroke(f).max(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
-pub fn attach(f:&mut Flight) {if f.carrier.active&&f.landed&&(f.velocity-velocity(f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
+fn place_locked(f:&mut Flight) {let clearance=crate::collision::wheel_clearance(f);let mut p=f.carrier.deck_position;p.y=DECK+clearance-0.12;f.position=ship_world(f,0,p,f.elapsed);f.orientation=ship_rotation(&f,0,f.elapsed);f.velocity=ship_velocity(&f,0,f.position,f.elapsed);f.rates=DVec3::ZERO;f.landed=true;f.airspeed=SPEED;f.alpha=0.;f.beta=0.;}
+pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.operational&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.launch_stroke=catapult::stroke(f).max(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
+pub fn attach(f:&mut Flight) {if f.carrier.active&&f.carrier.operational&&f.landed&&(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
 /// Airframe attachment of the articulated hook (body coordinates).
 pub const HOOK_PIVOT:DVec3=DVec3::new(0.,0.15,5.16);
 /// Deployed tip used for wire crossing, payout geometry and wire rendering.
@@ -70,9 +83,9 @@ pub const LAUNCH_POINT:DVec3=DVec3::new(0.,-1.4,-3.61);
 pub fn after_step(f:&mut Flight,previous:DVec3,dt:f64) {
  if !f.carrier.active||f.crashed{return;}
  release_raised_hook(f);
- let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);
- let prev_hook=relative(previous+f.orientation*hook_point(f),(f.elapsed-dt).max(0.));
- let speed=(f.velocity-velocity(f.elapsed)).length();
+ let hook=ship_relative(f,0,f.position+f.orientation*hook_point(f),f.elapsed);
+ let prev_hook=ship_relative(f,0,previous+f.orientation*hook_point(f),(f.elapsed-dt).max(0.));
+ let speed=(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length();
  if !f.carrier.arrested&&!f.carrier.attached&&f.carrier.launch.is_none()&&hook_can_engage(f)&&f.gear_extension>0.98&&speed>15. {
   for (i,z) in [112.,100.,88.,76.].iter().enumerate() {
    if prev_hook.z>*z&&hook.z<=*z {
@@ -94,18 +107,18 @@ pub fn setup(mut c:Commands,server:Res<AssetServer>) {
 }
 pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With<Ship>>,mut text:Query<&mut Text,With<CarrierText>>,mut lines:Gizmos) {
  for (mut t,mut v) in &mut ship {*v=if f.carrier.active{Visibility::Inherited}else{Visibility::Hidden};if !f.carrier.active{continue;}
-  let q=crate::world::local_rot(rotation(f.elapsed),&f);
-  t.translation=crate::world::local(origin(f.elapsed),&f)+q*Vec3::new(222.12742*SCALE,0.,51.34455*SCALE);
+  let q=crate::world::local_rot(ship_rotation(&f,0,f.elapsed),&f);
+  t.translation=crate::world::local(ship_origin(&f,0,f.elapsed),&f)+q*Vec3::new(222.12742*SCALE,0.,51.34455*SCALE);
   t.rotation=q*Quat::from_rotation_y(std::f32::consts::PI);t.scale=Vec3::splat(SCALE);
  }
  for mut t in &mut text {
-  if !f.carrier.active {t.0.clear();continue;}
-  let p=relative(f.position,f.elapsed);let speed=(f.velocity-velocity(f.elapsed)).length();
+  if !f.carrier.active || f.carrier.defense {t.0.clear();continue;}
+  let p=relative(f.position,f.elapsed);let speed=(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length();
   t.0=format!("CARRIER / 25 KT / H HOOK / ENTER LAUNCH / ALT+SHIFT+C CATAPULT / ALT+G GUIDANCE\n{}",f.status);
   if f.carrier.guidance&&!f.landed {let glide=DECK+(p.z-75.)*0.061+3.;t.0+=&format!("\nLINEUP {:+.1} m / GLIDE {:+.1} m / DECK SPEED {:.0} kt",p.x-lane(p.z),p.y-glide,speed*1.94384);}
  }
  if f.carrier.active {
-  for z in [112.,100.,88.,76.] {let x=lane(z);let a=world(DVec3::new(x-15.,DECK+0.12,z),f.elapsed);let b=world(DVec3::new(x+15.,DECK+0.12,z),f.elapsed);let color=Color::srgb(0.15,0.12,0.08);
+  for z in [112.,100.,88.,76.] {let x=lane(z);let a=ship_world(&f,0,DVec3::new(x-15.,DECK+0.12,z),f.elapsed);let b=ship_world(&f,0,DVec3::new(x+15.,DECK+0.12,z),f.elapsed);let color=Color::srgb(0.15,0.12,0.08);
    if f.carrier.arrested && hook_can_engage(&f) && (z-[112.,100.,88.,76.][f.carrier.wire]).abs()<0.1 {
     let hook=f.position+f.orientation*hook_point(&f);
     lines.line(crate::world::local(a,&f),crate::world::local(hook,&f),color);lines.line(crate::world::local(hook,&f),crate::world::local(b,&f),color);
@@ -121,7 +134,7 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
 #[cfg(test)]mod tests {
  use super::*;
  #[test]fn outline_and_moving_frame_roundtrip(){assert!(inside(DVec3::ZERO));assert!(!inside(DVec3::new(60.,0.,0.)));for t in [0.,100.,3600.] {let p=DVec3::new(10.,DECK,100.);assert!((relative(world(p,t),t)-p).length()<1e-7);assert!(sea(origin(t).x,origin(t).z));}}
- #[test]fn parked_ship_carries_aircraft_and_catapult_releases(){let mut f=scenario(true);let e=Environment::default();let p=f.position;for _ in 0..600 {simulate(&mut f,&e,1./120.);}assert!((f.position-p).length()>60.);assert!(!f.crashed&&f.landed);f.throttle=1.;launch(&mut f);for _ in 0..720 {simulate(&mut f,&e,1./120.);}assert!(f.carrier.launch.is_none(),"status={} pos={:?} rates={:?} speed={} launch={:?}",f.status,relative(f.position,f.elapsed),f.rates,(f.velocity-velocity(f.elapsed)).length(),f.carrier.launch);assert!(!f.carrier.attached&&!f.landed&&!f.crashed);assert!((f.velocity-velocity(f.elapsed)).length()>75.);}
+ #[test]fn parked_ship_carries_aircraft_and_catapult_releases(){let mut f=scenario(true);let e=Environment::default();let p=f.position;for _ in 0..600 {simulate(&mut f,&e,1./120.);}assert!((f.position-p).length()>60.);assert!(!f.crashed&&f.landed);f.throttle=1.;launch(&mut f);for _ in 0..720 {simulate(&mut f,&e,1./120.);}assert!(f.carrier.launch.is_none(),"status={} pos={:?} rates={:?} speed={} launch={:?}",f.status,relative(f.position,f.elapsed),f.rates,(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length(),f.carrier.launch);assert!(!f.carrier.attached&&!f.landed&&!f.crashed);assert!((f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length()>75.);}
  #[test]fn hook_crossing_uses_tip_and_requires_extension(){for extended in [false,true] {let mut f=scenario(false);f.hornet.hook_angle=if extended{0.65}else{0.};f.orientation=rotation(0.);let tip=hook_point(&f);f.position=world(DVec3::new(lane(112.),DECK-tip.y,111.-tip.z),0.);f.velocity=velocity(0.)+rotation(0.)*DVec3::NEG_Z*70.;let before=f.position+rotation(0.)*DVec3::Z*2.;after_step(&mut f,before,1./120.);assert_eq!(f.carrier.arrested,extended);}}
  #[test]fn physics_touchdown_catches_wire_and_bolter_remains_flyable(){
   for hook in [false,true] {
@@ -146,12 +159,12 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
  use crate::aircraft::hornet::{Loads,mass};
  let mut loads=Loads::default();if !f.carrier.active{return loads;}
  release_raised_hook(f);
- let (cg,_)=mass::properties(f);let basis=rotation(f.elapsed);
- let v=basis.conjugate()*(f.velocity-velocity(f.elapsed));
+ let (cg,_)=mass::properties(f);let basis=ship_rotation(f,0,f.elapsed);
+ let v=basis.conjugate()*(f.velocity-ship_velocity(&f,0,f.position,f.elapsed));
  let orientation=f.orientation;let to_body=|force:DVec3|orientation.conjugate()*(basis*force);
  let catapult_loads=catapult::loads(f,dt);loads.force+=catapult_loads.force;loads.moment+=catapult_loads.moment;
  if f.carrier.arrested {
-  let hook=relative(f.position+f.orientation*hook_point(f),f.elapsed);
+  let hook=ship_relative(f,0,f.position+f.orientation*hook_point(f),f.elapsed);
   let center=f.carrier.deck_position;let left=DVec3::new(center.x-15.,DECK,center.z)-hook;let right=DVec3::new(center.x+15.,DECK,center.z)-hook;
   let payout=(left.length()+right.length()-30.).max(0.)*0.5;
   // The point catches the wire, but an articulated hook transfers the
@@ -181,8 +194,8 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
   f.orientation=rotation(0.)*DQuat::from_rotation_y(0.14)*DQuat::from_rotation_x(0.03);
   let clear=crate::collision::wheel_clearance(&f);f.position=world(DVec3::new(lane(125.),DECK+clear+0.6,125.),0.);f.velocity=velocity(0.)+rotation(0.)*DVec3::new(-9.8,-3.,-70.);
   let mut caught=false;for _ in 0..1440 {simulate(&mut f,&e,1./240.);caught|=f.carrier.arrested;if f.crashed{break;}}
-  println!("ARREST caught={} status={} speed={} distance={} energy={} health={:?}",caught,f.status,(f.velocity-velocity(f.elapsed)).length(),f.carrier.arrest_distance,f.hornet.cable_energy,f.gear_health);
-  assert!(caught&&!f.crashed,"{} pitch={} rates={:?} compression={:?} contact={:?} attachment={:?}",f.status,f.pitch(),f.rates,f.gear_compression,f.hornet.diagnostic.contact,f.hornet.diagnostic.attachment);assert!((f.velocity-velocity(f.elapsed)).length()<3.);assert!(f.hornet.cable_energy>1000000.&&f.hornet.cable_energy<90000000.);
+  println!("ARREST caught={} status={} speed={} distance={} energy={} health={:?}",caught,f.status,(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length(),f.carrier.arrest_distance,f.hornet.cable_energy,f.gear_health);
+  assert!(caught&&!f.crashed,"{} pitch={} rates={:?} compression={:?} contact={:?} attachment={:?}",f.status,f.pitch(),f.rates,f.gear_compression,f.hornet.diagnostic.contact,f.hornet.diagnostic.attachment);assert!((f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length()<3.);assert!(f.hornet.cable_energy>1000000.&&f.hornet.cable_energy<90000000.);
   f.carrier.arrested=true;f.carrier.deck_position.z+=160.;physics_loads(&mut f,1./240.);assert!(!f.carrier.arrested);
  }
  }
@@ -212,7 +225,7 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
   f.hornet.hook_angle=0.3;let loads=physics_loads(&mut f,1./240.);
   assert!(!f.carrier.arrested);assert_eq!(loads.force,DVec3::ZERO);
  }
- #[test]fn launch_mass_variation_and_abort(){for fuel in [1000.,6000.] {let mut f=scenario(true);let e=Environment{wind_enabled:false,..default()};f.fuel=fuel;f.throttle=1.;for _ in 0..960 {simulate(&mut f,&e,1./240.);}launch(&mut f);let start=f.velocity;let mut release=None;for i in 0..1440 {simulate(&mut f,&e,1./240.);if f.carrier.launch.is_none(){release=Some(i);break;}}println!("CAT fuel={} release={:?} speed={} status={}",fuel,release,(f.velocity-velocity(f.elapsed)).length(),f.status);assert!(release.is_some()&&!f.crashed);assert!((f.velocity-start).length()>50.);}
+ #[test]fn launch_mass_variation_and_abort(){for fuel in [1000.,6000.] {let mut f=scenario(true);let e=Environment{wind_enabled:false,..default()};f.fuel=fuel;f.throttle=1.;for _ in 0..960 {simulate(&mut f,&e,1./240.);}launch(&mut f);let start=f.velocity;let mut release=None;for i in 0..1440 {simulate(&mut f,&e,1./240.);if f.carrier.launch.is_none(){release=Some(i);break;}}println!("CAT fuel={} release={:?} speed={} status={}",fuel,release,(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length(),f.status);assert!(release.is_some()&&!f.crashed);assert!((f.velocity-start).length()>50.);}
   let mut f=scenario(true);f.throttle=1.;launch(&mut f);f.throttle=0.;physics_loads(&mut f,1./240.);assert!(f.carrier.launch.is_none());
  }
 }

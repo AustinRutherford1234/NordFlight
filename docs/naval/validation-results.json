@@ -1,0 +1,1784 @@
+{
+  "date": "2026-10-31",
+  "automated_tests": {
+    "passed": 701,
+    "failed": 0,
+    "log": "/tmp/naval-all-tests-final.log"
+  },
+  "final_arm64_uuid": "3097116F-CDD5-383D-B796-6D823FA05D46",
+  "timing_capture_arm64_uuid": "F9CB9412-99A3-3D83-9AA0-06C931E1864E",
+  "headless": {
+    "note": "Headless current-Mac simulation timings; no rendering or manual pilot input",
+    "requested_seconds": 660.0,
+    "runs": [
+      {
+        "carrier_hull": 1.0,
+        "carrier_lost": false,
+        "defeated": 0,
+        "difficulty": 1,
+        "interceptions": 18,
+        "max_aircraft": 8,
+        "max_rounds": 12,
+        "mean_step_ms": 2.275256971856057,
+        "p95_step_ms": 1.786916,
+        "player_crashed": false,
+        "ship_ammunition": [
+          [
+            0,
+            7,
+            3100
+          ],
+          [
+            10,
+            32,
+            3100
+          ],
+          [
+            16,
+            32,
+            3100
+          ]
+        ],
+        "ship_kills": 5,
+        "simulation_s": 659.9999999995641,
+        "waves": 3
+      }
+    ],
+    "step_hz": 120
+  },
+  "fullscreen": {
+    "baseline": {
+      "exercise_events": [
+        {
+          "entities": 11753,
+          "images": 96,
+          "meshes": 2084,
+          "naval": null,
+          "simulation_s": 5.000000000000036,
+          "wall_s": 0.0
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 5.100000000000031,
+          "wall_s": 1.3921370419999999
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 5.575000000000004,
+          "wall_s": 2.408027583
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 6.5999999999999455,
+          "wall_s": 3.4093792499999998
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 7.599999999999889,
+          "wall_s": 4.424752708
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 8.599999999999833,
+          "wall_s": 5.428012167
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 9.608333333333109,
+          "wall_s": 6.436289625
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 10.616666666666385,
+          "wall_s": 7.448471167
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 11.62499999999966,
+          "wall_s": 8.458259542
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 12.649999999999602,
+          "wall_s": 9.459481333
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 13.63333333333288,
+          "wall_s": 10.465635708
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 14.658333333332822,
+          "wall_s": 11.470390292
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 15.658333333332765,
+          "wall_s": 12.475152292
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 16.666666666666043,
+          "wall_s": 13.498426708
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 17.666666666665986,
+          "wall_s": 14.499541125
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 18.66666666666593,
+          "wall_s": 15.499931208
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 19.666666666665872,
+          "wall_s": 16.50261425
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 20.691666666665814,
+          "wall_s": 17.506652083
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 21.69999999999909,
+          "wall_s": 18.512439542
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 22.699999999999033,
+          "wall_s": 19.52986525
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 23.699999999998976,
+          "wall_s": 20.529973875
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 24.708333333332252,
+          "wall_s": 21.538416042
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 25.72499999999886,
+          "wall_s": 22.544580666999998
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 26.733333333332137,
+          "wall_s": 23.549270083
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": null,
+          "simulation_s": 27.741666666665413,
+          "wall_s": 24.568758
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 28.766666666665355,
+          "wall_s": 25.577626167
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 29.766666666665298,
+          "wall_s": 26.583523833
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 30.774999999998574,
+          "wall_s": 27.604414458
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 31.799999999998516,
+          "wall_s": 28.61036225
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 32.79999999999914,
+          "wall_s": 29.633678417
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 33.81666666666661,
+          "wall_s": 30.6336915
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 34.82500000000075,
+          "wall_s": 31.641759292
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 35.825000000001545,
+          "wall_s": 32.652882833
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 36.82500000000234,
+          "wall_s": 33.65732925
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 37.833333333336476,
+          "wall_s": 34.662045083
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 38.85833333333729,
+          "wall_s": 35.685946458
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 39.85833333333809,
+          "wall_s": 36.693046375
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 40.866666666672224,
+          "wall_s": 37.696538583
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 41.89166666667304,
+          "wall_s": 38.706083958
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": null,
+          "simulation_s": 42.891666666673835,
+          "wall_s": 39.721277583
+        }
+      ],
+      "frames": 1772,
+      "mean_fps": 59.05382672304075,
+      "mean_ms": 16.933703630925493,
+      "measurements": {
+        "adapter": {
+          "backend": "Metal",
+          "features": "Features { features_wgpu: FeaturesWGPU(SHADER_FLOAT32_ATOMIC | TEXTURE_FORMAT_16BIT_NORM | TEXTURE_COMPRESSION_ASTC_HDR | TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES | TIMESTAMP_QUERY_INSIDE_ENCODERS | MAPPABLE_PRIMARY_BUFFERS | TEXTURE_BINDING_ARRAY | SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING | STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING | PARTIALLY_BOUND_BINDING_ARRAY | PUSH_CONSTANTS | ADDRESS_MODE_CLAMP_TO_ZERO | ADDRESS_MODE_CLAMP_TO_BORDER | POLYGON_MODE_LINE | VERTEX_WRITABLE_STORAGE | CLEAR_TEXTURE | TEXTURE_ATOMIC | EXTERNAL_TEXTURE | SHADER_PRIMITIVE_INDEX | SHADER_INT64 | SUBGROUP | SUBGROUP_BARRIER | EXPERIMENTAL_PASSTHROUGH_SHADERS), features_webgpu: FeaturesWebGPU(DEPTH_CLIP_CONTROL | DEPTH32FLOAT_STENCIL8 | TEXTURE_COMPRESSION_BC | TEXTURE_COMPRESSION_BC_SLICED_3D | TEXTURE_COMPRESSION_ETC2 | TEXTURE_COMPRESSION_ASTC | TEXTURE_COMPRESSION_ASTC_SLICED_3D | TIMESTAMP_QUERY | INDIRECT_FIRST_INSTANCE | SHADER_F16 | RG11B10UFLOAT_RENDERABLE | BGRA8UNORM_STORAGE | FLOAT32_FILTERABLE | DUAL_SOURCE_BLENDING) }",
+          "name": "Apple M1"
+        },
+        "cpu_allocations": null,
+        "cpu_spans": {
+          "ai_pilot": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "aircraft_physics": {
+            "calls": 7200,
+            "mean_ms": 0.8233192320833334,
+            "total_ms": 5927.898471
+          },
+          "asset_prepare_wall": {
+            "calls": 1771,
+            "mean_ms": 0.5028364912478825,
+            "total_ms": 890.523426
+          },
+          "audio": {
+            "calls": 1771,
+            "mean_ms": 0.004311697910784867,
+            "total_ms": 7.636017
+          },
+          "camera": {
+            "calls": 1771,
+            "mean_ms": 0.00987738622247318,
+            "total_ms": 17.492851
+          },
+          "cockpit": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "collision": {
+            "calls": 7200,
+            "mean_ms": 0.7942017530555555,
+            "total_ms": 5718.252622
+          },
+          "combat": {
+            "calls": 3600,
+            "mean_ms": 0.0006105263888888889,
+            "total_ms": 2.197895
+          },
+          "display_flush": {
+            "calls": 1771,
+            "mean_ms": 0.04781097684923772,
+            "total_ms": 84.67324
+          },
+          "display_publish": {
+            "calls": 461,
+            "mean_ms": 0.017343323210412147,
+            "total_ms": 7.995272
+          },
+          "earth": {
+            "calls": 1771,
+            "mean_ms": 0.004061901185770751,
+            "total_ms": 7.193627
+          },
+          "orbital_coast": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "radar_display": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "simulation": {
+            "calls": 1771,
+            "mean_ms": 3.351062520045172,
+            "total_ms": 5934.731723
+          },
+          "terrain": {
+            "calls": 1771,
+            "mean_ms": 0.002277712027103331,
+            "total_ms": 4.033828
+          },
+          "terrain_build": {
+            "calls": 1,
+            "mean_ms": 0.570333,
+            "total_ms": 0.570333
+          },
+          "world": {
+            "calls": 1771,
+            "mean_ms": 0.04446928571428571,
+            "total_ms": 78.755105
+          }
+        },
+        "draw_calls": null,
+        "earth_material_modifications": 980,
+        "environment_filter_cache_hits_misses_writes_bypasses": [
+          0,
+          1771,
+          295,
+          0
+        ],
+        "environment_slices_captured_published_cancelled_max_frames": [
+          295,
+          295,
+          0,
+          6
+        ],
+        "forest_vertices_in_visible_batches_mean": {
+          "camera": 0.0,
+          "shadow_cascades": 0.0
+        },
+        "gpu_timing_note": "Only positive GPU durations are retained. nord_scene measures the encoder envelope where timestamps are supported; unsupported per-pass timestamps are omitted. Validate with Metal System Trace.",
+        "image_modifications": 8,
+        "material_modifications": 5122,
+        "mesh_modifications": 3542,
+        "mesh_slab_peak": {
+          "bytes": 308292272,
+          "slabs": 10
+        },
+        "profiled_simulated_seconds": 29.999999626,
+        "render_diagnostics": {
+          "mesh_allocator_allocations": 2117.0,
+          "mesh_allocator_slabs": 10.0,
+          "mesh_allocator_slabs_size": 308292272.0,
+          "render/bloom/elapsed_cpu": 0.11383437500000008,
+          "render/main_opaque_pass_3d/elapsed_cpu": 0.06345489166666682,
+          "render/nord_scene/atmosphere_luts/elapsed_cpu": 0.0010236416666666672,
+          "render/nord_scene/early_mesh_preprocessing/elapsed_cpu": 0.0024534500000000002,
+          "render/nord_scene/early_prepass_indirect_parameters_building/elapsed_cpu": 0.0009711999999999975,
+          "render/nord_scene/elapsed_cpu": 0.765839575,
+          "render/nord_scene/fxaa/elapsed_cpu": 0.0004482750000000004,
+          "render/nord_scene/late_mesh_preprocessing/elapsed_cpu": 0.00024025000000000004,
+          "render/nord_scene/lightprobe_copy/elapsed_cpu": 0.00044168333333333365,
+          "render/nord_scene/lightprobe_downsampling_first_pass/elapsed_cpu": 0.00035488333333333355,
+          "render/nord_scene/lightprobe_downsampling_second_pass/elapsed_cpu": 0.00021595000000000007,
+          "render/nord_scene/lightprobe_irradiance_map/elapsed_cpu": 0.0005409833333333337,
+          "render/nord_scene/lightprobe_radiance_map/elapsed_cpu": 0.0017225083333333318,
+          "render/nord_scene/main_indirect_parameters_building/elapsed_cpu": 0.0009055916666666673,
+          "render/nord_scene/main_transparent_pass_3d/elapsed_cpu": 0.005998291666666664,
+          "render/nord_scene/render_sky/elapsed_cpu": 0.0012687583333333321,
+          "render/nord_scene/tonemapping/elapsed_cpu": 0.0006142416666666671,
+          "render/nord_scene/ui/elapsed_cpu": 0.007707299999999992,
+          "render/nord_scene/upscaling/elapsed_cpu": 0.0007093500000000004,
+          "render/shadow_directional_light_0_cascade_0/elapsed_cpu": 0.16971667500000004,
+          "render/shadow_directional_light_0_cascade_1/elapsed_cpu": 0.18500136666666683,
+          "render/shadow_directional_light_1_cascade_0/elapsed_cpu": 0.05966105833333345
+        },
+        "terrain_staging": {
+          "frames": 1,
+          "max_mesh_source_bytes_per_frame": 319536,
+          "max_meshes_per_frame": 1,
+          "mesh_source_bytes": 319536,
+          "meshes": 1
+        },
+        "upload_bytes": 24299432,
+        "upload_calls": 449
+      },
+      "mode": "naval-live",
+      "note": "Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed",
+      "over_25_ms": 527,
+      "over_50_ms": 0,
+      "p50_ms": 16.7245,
+      "p95_ms": 26.374208,
+      "p99_ms": 37.944792,
+      "paused": false,
+      "profile": "debug",
+      "quality": false,
+      "resolution": [
+        2880,
+        1556
+      ],
+      "sample_seconds": 30.002388916999998,
+      "scene": null,
+      "simulated_seconds": 30.000000000007844,
+      "simulation_rate": 0.9999203757741171,
+      "simulation_timing": {
+        "max_frame_wall_s": 0.1,
+        "max_physics_step_s": 0.008333333333333333,
+        "max_steps_per_frame": 256,
+        "mode": "bounded_wall_clock",
+        "remainder_s": 0.001317041999998948,
+        "whole_run_dropped_simulated_s": 0.0,
+        "whole_run_dropped_wall_s": 1.801071875
+      },
+      "timestep": 0.016666666666666666,
+      "warmup_seconds": 10.0,
+      "warp_rates": [
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.0,
+        4.0,
+        10.0,
+        50.0,
+        100.0,
+        500.0,
+        1000.0,
+        10000.0,
+        100000.0
+      ],
+      "workers": {
+        "async_compute": 1,
+        "compute": 6,
+        "io": 1
+      }
+    },
+    "port": {
+      "exercise_events": [
+        {
+          "entities": 11753,
+          "images": 95,
+          "meshes": 2084,
+          "naval": {
+            "active_rounds": 6,
+            "carrier_hull": 1.0,
+            "round_slots": 6,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 5.000000000000036,
+          "wall_s": 0.0
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 6,
+            "carrier_hull": 1.0,
+            "round_slots": 6,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 5.100000000000031,
+          "wall_s": 1.28923775
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 8,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 5.583333333333337,
+          "wall_s": 2.302838083
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 8,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 6.649999999999943,
+          "wall_s": 3.320757208
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 8,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 7.658333333333219,
+          "wall_s": 4.32960275
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 8,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 8.683333333333161,
+          "wall_s": 5.349297625
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 8,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 9.691666666666437,
+          "wall_s": 6.354868666
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 15,
+            "carrier_hull": 1.0,
+            "round_slots": 15,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 10.699999999999713,
+          "wall_s": 7.371477541
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 15,
+            "carrier_hull": 1.0,
+            "round_slots": 15,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 11.724999999999655,
+          "wall_s": 8.382321958
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 16,
+            "carrier_hull": 1.0,
+            "round_slots": 16,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 12.733333333332931,
+          "wall_s": 9.4058835
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 16,
+            "carrier_hull": 1.0,
+            "round_slots": 16,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 13.758333333332873,
+          "wall_s": 10.415111958
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 16,
+            "carrier_hull": 1.0,
+            "round_slots": 16,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 14.766666666666149,
+          "wall_s": 11.41858675
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 19,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 4,
+            "waves": 1
+          },
+          "simulation_s": 15.766666666666092,
+          "wall_s": 12.441018625
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 17,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 2,
+            "waves": 1
+          },
+          "simulation_s": 16.791666666666035,
+          "wall_s": 13.441164291
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 18,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 2,
+            "waves": 1
+          },
+          "simulation_s": 17.783333333332646,
+          "wall_s": 14.451523833
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 16,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 2,
+            "waves": 1
+          },
+          "simulation_s": 18.791666666665922,
+          "wall_s": 15.485962708
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 16,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 1,
+            "waves": 1
+          },
+          "simulation_s": 19.83333333333253,
+          "wall_s": 16.492437625
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 16,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 1,
+            "waves": 1
+          },
+          "simulation_s": 20.833333333332472,
+          "wall_s": 17.507612416
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 14,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 21.858333333332414,
+          "wall_s": 18.5296985
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 14,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 22.858333333332357,
+          "wall_s": 19.534203583
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 23.8833333333323,
+          "wall_s": 20.5572325
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 8,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 24.90833333333224,
+          "wall_s": 21.564485083
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 6,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 25.908333333332184,
+          "wall_s": 22.571817916
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 6,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 26.908333333332127,
+          "wall_s": 23.585071
+        },
+        {
+          "entities": 12993,
+          "images": 109,
+          "meshes": 2140,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 27.916666666665403,
+          "wall_s": 24.586082041
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 28.941666666665345,
+          "wall_s": 25.612351208
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 29.966666666665287,
+          "wall_s": 26.615895875
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 30.949999999998564,
+          "wall_s": 27.62186525
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 31.974999999998506,
+          "wall_s": 28.628621666
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 32.9583333333326,
+          "wall_s": 29.631086125
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 33.96666666666673,
+          "wall_s": 30.641773
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 34.99166666666755,
+          "wall_s": 31.659653208
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 36.008333333335024,
+          "wall_s": 32.662587583
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 37.01666666666916,
+          "wall_s": 33.687553
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 38.025000000003295,
+          "wall_s": 34.699303958
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 39.01666666667075,
+          "wall_s": 35.701238375
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 40.03333333333823,
+          "wall_s": 36.70999425
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 41.06666666667238,
+          "wall_s": 37.735527541
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 42.06666666667318,
+          "wall_s": 38.741719416
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 43.083333333340654,
+          "wall_s": 39.755798083
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 44.10833333334147,
+          "wall_s": 40.761332041
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 45.100000000008926,
+          "wall_s": 41.769848375
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 46.10000000000972,
+          "wall_s": 42.789245458
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 47.14166666667722,
+          "wall_s": 43.790156708
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 48.13333333334467,
+          "wall_s": 44.804446875
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 49.15000000001215,
+          "wall_s": 45.824778
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 50.175000000012965,
+          "wall_s": 46.828191333
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 51.17500000001376,
+          "wall_s": 47.843965083
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 52.191666666681236,
+          "wall_s": 48.863081291
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 53.19166666668203,
+          "wall_s": 49.877248166
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 54.23333333334953,
+          "wall_s": 50.882730458
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 55.2083333333503,
+          "wall_s": 51.882933458
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 56.23333333335112,
+          "wall_s": 52.905523375
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 57.241666666685255,
+          "wall_s": 53.9135655
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 58.25833333335273,
+          "wall_s": 54.933594875
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 59.283333333353546,
+          "wall_s": 55.952464833
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 60.30833333335436,
+          "wall_s": 56.977548708
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 61.3166666666885,
+          "wall_s": 57.989981333
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 62.333333333355974,
+          "wall_s": 59.007194125
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 63.34166666669011,
+          "wall_s": 60.015296916
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 64.36666666669029,
+          "wall_s": 61.036565375
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 65.38333333335603,
+          "wall_s": 62.0390275
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 66.39166666668845,
+          "wall_s": 63.059136416
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 67.41666666668752,
+          "wall_s": 64.085772708
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 68.40833333335328,
+          "wall_s": 65.100099791
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 69.45833333335233,
+          "wall_s": 66.107161791
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 70.45833333335142,
+          "wall_s": 67.130504
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 71.48333333335049,
+          "wall_s": 68.130712791
+        },
+        {
+          "entities": 12990,
+          "images": 109,
+          "meshes": 2137,
+          "naval": {
+            "active_rounds": 0,
+            "carrier_hull": 1.0,
+            "round_slots": 21,
+            "tracks": 0,
+            "waves": 1
+          },
+          "simulation_s": 72.47500000001625,
+          "wall_s": 69.1497125
+        }
+      ],
+      "frames": 3362,
+      "mean_fps": 56.00563178107031,
+      "mean_ms": 17.855347189173145,
+      "measurements": {
+        "adapter": {
+          "backend": "Metal",
+          "features": "Features { features_wgpu: FeaturesWGPU(SHADER_FLOAT32_ATOMIC | TEXTURE_FORMAT_16BIT_NORM | TEXTURE_COMPRESSION_ASTC_HDR | TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES | TIMESTAMP_QUERY_INSIDE_ENCODERS | MAPPABLE_PRIMARY_BUFFERS | TEXTURE_BINDING_ARRAY | SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING | STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING | PARTIALLY_BOUND_BINDING_ARRAY | PUSH_CONSTANTS | ADDRESS_MODE_CLAMP_TO_ZERO | ADDRESS_MODE_CLAMP_TO_BORDER | POLYGON_MODE_LINE | VERTEX_WRITABLE_STORAGE | CLEAR_TEXTURE | TEXTURE_ATOMIC | EXTERNAL_TEXTURE | SHADER_PRIMITIVE_INDEX | SHADER_INT64 | SUBGROUP | SUBGROUP_BARRIER | EXPERIMENTAL_PASSTHROUGH_SHADERS), features_webgpu: FeaturesWebGPU(DEPTH_CLIP_CONTROL | DEPTH32FLOAT_STENCIL8 | TEXTURE_COMPRESSION_BC | TEXTURE_COMPRESSION_BC_SLICED_3D | TEXTURE_COMPRESSION_ETC2 | TEXTURE_COMPRESSION_ASTC | TEXTURE_COMPRESSION_ASTC_SLICED_3D | TIMESTAMP_QUERY | INDIRECT_FIRST_INSTANCE | SHADER_F16 | RG11B10UFLOAT_RENDERABLE | BGRA8UNORM_STORAGE | FLOAT32_FILTERABLE | DUAL_SOURCE_BLENDING) }",
+          "name": "Apple M1"
+        },
+        "cpu_allocations": null,
+        "cpu_spans": {
+          "ai_pilot": {
+            "calls": 2070,
+            "mean_ms": 0.018658193236714974,
+            "total_ms": 38.62246
+          },
+          "aircraft_physics": {
+            "calls": 16468,
+            "mean_ms": 0.14860134897983968,
+            "total_ms": 2447.167015
+          },
+          "asset_prepare_wall": {
+            "calls": 3361,
+            "mean_ms": 1.0978524224933055,
+            "total_ms": 3689.881992
+          },
+          "audio": {
+            "calls": 3361,
+            "mean_ms": 0.004095134483784588,
+            "total_ms": 13.763747
+          },
+          "camera": {
+            "calls": 3361,
+            "mean_ms": 0.009110509669741149,
+            "total_ms": 30.620423
+          },
+          "cockpit": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "collision": {
+            "calls": 5070,
+            "mean_ms": 0.4524230218934911,
+            "total_ms": 2293.784721
+          },
+          "combat": {
+            "calls": 7199,
+            "mean_ms": 0.007430761216835672,
+            "total_ms": 53.49405
+          },
+          "display_flush": {
+            "calls": 3361,
+            "mean_ms": 0.06332447069324607,
+            "total_ms": 212.833546
+          },
+          "display_publish": {
+            "calls": 3369,
+            "mean_ms": 0.013650795785099435,
+            "total_ms": 45.989531
+          },
+          "earth": {
+            "calls": 3361,
+            "mean_ms": 0.0037965221660220174,
+            "total_ms": 12.760111
+          },
+          "orbital_coast": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "radar_display": {
+            "calls": 0,
+            "mean_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "simulation": {
+            "calls": 3361,
+            "mean_ms": 1.0311932029157989,
+            "total_ms": 3465.840355
+          },
+          "terrain": {
+            "calls": 3361,
+            "mean_ms": 0.0026630880690270754,
+            "total_ms": 8.950639
+          },
+          "terrain_build": {
+            "calls": 9,
+            "mean_ms": 0.6580878888888889,
+            "total_ms": 5.922791
+          },
+          "world": {
+            "calls": 3361,
+            "mean_ms": 0.04946168283249033,
+            "total_ms": 166.240716
+          }
+        },
+        "draw_calls": null,
+        "earth_material_modifications": 1956,
+        "environment_filter_cache_hits_misses_writes_bypasses": [
+          0,
+          3361,
+          560,
+          0
+        ],
+        "environment_slices_captured_published_cancelled_max_frames": [
+          560,
+          560,
+          0,
+          6
+        ],
+        "forest_vertices_in_visible_batches_mean": {
+          "camera": 0.0,
+          "shadow_cascades": 0.0
+        },
+        "gpu_timing_note": "Only positive GPU durations are retained. nord_scene measures the encoder envelope where timestamps are supported; unsupported per-pass timestamps are omitted. Validate with Metal System Trace.",
+        "image_modifications": 61,
+        "material_modifications": 390201,
+        "mesh_modifications": 1424,
+        "mesh_slab_peak": {
+          "bytes": 308292272,
+          "slabs": 10
+        },
+        "profiled_simulated_seconds": 59.991665919,
+        "render_diagnostics": {
+          "mesh_allocator_allocations": 2117.0,
+          "mesh_allocator_slabs": 10.0,
+          "mesh_allocator_slabs_size": 308292272.0,
+          "render/bloom/elapsed_cpu": 0.10817600000000009,
+          "render/main_opaque_pass_3d/elapsed_cpu": 0.06327984999999997,
+          "render/nord_scene/atmosphere_luts/elapsed_cpu": 0.0010600416666666584,
+          "render/nord_scene/early_mesh_preprocessing/elapsed_cpu": 0.003925325000000008,
+          "render/nord_scene/early_prepass_indirect_parameters_building/elapsed_cpu": 0.0017701583333333297,
+          "render/nord_scene/elapsed_cpu": 1.3647246500000005,
+          "render/nord_scene/fxaa/elapsed_cpu": 0.0005000000000000002,
+          "render/nord_scene/late_mesh_preprocessing/elapsed_cpu": 0.0003303083333333336,
+          "render/nord_scene/lightprobe_copy/elapsed_cpu": 0.0005982583333333336,
+          "render/nord_scene/lightprobe_downsampling_first_pass/elapsed_cpu": 0.0003993000000000003,
+          "render/nord_scene/lightprobe_downsampling_second_pass/elapsed_cpu": 0.0003774083333333335,
+          "render/nord_scene/lightprobe_irradiance_map/elapsed_cpu": 0.00045205000000000023,
+          "render/nord_scene/lightprobe_radiance_map/elapsed_cpu": 0.0017715416666666656,
+          "render/nord_scene/main_indirect_parameters_building/elapsed_cpu": 0.0011558833333333342,
+          "render/nord_scene/main_transparent_pass_3d/elapsed_cpu": 0.11956004999999963,
+          "render/nord_scene/render_sky/elapsed_cpu": 0.001373924999999998,
+          "render/nord_scene/tonemapping/elapsed_cpu": 0.0008721916666666672,
+          "render/nord_scene/ui/elapsed_cpu": 0.010573658333333326,
+          "render/nord_scene/upscaling/elapsed_cpu": 0.0008708500000000007,
+          "render/shadow_directional_light_0_cascade_0/elapsed_cpu": 0.08938784999999995,
+          "render/shadow_directional_light_0_cascade_1/elapsed_cpu": 0.11477052499999991,
+          "render/shadow_directional_light_1_cascade_0/elapsed_cpu": 0.04311323333333335
+        },
+        "terrain_staging": {
+          "frames": 1,
+          "max_mesh_source_bytes_per_frame": 319536,
+          "max_meshes_per_frame": 1,
+          "mesh_source_bytes": 319536,
+          "meshes": 1
+        },
+        "upload_bytes": 80212492,
+        "upload_calls": 1863
+      },
+      "mode": "naval-live",
+      "note": "Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed",
+      "over_25_ms": 1555,
+      "over_50_ms": 2,
+      "p50_ms": 16.714459,
+      "p95_ms": 29.229417,
+      "p99_ms": 42.292375,
+      "paused": false,
+      "profile": "debug",
+      "quality": false,
+      "resolution": [
+        2880,
+        1556
+      ],
+      "sample_seconds": 60.02140525,
+      "scene": null,
+      "simulated_seconds": 59.99166666668254,
+      "simulation_rate": 0.9995045337043744,
+      "simulation_timing": {
+        "max_frame_wall_s": 0.1,
+        "max_physics_step_s": 0.008333333333333333,
+        "max_steps_per_frame": 256,
+        "mode": "bounded_wall_clock",
+        "remainder_s": 0.006366666999998834,
+        "whole_run_dropped_simulated_s": 0.0,
+        "whole_run_dropped_wall_s": 1.6400385830000002
+      },
+      "timestep": 0.016666666666666666,
+      "warmup_seconds": 10.0,
+      "warp_rates": [
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.0,
+        4.0,
+        10.0,
+        50.0,
+        100.0,
+        500.0,
+        1000.0,
+        10000.0,
+        100000.0
+      ],
+      "workers": {
+        "async_compute": 1,
+        "compute": 6,
+        "io": 1
+      }
+    }
+  },
+  "native_seconds": 597.4000000000001,
+  "notes": [
+    "Full paired native timings precede the final wreck lifecycle and bomber carrier-priority corrections; they are provisional descriptive measurements, not final-build FPS validation.",
+    "The final native probe was stopped at the approved diagnostic budget before producing a new timing sample. All prior running sessions were restored.",
+    "The 660-second headless run includes corrected bomber carrier priority. The final additional mission-end projectile cleanup does not change that surviving-carrier trajectory.",
+    "Final full regression suite: 701 passed, zero failed.",
+    "Headless wall-time timings were captured with the user app resumed; native captures paused that app.",
+    "Scripted damage/sinking stills inject damage and do not prove a weapon hit. User flight review remains pending."
+  ],
+  "source_sha256": {
+    "src/combat/naval.rs": "36b07e72fa3f3ed6a553e2dcfa9a9cca372cf944163d9f5a704d0e1708ce7f43",
+    "src/combat/naval/damage.rs": "e598604530edf7fdfb78be911bbe7e4a6cc0a2f5f9eaa2f22167ae0475878368",
+    "src/combat/naval/weapons.rs": "0fa59c9dc2b2585e3730e642a2e9477a6c9437f094d2cd43c342cb9d48468f7a",
+    "src/combat/naval/visual.rs": "26a588cce0c2d333493ccbedfe1260083913e99527ecd38ad6f594bfdad3e1e0",
+    "src/combat/naval/radio.rs": "ffa18532576bccf366f46ec6e6719afd68d3c0e3441f6ac850fc5607aaa082ee"
+  },
+  "headless_arm64_uuid": "E267A9F6-13ED-39AF-B88C-49AA8BF9608C"
+}

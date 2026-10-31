@@ -21,7 +21,7 @@ pub fn park_position() -> DVec3 {
     DVec3::new(p.x, DECK, p.z)
 }
 pub fn attachment(f: &Flight) -> DVec3 {
-    relative(f.position + f.orientation * LAUNCH_POINT, f.elapsed)
+    ship_relative(f,0,f.position + f.orientation * LAUNCH_POINT, f.elapsed)
 }
 pub fn stroke(f: &Flight) -> f64 {
     START.z - attachment(f).z
@@ -37,11 +37,11 @@ pub fn loads(f: &mut Flight, dt: f64) -> Loads {
     let (cg, inertia) = mass::properties(f);
     let inverse = inertia.inverse();
     let arm = LAUNCH_POINT - cg;
-    let basis = rotation(f.elapsed);
+    let basis = ship_rotation(f,0,f.elapsed);
     let body = f.orientation;
     let to_body = |v: DVec3| body.conjugate() * (basis * v);
     let p = attachment(f);
-    let v = basis.conjugate() * (f.velocity + body * f.rates.cross(arm) - velocity(f.elapsed));
+    let v = basis.conjugate() * (f.velocity + body * f.rates.cross(arm) - ship_velocity(f,0,f.position,f.elapsed));
     let lateral_damping =
         2. * 1.1 * (LATERAL_K * point_mass(f.mass(), inverse, arm, to_body(DVec3::X))).sqrt();
     let lateral = (-LATERAL_K * (p.x - X) - lateral_damping * v.x).clamp(-250000., 250000.);

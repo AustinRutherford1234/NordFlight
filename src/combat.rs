@@ -23,7 +23,8 @@ pub mod hud;
 pub mod rwr;
 
 const TARGET_COUNT: usize = 3;
-const MAX_AIRCRAFT: usize = 11;
+const MAX_AIRCRAFT: usize = 12;
+pub mod naval;
 // Mechanism children never carry the generic presentation roles. These filters
 // let Bevy prove independent transform/visibility access without relaxing any
 // input, simulation, camera, or damage ordering.
@@ -141,6 +142,7 @@ struct Impact {
 }
 #[derive(Resource)]
 pub struct Combat {
+    pub naval: Option<naval::State>,
     pub environment: Environment,
     pub bvr: Option<bvr::Battle>,
     pub radar: bvr::Radar,
@@ -161,7 +163,7 @@ pub struct Combat {
     pub strikes: usize,
     pub fired: usize,
     clock: f64,
-    contact_pairs: [bool; 66],
+    contact_pairs: [bool; 78],
     old_poses: Vec<(DVec3, DQuat)>,
     last_launch: f64,
     pending_side: Option<PendingSideLaunch>,
@@ -180,6 +182,7 @@ impl Default for Combat {
             sun: Environment::default().sun_direction(),
             fight: None,
             active: false,
+            naval: None,
             fx: effects::State::default(),
             recent_hit: None,
             generation: 0,
@@ -193,7 +196,7 @@ impl Default for Combat {
             strikes: 0,
             fired: 0,
             clock: 0.0,
-            contact_pairs: [false; 66],
+            contact_pairs: [false; 78],
             old_poses: Vec::with_capacity(MAX_AIRCRAFT),
             last_launch: -10.0,
             pending_side: None,
@@ -401,6 +404,7 @@ impl Combat {
         for offset in 1..=self.targets.len() {
             let index = (self.selected + offset) % self.targets.len();
             if self.targets[index].alive
+                && self.naval.as_ref().is_none_or(|n|n.track_for(index).is_some())
                 && self
                     .bvr
                     .as_ref()
@@ -509,6 +513,7 @@ impl Combat {
             self.notify("NO MISSILES OF THIS TYPE");
             return false;
         }
+        if self.naval.as_ref().is_some_and(|n|n.rounds.iter().filter(|m|m.alive).count()+self.missiles.iter().filter(|m|m.alive).count()>=naval::WEAPON_LIMIT){self.notify("WEAPON CHANNELS BUSY");return false;}
         if self.clock - self.last_launch < 0.6 {
             return false;
         }
@@ -526,7 +531,7 @@ impl Combat {
         let mut gnc=guidance::Gnc::launch(launch_velocity,guidance::target(&self.targets[self.selected]),
             self.generation.wrapping_mul(997)+self.fired as u64+1).for_aircraft(f.aircraft,self.weapon);
         gnc=gnc.inherit(f.orientation*release_rotation,f.orientation*f.rates);
-        self.missiles.push(Missile {
+        let round=Missile {
             gnc,
             decoy: None,
             position,
@@ -539,7 +544,8 @@ impl Combat {
             lost_for: 0.0,
             trail: vec![position],
             trail_clock: 0.0,
-        });
+        };
+        if self.naval.is_some(){if let Some(slot)=self.missiles.iter_mut().find(|m|!m.alive){*slot=round;}else if self.missiles.len()<MISSILE_COUNT {self.missiles.push(round);}else{self.notify("ALL PLAYER MISSILE CHANNELS BUSY");return false;}}else{self.missiles.push(round);}
         crate::sound::emit(
             &mut self.audio_events,
             crate::sound::Kind::Launch,
@@ -573,7 +579,10 @@ impl Combat {
             alive_before[i]=t.alive;
             old_targets[i]=t.position;
         }
-        if let Some(fight) = &self.fight {
+        if let Some(mut naval) = self.naval.take() {
+            naval.pilots(self, f, dt);
+            self.naval=Some(naval);
+        } else if let Some(fight) = &self.fight {
             dogfight::advance_targets(
                 &mut self.targets,
                 &self.missiles,
@@ -712,6 +721,7 @@ impl Combat {
                     target.alive = false;
                     target.wreck_age = 0.0;
                     self.hits += 1;
+                    if let Some(n)=&mut self.naval{n.player_kills+=1;}
                 }
                 self.impacts.push(Impact {
                     position: target.position + miss,
@@ -1466,7 +1476,9 @@ pub fn controls(
     bvr_menu: Option<Res<bvr::Menu>>,
 ) {
     if combat.generation != v.generation {
-        if v.scenario == 8 {
+        if (13..=18).contains(&v.scenario) {
+            naval::start(&mut combat,&f,v.generation,((v.scenario-13)/2) as usize);
+        } else if v.scenario == 8 {
             bvr::start(
                 &mut combat,
                 &f,
@@ -1545,6 +1557,8 @@ pub fn camera_controls(
         return;
     }
     let capture = preview.is_some_and(|p| p.0.is_some());
+    if combat.naval.as_ref().is_some_and(|n|n.radio_open) || (combat.naval.is_some() && (keys.just_pressed(KeyCode::Backslash)||keys.just_pressed(KeyCode::Digit6))) {return;}
+    if !capture && keys.just_pressed(KeyCode::Digit7) && combat.naval.is_some() {view.cycle_ship();return;}
     if !capture && keys.just_pressed(KeyCode::Digit7) {
         view.restore_camera();
         return;
@@ -1683,7 +1697,7 @@ pub fn render(
         let target = combat
             .targets
             .get(tag.0)
-            .filter(|t| combat.active && t.alive);
+            .filter(|t| combat.active && t.alive && combat.naval.is_none());
         visibility.set_if_neq(if target.is_some() {
             Visibility::Inherited
         } else {
@@ -1912,7 +1926,7 @@ pub fn draw(
     mut texts: Query<(&mut Text, Option<&TargetLabel>, Option<&CombatReadout>)>,
     mut gizmos: Gizmos,
 ) {
-    let active = combat.active && combat.bvr.is_none() && f.vehicle == Vehicle::Gripen && !v.map;
+    let active = combat.active && combat.bvr.is_none() && f.vehicle == Vehicle::Gripen && !v.map && v.ship_follow.is_none();
     for mut panel in &mut panels {
         panel.display = if active && !v.simple {
             Display::Flex
@@ -1981,7 +1995,7 @@ pub fn draw(
             });
             let azimuth = direction.x.atan2(-direction.z).to_degrees();
             let elevation = direction.y.clamp(-1.0, 1.0).asin().to_degrees();
-            let state = if combat.hits == TARGET_COUNT {
+            let state = if combat.naval.is_none() && combat.hits == TARGET_COUNT {
                 "ALL TARGETS DESTROYED / R RESTART".into()
             } else if combat.clock < combat.message_until {
                 combat.message.clone()
@@ -2006,7 +2020,7 @@ pub fn draw(
                 },
                 combat.strikes,
                 combat.hits,
-                TARGET_COUNT,
+                if combat.naval.is_some(){combat.targets.len()}else{TARGET_COUNT},
                 combat.weapon.label(),
                 combat.ammo[0],
                 combat.ammo[1],

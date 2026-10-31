@@ -184,6 +184,9 @@ pub fn exercise(
     } else {
         session.script.clone()
     };
+    if std::env::var_os("NORD_NAVAL_CAPTURE").is_some(){
+        if wall>=session.next_sample {session.next_sample=wall+1.;session.events.push(serde_json::json!({"wall_s":wall,"simulation_s":f.elapsed,"entities":entities.iter().count(),"meshes":meshes.len(),"images":images.len(),"naval":c.naval.as_ref().map(|n|serde_json::json!({"waves":n.waves,"tracks":n.tracks.len(),"round_slots":n.rounds.len(),"active_rounds":n.rounds.iter().filter(|m|m.alive).count(),"carrier_hull":n.ships[0].hull}))}));}return;
+    }
     let scripted =
         session.soak || matches!(script.as_str(), "ascent" | "descent" | "landing" | "warp");
     if script == "carrier-live" {

@@ -37,13 +37,14 @@ pub struct State {
     pub particles: Vec<Particle>,
     next_id: u64,
     water_seen: bool,
-    seen: [[bool; crate::aircraft::SURFACES]; 12],
-    seen_wings: [[bool; 2]; 12],
-    dead: [bool; 12],
+    seen: [[bool; crate::aircraft::SURFACES]; 13],
+    seen_wings: [[bool; 2]; 13],
+    dead: [bool; 13],
     clock: f64,
     emission: f64,
 }
 impl State {
+    pub(super) fn reset_actor(&mut self,id:usize){self.seen[id].fill(false);self.seen_wings[id].fill(false);self.dead[id]=false;}
     fn emit(&mut self, p: DVec3, v: DVec3, kind: Kind, size: Vec3, life: f64) {
         if self.particles.len() >= 256 {
             self.particles.remove(0);
@@ -225,7 +226,7 @@ impl State {
                 emit && !f.water.active,
             );
         }
-        for (i, t) in c.targets.iter().take(11).enumerate() {
+        for (i, t) in c.targets.iter().take(12).enumerate() {
             self.aircraft(
                 i + 1,
                 t.position,

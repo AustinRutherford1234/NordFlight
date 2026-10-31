@@ -253,6 +253,14 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
     c.line(Vec2::new(250., 46.), Vec2::new(256., 40.));
     c.line(Vec2::new(256., 40.), Vec2::new(262., 46.));
     c.text("T", 373., 40., 1.2);
+    c.text(&format!("{:03.0}",heading.rem_euclid(360.)),239.,52.,1.5);
+    if let Some(track)=combat.naval.as_ref().and_then(|n|n.track_for(combat.selected)) {
+        let (bearing,range)=crate::combat::naval::bearing_range(f,track.position);
+        let error=(bearing-heading+180.).rem_euclid(360.)-180.;
+        let x=256.+error.clamp(-42.,42.) as f32*5.;
+        c.line(Vec2::new(x-5.,67.),Vec2::new(x,59.));c.line(Vec2::new(x,59.),Vec2::new(x+5.,67.));
+        c.text(&format!("SHIP {:03.0} / {:.1} NM",bearing,range),175.,76.,1.2);
+    }
     let cas = calibrated_speed(f.mach, f.pressure) * 1.943844;
     let radalt =
         (f.position.length() - RADIUS - crate::carrier::ground(f, f.position)).max(0.) * 3.28084;

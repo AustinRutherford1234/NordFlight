@@ -179,9 +179,9 @@ impl Scene {
                 p.v *= (-h * 0.09).exp();
                 let before=p.p;
                 p.p += p.v * h;
-                if let Some(hit)=carrier::collider::sweep_at(f.carrier.active,end_time,before,p.p,h,extent.max(0.04)) {
+                if let Some(hit)=carrier::collider::sweep_state(&f.carrier,end_time,before,p.p,h,extent.max(0.04)) {
                     p.p=hit.point+hit.normal*0.02;
-                    let gv=carrier::velocity(f.elapsed);let rel=p.v-gv;let vn=rel.dot(hit.normal);
+                    let gv=carrier::ship_velocity(f,hit.ship,p.p,end_time);let rel=p.v-gv;let vn=rel.dot(hit.normal);
                     p.v=gv+(rel-hit.normal*vn.min(0.)*1.17)*(-h*1.9).exp();
                     p.spin*=(-h*4.).exp();
                 }

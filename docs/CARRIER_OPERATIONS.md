@@ -27,3 +27,7 @@ Tests cover moving-frame transforms, deck boundaries, parked transport, catapult
 The [Hornet FBW](hornet/FBW.md) provides basic stabilization and trim with manual flaps. It does not fly the approach or manage throttle. T selects normal/direct control; failed hardware can remove available control authority in either selection.
 
 The [catapult alignment and stability update](hornet/CATAPULT.md) documents the measured rail, attachment-point damping, comparison traces and validation. The former duplicate track overlay has been removed; the model rail and movable shuttle share the physics geometry.
+
+## Carrier Defense
+
+The separate Carrier Defense mission adds radar reports, ship weapons, progressive damage, ship cameras, and safe-deck servicing. See [Carrier Defense](naval/CARRIER_DEFENSE.md). The original approach/catapult scenarios retain their existing noncombat behavior.

@@ -520,7 +520,7 @@ fn solid(p: &[Vec3], thickness: Vec3) -> Mesh {
     }
     mesh(v, idx)
 }
-fn hull_mesh(a: Aircraft, radome: bool) -> Mesh {
+pub(crate) fn hull_mesh(a: Aircraft, radome: bool) -> Mesh {
     let mut sec = sections(a);
     if a == Aircraft::F22 {
         sec=raptor_intake::body_sections();

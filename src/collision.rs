@@ -408,7 +408,7 @@ pub fn simulate_wreck(f: &mut Flight, dt: f64) {
     f.position += f.velocity * dt;
     if let Some(hit)=crate::carrier::collider::sweep(f,before,f.position,dt,0.65) {
         f.position=hit.point+hit.normal*0.02;
-        let ship=crate::carrier::velocity(f.elapsed);let mut relative=f.velocity-ship;
+        let ship=crate::carrier::ship_velocity(f,0,f.position,f.elapsed);let mut relative=f.velocity-ship;
         let vn=relative.dot(hit.normal);if vn<0.{relative-=hit.normal*vn*1.08;}
         f.velocity=ship+relative*(-dt*2.).exp();f.rates*=(-dt*3.).exp();
     }

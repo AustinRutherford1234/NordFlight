@@ -97,6 +97,8 @@ struct ViewState {
     scenario: u8,
     missile_follow: Option<MissileFollow>,
     aircraft_follow: Option<usize>,
+    ship_follow: Option<usize>,
+    ship_previous: Option<(usize,f32,f32,f32,bool)>,
     aircraft_previous: Option<(usize, f32, f32, f32, bool)>,
 }
 #[derive(Clone, Copy)]
@@ -131,13 +133,15 @@ impl Default for ViewState {
             scenario: 2,
             missile_follow: None,
             aircraft_follow: None,
+            ship_follow: None,
+            ship_previous: None,
             aircraft_previous: None,
         }
     }
 }
 impl ViewState {
     fn follow_missile(&mut self, missile: usize) {
-        if self.aircraft_follow.is_some() {
+        if self.aircraft_follow.is_some() || self.ship_follow.is_some() {
             self.restore_camera();
         }
         if let Some(follow) = &mut self.missile_follow {
@@ -154,7 +158,12 @@ impl ViewState {
             self.map = false;
         }
     }
+    fn cycle_ship(&mut self) {
+        if let Some(ship)=self.ship_follow {if ship<2{self.ship_follow=Some(ship+1);}else{self.restore_camera();}}else{self.restore_camera();self.ship_previous=Some((self.index,self.yaw,self.pitch,self.zoom,self.map));self.ship_follow=Some(0);self.index=1;self.map=false;self.yaw=0.5;self.pitch=0.25;self.zoom=1.;}
+    }
     fn restore_camera(&mut self) {
+        if let Some(previous)=self.ship_previous.take(){(self.index,self.yaw,self.pitch,self.zoom,self.map)=previous;}
+        self.ship_follow=None;
         if let Some(follow) = self.missile_follow.take() {
             (self.index, self.yaw, self.pitch, self.zoom, self.map) = follow.previous;
         }
@@ -164,7 +173,7 @@ impl ViewState {
         self.aircraft_follow = None;
     }
     fn follow_aircraft(&mut self, aircraft: usize) {
-        if self.missile_follow.is_some() {
+        if self.missile_follow.is_some() || self.ship_follow.is_some() {
             self.restore_camera();
         }
         if self.aircraft_follow.is_none() {
@@ -178,7 +187,7 @@ impl ViewState {
         self.aircraft_follow = Some(aircraft);
     }
     fn following(&self) -> bool {
-        self.missile_follow.is_some() || self.aircraft_follow.is_some()
+        self.missile_follow.is_some() || self.aircraft_follow.is_some() || self.ship_follow.is_some()
     }
     fn follow_identity(&self) -> Option<usize> {
         self.aircraft_follow
@@ -275,6 +284,7 @@ fn main() {
         verify_flight();
         return;
     }
+    if std::env::args().any(|a|a=="--study-naval"){combat::naval::study();return;}
     let preview = std::env::args()
         .skip_while(|a| a != "--visual-check")
         .nth(1).or_else(|| std::env::var("NORD_BENCH_SCENE").ok());
@@ -1275,6 +1285,7 @@ fn main() {
         initial_flight.paused=true;initial_view.help=false;initial_view.scenario=if mode=="approach"{11}else{12};initial_view.index=0;
         initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
     }
+    if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE"){combat::naval::prepare_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);}
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
     let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
     App::new()
@@ -1384,7 +1395,7 @@ fn main() {
             Startup,
             (
                 setup_world,
-                carrier::setup,
+                (carrier::setup, combat::naval::setup).chain(),
                 setup_view,
                 setup_ui,
                 (setup_destruction, crash_scene::setup).chain(),
@@ -1412,6 +1423,7 @@ fn main() {
             (
                 (start_screen::controls,
                 (
+                    combat::naval::radio_controls.run_if(start_screen::flight_controls),
                     (apply_font,hangar::controls.run_if(start_screen::flight_controls),input.run_if(start_screen::flight_controls)).chain(),
                     warp::controls.run_if(start_screen::flight_controls),
                     (map::controls, lunar::controls, map::guidance).chain().run_if(start_screen::flight_controls),
@@ -1426,6 +1438,7 @@ fn main() {
                         cockpit_controls::controls,
                     )
                         .chain().run_if(start_screen::flight_controls),
+
                     combat::controls.run_if(start_screen::flight_controls),
                     hangar::systems.run_if(start_screen::flight_controls),
                     combat::dogfight::buttons.run_if(start_screen::flight_controls),
@@ -1435,6 +1448,7 @@ fn main() {
                     step.in_set(FlightStage::Simulation),
                 (
                     combat::camera_controls.run_if(start_screen::flight_controls),
+                    combat::naval::draw,
                     (
                         terrain::update,
                         update_world,
@@ -1951,11 +1965,12 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
         }
         9 | 10 => space::scenario(scenario),
         11 | 12 => carrier::scenario(scenario==12),
+        13..=18 => combat::naval::flight(scenario%2==1),
         _ => Flight::spacecraft(),
     };
     f.best_landing = best;
-    let aircraft=if matches!(scenario,11|12){aircraft::Aircraft::Hornet}else{aircraft};
-    if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11|12) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
+    let aircraft=if matches!(scenario,11..=18){aircraft::Aircraft::Hornet}else{aircraft};
+    if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11..=18) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
     if aircraft==aircraft::Aircraft::Hornet && matches!(scenario,4..=8) {
         f.hornet.hud.mode=cockpit::hornet_hud::MasterMode::Air;
     }
@@ -1963,7 +1978,7 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
     if f.vehicle==Vehicle::Gripen&&aircraft==aircraft::Aircraft::Hornet&&hornet_tanks {aircraft::hornet::stores::configure_scenario(f);}
     v.generation = v.generation.wrapping_add(1);
     v.scenario = scenario;
-    if matches!(scenario,11|12){v.help=false;}
+    if matches!(scenario,11..=18){v.help=false;}
     v.index = 0;
     v.map = false;
     v.map_target = 0;
@@ -2678,6 +2693,13 @@ fn update_camera(
         p = center + level * (look * Vec3::new(0., 7., 28.)) * v.zoom;
         target = center;
         up_view = radial;
+    }
+    if let Some(ship)=v.ship_follow {
+        let q=world::local_rot(carrier::ship_rotation(&f,ship,f.elapsed),&f);
+        target=local(carrier::ship_origin(&f,ship,f.elapsed),&f)+q*Vec3::Y*if ship==0{20.}else{12.};
+        p=target+q*(look*Vec3::new(0.,if ship==0{110.}else{65.},if ship==0{300.}else{180.}))*v.zoom;
+        up_view=q*Vec3::Y;
+        let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
     let mut sun_pose = None;
     for (

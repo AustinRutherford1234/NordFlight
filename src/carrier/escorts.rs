@@ -174,13 +174,12 @@ pub fn update(
         (Without<Escort>, Without<Identity>),
     >,
 ) {
-    let basis = rotation(f.elapsed);
     let mut distances = [f32::INFINITY; 2];
     let mut selected = [3; 2];
     for ship in 0..2 {
-        let local = world::local(position(ship, f.elapsed), &f);
+        let local = world::local(super::ship_origin(&f,ship+1,f.elapsed), &f);
         let distance = cameras.iter().next().map_or(
-            f.position.distance(position(ship, f.elapsed)) as f32,
+            f.position.distance(super::ship_origin(&f,ship+1,f.elapsed)) as f32,
             |(camera, projection)| match projection {
                 Projection::Perspective(p) => {
                     (camera.translation() - local).length() * (p.fov * 0.5).tan() / 0.57735
@@ -201,8 +200,8 @@ pub fn update(
             Visibility::Hidden
         });
         if show {
-            t.translation = world::local(position(ship.ship, f.elapsed), &f);
-            t.rotation = world::local_rot(basis, &f);
+            t.translation = world::local(super::ship_origin(&f,ship.ship+1,f.elapsed), &f);
+            t.rotation = world::local_rot(super::ship_rotation(&f,ship.ship+1,f.elapsed), &f);
         }
     }
     for (id, mut t, mut visible) in &mut identities {
@@ -212,8 +211,8 @@ pub fn update(
             Visibility::Hidden
         });
         if f.carrier.active {
-            t.translation = world::local(position(id.0, f.elapsed), &f);
-            t.rotation = world::local_rot(basis, &f);
+            t.translation = world::local(super::ship_origin(&f,id.0+1,f.elapsed), &f);
+            t.rotation = world::local_rot(super::ship_rotation(&f,id.0+1,f.elapsed), &f);
         }
     }
     let night = ((0.08 - e.sun_direction().dot(f.up())) / 0.14).clamp(0., 1.) as f32;
@@ -241,9 +240,9 @@ pub fn update(
             Visibility::Hidden
         });
         if on {
-            t.translation = world::local(position(lamp.ship, f.elapsed) + basis * lamp.at, &f);
+            t.translation = world::local(super::ship_origin(&f,lamp.ship+1,f.elapsed) + super::ship_rotation(&f,lamp.ship+1,f.elapsed) * lamp.at, &f);
             t.rotation = world::local_rot(
-                basis * DQuat::from_rotation_arc(DVec3::NEG_Z, lamp.direction.normalize()),
+                super::ship_rotation(&f,lamp.ship+1,f.elapsed) * DQuat::from_rotation_arc(DVec3::NEG_Z, lamp.direction.normalize()),
                 &f,
             );
             let power = lamp.power * night;

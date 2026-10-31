@@ -287,6 +287,7 @@ pub fn draw(
     let mut labels: [Option<(Vec2, String, Color)>; 4] = [None, None, None, None];
     let mut threat_docked = false;
     let active = combat.active
+        && v.ship_follow.is_none()
         && v.index != 3
         && combat.bvr.is_none()
         && !v.map
