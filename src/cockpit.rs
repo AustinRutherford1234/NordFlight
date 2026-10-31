@@ -263,6 +263,11 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         );
     }
     }
+    // Live display/picking positions stay shared; the Hornet has a fitted
+    // casing instead of the narrower generic panel and floating backing boxes.
+    if aircraft==crate::aircraft::Aircraft::Hornet && !space {
+        hornet_interior::front_panel(c,meshes,materials,root);
+    }else{
     // Instrument panel and glare shield are physically in front of the pilot.
     part(
         c,
@@ -294,10 +299,11 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         Quat::IDENTITY,
         dark.clone(),
     );
+    }
     for kind in 0..3 {
         if aircraft==crate::aircraft::Aircraft::Su27 && kind==1{continue;}
         let x = (kind as f32 - 1.0) * 0.29;
-        if aircraft!=crate::aircraft::Aircraft::F35B || kind==0 {
+        if aircraft!=crate::aircraft::Aircraft::Hornet && (aircraft!=crate::aircraft::Aircraft::F35B || kind==0) {
         part(
             c,
             Vec3::new(if aircraft==crate::aircraft::Aircraft::F35B{0.}else{x}, if aircraft==crate::aircraft::Aircraft::F22&&kind==1{0.40}else{0.49}, -3.54),
@@ -457,7 +463,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
     let tube = meshes.add(Cylinder::new(0.012, 1.0));
     for z in [if space { -3.7 } else { -3.05 }, -1.5] {
         // The operational Raptor's one-piece canopy has no forward bow.
-        if aircraft==crate::aircraft::Aircraft::F22 {continue;}
+        if matches!(aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) {continue;}
         for i in 0..48 {
             let a = i as f32 / 48.0 * std::f32::consts::PI;
             let b = (i + 1) as f32 / 48.0 * std::f32::consts::PI;
@@ -485,7 +491,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
             c.entity(root).add_child(e);
         }
     }
-    if !space && aircraft!=crate::aircraft::Aircraft::F22 {
+    if !space && !matches!(aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) {
         // Swept windscreen side posts follow the glass instead of straight
         // cuboid rails projecting through the canopy.
         for angle in [std::f32::consts::PI * 0.18, std::f32::consts::PI * 0.82] {
@@ -508,7 +514,7 @@ pub fn setup_for(c:&mut Commands,meshes:&mut Assets<Mesh>,materials:&mut Assets<
         }
     }
     for side in [-1.0, 1.0] {
-        if aircraft==crate::aircraft::Aircraft::F22 {continue;}
+        if matches!(aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) {continue;}
         if !space {
             for j in 0..64 {
                 let z = -4.08 + 2.73 * j as f32 / 64.0;

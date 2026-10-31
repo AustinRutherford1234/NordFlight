@@ -3262,7 +3262,12 @@ struct VisualCheck(Option<String>);
 fn capture_visual_check(
     mut c: Commands,
     preview: Res<VisualCheck>,
-    f: Res<Flight>,
+    mut f: ResMut<Flight>,
+    mut view: ResMut<ViewState>,
+    mut canopy_reset: Local<(u8,f32)>,
+    canopy_nodes: Query<(Entity,&Name,&Visibility)>,
+    canopy_roots: Query<(),With<aircraft::visual::hornet::ImportedHornet>>,
+    canopy_parents: Query<&ChildOf>,
     time: Res<Time>,
     mut captured: Local<bool>,
     screens: Query<&cockpit::Instrument>,
@@ -3276,6 +3281,32 @@ fn capture_visual_check(
     let Some(mode) = &preview.0 else {
         return;
     };
+    if std::env::var("NORD_FLEET_CAPTURE").as_deref()==Ok("cockpit-reset-canopy") {
+        let pivot=canopy_nodes.iter().find_map(|(entity,name,v)|{
+            if name.as_str()!="HornetCanopyPivot"{return None;}
+            let mut node=entity;
+            loop {
+                if canopy_roots.contains(node){return Some(*v);}
+                let Ok(parent)=canopy_parents.get(node)else{return None;};node=parent.parent();
+            }
+        });
+        match canopy_reset.0 {
+            0 if time.elapsed_secs()>2. && pivot.is_some()=>{
+                assert!(ejection::start(&mut f));*canopy_reset=(1,time.elapsed_secs());return;
+            }
+            1 if time.elapsed_secs()>canopy_reset.1+1.=>{
+                assert_eq!(pivot,Some(Visibility::Hidden));reset(&mut f,2,&mut view);
+                f.paused=true;view.index=0;view.yaw=1.25;view.pitch=-0.18;view.zoom=0.55;
+                *canopy_reset=(2,time.elapsed_secs());return;
+            }
+            2 if time.elapsed_secs()>canopy_reset.1+1.=>{
+                assert_eq!(pivot,Some(Visibility::Inherited));assert!(!f.ejection.active);
+                println!("CANOPY RESET REVIEW: same scene canopy restored after ejection and scenario reset");canopy_reset.0=3;
+            }
+            _=>{}
+        }
+        if canopy_reset.0<3 {return;}
+    }
     if *captured || time.elapsed_secs() < 8.0 {
         return;
     }

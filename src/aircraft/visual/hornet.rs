@@ -334,7 +334,11 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
         // The swap happens only once the aircraft is fully retracted and the
         // doors are fully closed; opening the doors reveals it again.
         let stowed = f.gear_extension <= 1e-9 && f.gear_door <= 1e-9;
-        let show=if name.starts_with("F18-landingOff") {Some(stowed)}
+        let interior=view.index==3&&!view.map&&!view.following();
+        // The fitted tub owns first-person occlusion. Imported exterior bay
+        // roofs/struts otherwise protrude through the seat and console skins.
+        let exterior_gear=["HornetBayWell","HornetBayClosureLand","HornetWellDetail","HornetGear","HornetStrut","HornetNoseDoor","HornetNoseLegDoor","HornetMainDoor","HornetMainLegDoor"].iter().any(|prefix|name.starts_with(prefix));
+        let show=if exterior_gear {Some(!interior)}else if name.starts_with("F18-landingOff") {Some(stowed)}
             else if name.starts_with("F18-cockpit") || name.starts_with("F18-hud") || name.starts_with("F18-airframe") || name.starts_with("F18-canopy") || name=="HornetFixedWindscreen" || name=="HornetCanopyFrame" {Some(!(view.index==3 && !view.map && !view.following()))}
             else if name.starts_with("F18-landingOnLight") {Some(f.gear_extension>0.99 && f.lights && f.systems.hornet_landing_light)}
             // Retracted gear stays inside the bay; never pop it out of existence.
@@ -343,7 +347,9 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
                 Some(f.damage.surface_state[i]!=crate::combat::damage::SurfaceState::Detached)
             }
             else {None};
-        let show=if name.starts_with("F18-cockpit"){Some(false)}else if f.ejection.active&&(name=="HornetCanopyPivot"||name=="HornetCanopyFrame"){Some(false)}else{show};
+        let show=if name.starts_with("F18-cockpit"){Some(false)}
+            else if name=="HornetCanopyPivot"{Some(!f.ejection.active)}
+            else if f.ejection.active&&name=="HornetCanopyFrame"{Some(false)}else{show};
         if let Some(show)=show {visible.set_if_neq(if show {Visibility::Inherited} else {Visibility::Hidden});}
     }
 }
@@ -352,6 +358,30 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
 mod tests {
     use super::*;
 
+    #[test]
+    fn reset_restores_the_same_canopy_entities_after_each_ejection() {
+        let mut app=App::new();let mut f=Flight::approach();crate::aircraft::select(&mut f,Aircraft::Hornet);
+        app.insert_resource(f).init_resource::<crate::ViewState>().init_resource::<Time>().add_systems(Update,update);
+        let root=app.world_mut().spawn((ImportedHornet,Transform::default(),Visibility::Inherited)).id();
+        let pivot=app.world_mut().spawn((Name::new("HornetCanopyPivot"),Transform::default(),Visibility::Inherited,ChildOf(root))).id();
+        let frame=app.world_mut().spawn((Name::new("HornetCanopyFrame"),Transform::default(),Visibility::Inherited,ChildOf(root))).id();
+        let glass=app.world_mut().spawn((Name::new("F18-canopy_mesh"),Transform::default(),Visibility::Inherited,ChildOf(pivot))).id();
+        let well=app.world_mut().spawn((Name::new("HornetBayWell"),Transform::default(),Visibility::Inherited,ChildOf(root))).id();
+        for scenario in [2,11,12,2] {
+            assert!(crate::ejection::start(&mut app.world_mut().resource_mut::<Flight>()));app.update();
+            assert_eq!(*app.world().get::<Visibility>(pivot).unwrap(),Visibility::Hidden);
+            assert_eq!(*app.world().get::<Visibility>(frame).unwrap(),Visibility::Hidden);
+            let mut f=app.world().resource::<Flight>().clone();let mut v=crate::ViewState::default();crate::reset(&mut f,scenario,&mut v);
+            app.insert_resource(f).insert_resource(v);app.update();
+            for entity in [pivot,frame,glass,well] {assert_eq!(*app.world().get::<Visibility>(entity).unwrap(),Visibility::Inherited,"scenario={scenario}");}
+            // Cockpit camera visibility rules remain distinct from ejection.
+            app.world_mut().resource_mut::<crate::ViewState>().index=3;app.update();
+            assert_eq!(*app.world().get::<Visibility>(pivot).unwrap(),Visibility::Inherited);
+            assert_eq!(*app.world().get::<Visibility>(glass).unwrap(),Visibility::Hidden);
+            assert_eq!(*app.world().get::<Visibility>(well).unwrap(),Visibility::Hidden);
+            app.world_mut().resource_mut::<crate::ViewState>().index=0;
+        }
+    }
     #[test]
     fn intake_rotors_follow_independent_engine_spools_and_pause() {
         let mut app=App::new();let mut f=Flight::runway();f.aircraft=Aircraft::Hornet;

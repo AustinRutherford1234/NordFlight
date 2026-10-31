@@ -1,5 +1,8 @@
 //! Fitted tandem tub and representative NACES-style seats, in cockpit coordinates.
 use bevy::prelude::*;
+#[path="hornet_detail.rs"]
+mod detail;
+pub(crate) use detail::front_panel;
 #[derive(Component)]
 pub struct Seat(pub usize);
 #[derive(Component)]
@@ -17,7 +20,7 @@ pub fn block(
     let e = c
         .spawn((
             crate::render_batch::RigidGeometry,
-            Mesh3d(m.add(Cuboid::from_size(s))),
+            Mesh3d(m.add(if s.min_element()>0.045 {super::raptor_interior::padded(s)}else{Cuboid::from_size(s).into()})),
             MeshMaterial3d(mat),
             Transform::from_translation(p).with_rotation(q),
         ))
@@ -37,7 +40,7 @@ pub fn rod(
     let e = c
         .spawn((
             crate::render_batch::RigidGeometry,
-            Mesh3d(m.add(Cylinder::new(r, d.length()))),
+            Mesh3d(m.add(Cylinder::new(r, d.length()).mesh().resolution(12).build())),
             MeshMaterial3d(mat),
             Transform::from_translation((a + b) * 0.5)
                 .with_rotation(Quat::from_rotation_arc(Vec3::Y, d.normalize())),
@@ -205,6 +208,7 @@ pub fn seat(
         Vec3::new(0.07, 0.027, 0.075),
         Quat::IDENTITY,
     );
+    detail::seat_back(c,m,root,metal.clone(),chrome.clone(),belt.clone());
     // Segmented yellow/black lower firing handle, visibly between the knees.
     for i in 0..24 {
         let a = i as f32 * std::f32::consts::TAU / 24.;
@@ -245,11 +249,7 @@ pub fn setup(
         base_color: Color::srgb(0.68, 0.72, 0.67),
         ..default()
     });
-    let green = mats.add(StandardMaterial {
-        base_color: Color::srgb(0.02, 0.11, 0.07),
-        emissive: LinearRgba::new(0.04, 0.3, 0.16, 1.),
-        ..default()
-    });
+    detail::tub(c,m,mats,images,root);
     for i in 0..2 {
         let z = i as f32 * SPACING;
         let seatroot = c
@@ -278,8 +278,8 @@ pub fn setup(
             m,
             root,
             tub.clone(),
-            Vec3::new(0., 0.04, -2.65 + z),
-            Vec3::new(0.96, 0.08, 1.42),
+            Vec3::new(0., -0.13+i as f32*0.12, -2.72 + z),
+            Vec3::new(0.96, 0.08, 1.60),
             Quat::IDENTITY,
         );
         block(
@@ -306,8 +306,8 @@ pub fn setup(
                 m,
                 root,
                 trim.clone(),
-                Vec3::new(side * 0.37, 0.30, -2.85 + z),
-                Vec3::new(0.22, 0.12, 1.10),
+                Vec3::new(side * 0.37, if i==0{0.346}else{0.30}, -2.75 + z),
+                Vec3::new(0.22, if i==0{0.172}else{0.12}, 1.30),
                 Quat::IDENTITY,
             );
             rod(
@@ -319,7 +319,7 @@ pub fn setup(
                 Vec3::new(side * 0.47, 0.73, -1.98 + z),
                 0.035,
             );
-            for row in 0..10 {
+            for row in 0..if i==0{0}else{10} {
                 for col in 0..2 {
                     let p = Vec3::new(
                         side * (0.32 + col as f32 * 0.095),
@@ -352,7 +352,7 @@ pub fn setup(
                     m,
                     root,
                     trim.clone(),
-                    Vec3::new(side * 0.19, 0.015, -3.31 + j as f32 * 0.055 + z),
+                    Vec3::new(side * 0.19, -0.075+i as f32*0.12, -3.31 + j as f32 * 0.055 + z),
                     Vec3::new(0.23, 0.012, 0.015),
                     Quat::IDENTITY,
                 );
@@ -369,15 +369,8 @@ pub fn setup(
                 Quat::from_rotation_x(-0.12),
             );
             for x in [-0.25, 0., 0.25] {
-                block(
-                    c,
-                    m,
-                    root,
-                    green.clone(),
-                    Vec3::new(x, 0.62, -3.238 + z),
-                    Vec3::new(0.20, 0.20, 0.012),
-                    Quat::from_rotation_x(-0.12),
-                );
+                detail::rear_bezel(c,m,root,trim.clone(),x,z);
+
                 let image = images.add(Image::new_fill(
                     bevy::render::render_resource::Extent3d {
                         width: 256,
@@ -401,7 +394,7 @@ pub fn setup(
                         crate::render_batch::RigidGeometry,
                         Mesh3d(m.add(Rectangle::new(0.185, 0.185))),
                         MeshMaterial3d(mat.clone()),
-                        Transform::from_xyz(x, 0.62, -3.225 + z),
+                        detail::rear_display(x,z),
                         super::InternalDisplay,
                         super::Repeater,
                         super::Instrument {
