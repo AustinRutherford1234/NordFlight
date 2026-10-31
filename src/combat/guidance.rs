@@ -134,6 +134,7 @@ impl Gnc {
         self
     }
     pub fn for_aircraft(mut self, aircraft: crate::aircraft::Aircraft, kind: Weapon) -> Self {
+        self.long_range |= aircraft == crate::aircraft::Aircraft::Hornet && kind == Weapon::Radar;
         self.aim9x = matches!(aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet) && kind == Weapon::Heat;
         self
     }

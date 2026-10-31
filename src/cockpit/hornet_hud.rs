@@ -522,7 +522,6 @@ fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
     if !combat.active {return;}
     c.text(&format!("T{:02} / TAB NEXT",combat.selected+1),200.,280.,1.0);
     if let Some(t) = combat.targets.get(combat.selected).filter(|t| t.alive) {
-        let range = t.position.distance(f.position);
         let closure = crate::combat::hud::closing(f, t);
         let locked = track.locked;
         if let Some(p) = project(f, t.position - f.position).filter(|p| in_field(*p)) {
@@ -543,12 +542,32 @@ fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
             c.line(p, p - d * 15. - Vec2::new(-d.y, d.x) * 5.);
             c.text("LOS", p.x + 8., p.y, 1.1);
         }
-        c.text(&format!("R {:.1}", range / 1852.), 418., 270., 1.4);
-        c.text(&format!("VC {:+.0}", closure * 1.943844), 406., 290., 1.2);
+        c.text(&format!("VC {:+.0}", closure * 1.943844), 20., 240., 1.2);
+        if let Some(zone) = crate::combat::bvr::cockpit_radar::launch_zone(combat,f) {
+            launch_zone(c,&zone);
+        } else { c.text("RNG -- NM",365.,270.,1.2); }
         if locked && f.paused {c.text("RESUME TO FIRE",210.,300.,1.0);}
         else if locked && combat.ammo[combat.weapon.index()]==0 {c.text("NO MISSILES",215.,300.,1.0);}
 
     }
+}
+// Shared measured-track envelope with the radar display. RMAX/NEZ are estimates.
+fn launch_zone(c: &mut Canvas, zone: &crate::combat::bvr::cockpit_radar::LaunchZone) {
+    let scale = (zone.max*1.25).max(zone.range*1.10);
+    let y = |r:f64| 218. - (r/scale).clamp(0.,1.) as f32*122.;
+    let x=390.;
+    c.line(Vec2::new(x,96.),Vec2::new(x,218.));
+    for (r,w) in [(0.,5.),(zone.max,9.),(zone.nez,9.)] {
+        c.line(Vec2::new(x-w,y(r)),Vec2::new(x+w,y(r)));
+    }
+    c.line(Vec2::new(x+8.,y(0.)),Vec2::new(x+8.,y(zone.nez)));
+    let marker=y(zone.range);
+    c.line(Vec2::new(x-17.,marker-5.),Vec2::new(x-9.,marker));
+    c.line(Vec2::new(x-9.,marker),Vec2::new(x-17.,marker+5.));
+    c.text(if zone.coasting {"COAST EST"} else if (500. ..=zone.nez).contains(&zone.range) {"IN NEZ EST"} else {"DLZ EST"},365.,235.,1.1);
+    c.text(&format!("RMAX {:.1} NM",zone.max/1852.),365.,247.,1.1);
+    c.text(&format!("NEZ {:.1} NM",zone.nez/1852.),365.,259.,1.1);
+    c.text(&format!("RNG {:.1} NM",zone.range/1852.),365.,271.,1.1);
 }
 fn ground(c: &mut Canvas, f: &Flight, combat: &Combat) {
     c.text("GUN CCIP", 20., 296., 1.4);

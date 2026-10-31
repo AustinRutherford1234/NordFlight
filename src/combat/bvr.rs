@@ -59,7 +59,12 @@ impl Default for Radar {
         }
     }
 }
+// Search scales are gameplay estimates, not APG-79 performance specifications.
+pub fn local_ranges(f: &Flight) -> &'static [f64; 4] {
+    if f.aircraft == crate::aircraft::Aircraft::Hornet { &RANGES } else { &LOCAL_RANGES }
+}
 pub fn sense_local(c: &mut Combat, f: &Flight) {
+    let ranges = local_ranges(f);
     let r = &mut c.radar;
     r.scan = ((c.clock * 32.).rem_euclid(240.) - 120.).abs() - 60.;
     r.tracks.resize_with(c.targets.len(), Track::default);
@@ -83,7 +88,7 @@ pub fn sense_local(c: &mut Combat, f: &Flight) {
             && r.powered
             && f.battery
             && f.damage.radar > 0.25
-            && offset.length() < LOCAL_RANGES[r.range]
+            && offset.length() < ranges[r.range]
             && (el - r.elevation).abs() < 12.
             && beam
             && radar_signal(f.position, guidance::target(t)) > 0.18
@@ -1563,4 +1568,27 @@ mod tests {
         assert!(m.gnc.mass < 190. && m.gnc.mass > 120.);
         assert!(m.velocity.is_finite());
     }
+}
+
+/// Disposable native-review fixture: scan real sensor code against fixed contacts.
+pub fn prepare_hornet_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut crate::ViewState) {
+    *f=flight();crate::aircraft::select(f,crate::aircraft::Aircraft::Hornet);
+    v.generation=100;v.scenario=4;v.help=false;v.map=false;v.index=3;
+    v.yaw=0.;v.pitch=-0.10;v.zoom=1.;v.simple=true;
+    c.start(f,v.generation);c.weapon=Weapon::Radar;
+    let range=match mode {"nez"=>20000.,"outside"=>120000.,_=>60000.};
+    c.targets.truncate(1);
+    let t=&mut c.targets[0];t.position=f.position+f.forward()*range;
+    t.velocity=-f.forward()*250.;t.orientation=facing(t.velocity.normalize(),f.up());
+    // Exercise a complete sweep and ordinary signal-weighted acquisition, not an injected track.
+    for _ in 0..60 {
+        c.clock+=0.2;sense_local(c,f);
+        if c.cue(f).is_ok() {c.lock=(c.lock+0.2*radar_signal(f.position,guidance::target(&c.targets[0]))).min(c.weapon.lock_time());}
+        else {c.lock=0.;}
+    }
+    let tr=&c.radar.tracks[0];
+    println!("HORNET RADAR REVIEW mode={mode} range_m={range} detected={} track_age={} cue={:?} lock={} zone={:?}",tr.valid(c.clock),c.clock-tr.seen,c.cue(f),c.lock,cockpit_radar::launch_zone(c,f));
+    assert!(tr.valid(c.clock));
+    if mode=="outside" {assert!(c.cue(f).is_err());} else {assert!(c.cue(f).is_ok());assert!(c.lock>=c.weapon.lock_time());}
+    f.hornet.hud.mode=crate::cockpit::hornet_hud::MasterMode::Air;f.paused=true;
 }

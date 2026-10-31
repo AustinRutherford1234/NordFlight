@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-31",
+  "automated": {
+    "passed": 720,
+    "failed": 0,
+    "execution_seconds": 39.4
+  },
+  "native": {
+    "aggregate_seconds": 43.7,
+    "approved_limit_seconds": 180,
+    "cases": [
+      {
+        "range_m": 60000,
+        "detected": true,
+        "lock": true
+      },
+      {
+        "range_m": 20000,
+        "detected": true,
+        "lock": true,
+        "inside_estimated_nez": true
+      },
+      {
+        "range_m": 120000,
+        "detected": true,
+        "lock": false,
+        "inhibit": "OUT OF RANGE"
+      }
+    ],
+    "estimated_rmax_m": 98932.91568898063,
+    "estimated_nez_m": 47487.799530710705,
+    "evidence_directory": "tests/hornet-radar-review",
+    "scope": "fixed-contact real-sensor scans plus paused native visual inspection; not a user-flown intercept"
+  },
+  "mac_app": {
+    "rebuilt": true,
+    "ad_hoc_signature_verified": true
+  }
+}

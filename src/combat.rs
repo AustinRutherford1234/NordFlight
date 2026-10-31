@@ -383,15 +383,24 @@ impl Combat {
         if range < 250.0 {
             return Err("TOO CLOSE");
         }
-        if range > self.weapon.player_range(f) {
+        let hornet_radar = f.aircraft == crate::aircraft::Aircraft::Hornet && self.weapon == Weapon::Radar;
+        if hornet_radar {
+            if self.radar.mode == bvr::RadarMode::Search { return Err("SELECT TWS OR STT"); }
+            if !self.radar.tracks.get(self.selected).is_some_and(|t| t.valid(self.clock) && self.clock-t.seen <= 3.) {
+                return Err("NO FRESH RADAR TRACK");
+            }
+        }
+        let maximum = if hornet_radar { bvr::envelope(f.position,f.velocity,guidance::target(target)).0 } else { self.weapon.player_range(f) };
+        if range > maximum {
             return Err("OUT OF RANGE");
         }
-        let cone = self.weapon.player_cone(f);
+        let cone = if hornet_radar {60.} else {self.weapon.player_cone(f)};
         if f.forward().dot(r.normalize()) < cone.to_radians().cos() {
             return Err("POINT NOSE AT TARGET");
         }
-        let (signal, reason) =
-            guidance::quality(self.weapon, f.position, guidance::target(target), self.sun);
+        let (signal, reason) = if hornet_radar {
+            (bvr::radar_signal(f.position,guidance::target(target)), "WEAK RADAR RETURN")
+        } else { guidance::quality(self.weapon, f.position, guidance::target(target), self.sun) };
         if signal < 0.18 {
             return Err(reason);
         }
@@ -408,7 +417,7 @@ impl Combat {
         for offset in 1..=self.targets.len() {
             let index = (self.selected + offset) % self.targets.len();
             if self.targets[index].alive
-                && self.naval.as_ref().is_none_or(|n|n.track_for(index).is_some())
+                && self.naval.as_ref().is_none_or(|n|n.track_for(index).is_some() || self.radar.tracks.get(index).is_some_and(|t|t.valid(self.clock)))
                 && self
                     .bvr
                     .as_ref()
@@ -614,13 +623,10 @@ impl Combat {
         }
         bvr::sense_local(self, f);
         if self.cue(f).is_ok() {
-            let signal = guidance::quality(
-                self.weapon,
-                f.position,
-                guidance::target(&self.targets[self.selected]),
-                self.sun,
-            )
-            .0;
+            let contact = guidance::target(&self.targets[self.selected]);
+            let signal = if f.aircraft == crate::aircraft::Aircraft::Hornet && self.weapon == Weapon::Radar {
+                bvr::radar_signal(f.position, contact)
+            } else { guidance::quality(self.weapon, f.position, contact, self.sun).0 };
             self.lock = (self.lock + dt * signal).min(self.weapon.lock_time());
         } else {
             self.lock = 0.0;
@@ -686,7 +692,10 @@ impl Combat {
                 available: !f.crashed
                     && f.battery
                     && f.damage.radar >= 0.25
-                    && self.selected == missile.target,
+                    && self.selected == missile.target
+                    && self.radar.powered
+                    && (f.aircraft != crate::aircraft::Aircraft::Hornet || self.radar.tracks.get(missile.target)
+                        .is_some_and(|t| t.valid(self.clock) && self.clock-t.seen <= 3.)),
             };
             missile.gnc.wind = self.environment.wind(missile.position);
             guidance::fly(missile, tracked, support, self.sun, dt);
@@ -2431,7 +2440,7 @@ mod tests {
     fn hornet_releases_two_9x_and_six_amraams_from_matching_racks() {
         let mut f=flight();crate::aircraft::select(&mut f,crate::aircraft::Aircraft::Hornet);let mut c=Combat::default();c.start(&f,1);f.rates=DVec3::ZERO;
         for i in 0..8 {
-            c.weapon=if i<2{Weapon::Heat}else{Weapon::Radar};c.lock=2.;c.clock+=1.;let rack=crate::aircraft::station_for(&f,i);
+            c.weapon=if i<2{Weapon::Heat}else{Weapon::Radar};c.lock=2.;c.clock+=1.;c.radar.mode=bvr::RadarMode::Stt;bvr::sense_local(&mut c,&f);let rack=crate::aircraft::station_for(&f,i);
             assert!(c.fire(&f),"failed station {i}");let m=c.missiles.last().unwrap();assert_eq!(m.gnc.aim9x,i<2);assert!(m.position.distance(f.position+f.orientation*rack)<1e-8);
             if i<2 {assert!((m.velocity-f.velocity-f.forward()*18.).length()<1e-8);}
             f.systems.stores[i]=false;
@@ -2454,7 +2463,7 @@ mod tests {
     fn fleet_inventory_launches_every_station_without_two_round_assumption(){
         for a in crate::aircraft::Aircraft::ALL {let mut f=flight();crate::aircraft::select(&mut f,a);f.systems.bays=1.;f.systems.main_stroke=[1.;6];f.systems.side_bays=[crate::aircraft::bays::State{door:1.,launcher:1.};2];let mut c=Combat::default();c.start(&f,1);
             assert_eq!(c.ammo,a.spec().ammo);
-            for kind in [Weapon::Heat,Weapon::Radar]{c.weapon=kind;let n=c.ammo[kind.index()];for _ in 0..n {c.lock=kind.lock_time();c.clock+=1.;assert!(c.fire(&f),"{a:?} {kind:?}: {}",c.message);let m=c.missiles.last().unwrap();assert!(m.position.distance(f.position)<a.spec().length);assert!(m.position.is_finite());let index=c.missiles.len()-1;assert!(std::ptr::eq(c.render_missile(index).expect("every launch must be visible"),m));}assert!(!c.fire(&f));}
+            for kind in [Weapon::Heat,Weapon::Radar]{c.weapon=kind;let n=c.ammo[kind.index()];for _ in 0..n {c.lock=kind.lock_time();c.clock+=1.;c.radar.mode=bvr::RadarMode::Stt;bvr::sense_local(&mut c,&f);assert!(c.fire(&f),"{a:?} {kind:?}: {}",c.message);let m=c.missiles.last().unwrap();assert!(m.position.distance(f.position)<a.spec().length);assert!(m.position.is_finite());let index=c.missiles.len()-1;assert!(std::ptr::eq(c.render_missile(index).expect("every launch must be visible"),m));}assert!(!c.fire(&f));}
             assert_eq!(c.ammo,[0,0]);assert_eq!(c.missiles.len(),(a.spec().ammo[0]+a.spec().ammo[1])as usize);assert!(c.targets.iter().all(|t|t.dynamics.aircraft==crate::aircraft::Aircraft::Gripen));
         }
     }

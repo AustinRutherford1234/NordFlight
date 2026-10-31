@@ -50,11 +50,11 @@ fn sensor(c: &Combat) -> SensorView<'_> {
 pub fn radar(c: &Combat) -> &Radar {
     sensor(c).radar
 }
-fn radar_range(c: &Combat) -> f64 {
+fn radar_range(c: &Combat, f: &Flight) -> f64 {
     if c.bvr.is_some() {
         RANGES[radar(c).range]
     } else {
-        LOCAL_RANGES[radar(c).range]
+        local_ranges(f)[radar(c).range]
     }
 }
 pub fn setup(c: &mut Commands) {
@@ -291,7 +291,7 @@ fn track_point(c: &Combat, f: &Flight, index: usize, tactical: bool) -> Option<V
     }
     let offset = tr.position + tr.velocity * (c.clock - tr.seen) - f.position;
     let relative = f.orientation.conjugate() * offset;
-    let range = radar_range(c);
+    let range = radar_range(c, f);
     let point = if tactical {
         let up = f.up();
         let ahead = (f.forward() - up * f.forward().dot(up)).normalize_or_zero();
@@ -440,13 +440,13 @@ pub fn selected_hud_line(c: &Combat, f: &Flight) -> Option<String> {
     })
 }
 #[derive(Debug)]
-struct LaunchZone {
-    range: f64,
-    max: f64,
-    nez: f64,
-    coasting: bool,
+pub(crate) struct LaunchZone {
+    pub range: f64,
+    pub max: f64,
+    pub nez: f64,
+    pub coasting: bool,
 }
-fn launch_zone(c: &Combat, f: &Flight) -> Option<LaunchZone> {
+pub(crate) fn launch_zone(c: &Combat, f: &Flight) -> Option<LaunchZone> {
     let b = sensor(c);
     if !b.radar.powered || !f.battery || f.damage.radar < 0.25 || c.selected >= b.enemies {
         return None;
@@ -458,7 +458,7 @@ fn launch_zone(c: &Combat, f: &Flight) -> Option<LaunchZone> {
         .filter(|tr| tr.valid(c.clock))?;
     let position = tr.position + tr.velocity * (c.clock - tr.seen);
     let offset = position - f.position;
-    let (max, nez) = if c.weapon == Weapon::Radar && c.bvr.is_some() {
+    let (max, nez) = if c.weapon == Weapon::Radar && (c.bvr.is_some() || f.aircraft == crate::aircraft::Aircraft::Hornet) {
         envelope(
             f.position,
             f.velocity,
@@ -478,7 +478,7 @@ fn launch_zone(c: &Combat, f: &Flight) -> Option<LaunchZone> {
         let factor =
             (0.55 + f.altitude().max(0.) / 30000. + f.velocity.length() / 1200. + closure / 1600.)
                 .clamp(0.35, 1.);
-        let max = c.weapon.range() * factor;
+        let max = c.weapon.player_range(f) * factor;
         (max, max * 0.48)
     };
     Some(LaunchZone {
@@ -626,7 +626,7 @@ fn missile_symbols(c: &Combat, f: &Flight, tactical: bool) -> Vec<(Vec2, bool)> 
     if !b.radar.powered || !f.battery || f.damage.radar < 0.25 {
         return vec![];
     }
-    let scale = radar_range(c);
+    let scale = radar_range(c, f);
     let up = f.up();
     let ahead = (f.forward() - up * f.forward().dot(up)).normalize_or_zero();
     let right = ahead.cross(up).normalize_or_zero();
@@ -946,7 +946,7 @@ pub fn controls(
 }
 pub fn draw(data: &mut [u8], c: &Combat, f: &Flight, tactical: bool) {
     let _measure = crate::performance::span(6);
-    if tactical {super::super::tactical::draw_scope(data,c,f,radar_range(c));return;}
+    if tactical {super::super::tactical::draw_scope(data,c,f,radar_range(c, f));return;}
     use crate::cockpit::{radar_label as text, radar_line as line};
     let green = [90, 245, 175, 255];
     let dim = [25, 85, 72, 255];
@@ -979,7 +979,7 @@ pub fn draw(data: &mut [u8], c: &Combat, f: &Flight, tactical: bool) {
         &format!(
             "{} {}KM EL{:+.0}",
             b.radar.mode.label(),
-            radar_range(c) / 1000.,
+            radar_range(c, f) / 1000.,
             b.radar.elevation
         ),
         38,

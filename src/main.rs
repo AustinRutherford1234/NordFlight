@@ -1290,6 +1290,7 @@ fn main() {
         initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE"){combat::naval::prepare_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);if mode.starts_with("map-"){bvr_menu.reveal=mode=="map-reveal"||mode=="map-120km";}}
+    if let Ok(mode)=std::env::var("NORD_RADAR_CAPTURE") {combat::bvr::prepare_hornet_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);}
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
     let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
     App::new()
