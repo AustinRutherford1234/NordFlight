@@ -23,6 +23,8 @@ pub enum Vehicle {
 
 #[derive(Resource, Clone)]
 pub struct Flight {
+    pub ai_bomber:bool,
+    pub bomber_stores:u8,
     pub water: crate::water::State,
     pub ejection: crate::ejection::State,
     pub carrier: crate::carrier::State,
@@ -102,7 +104,7 @@ impl Default for Flight {
 }
 impl Flight {
     pub fn approach() -> Self {
-        Self {
+        Self {ai_bomber:false,bomber_stores:0,
             water: Default::default(),
             ejection: Default::default(),
             carrier: Default::default(),
@@ -234,6 +236,7 @@ impl Flight {
     }
     pub fn usable_fuel(&self) -> f64 {self.fuel+if self.vehicle==Vehicle::Gripen&&self.aircraft==crate::aircraft::Aircraft::Hornet{crate::aircraft::hornet::stores::fuel(self)}else{0.}}
     pub fn mass(&self) -> f64 {
+        if self.ai_bomber{return crate::aircraft::tu160::mass(self);}
         if self.vehicle == Vehicle::Gripen {
             if self.aircraft==crate::aircraft::Aircraft::Hornet {crate::aircraft::hornet::mass::total(self)}else{self.aircraft.spec().empty + self.fuel + crate::aircraft::stores_mass(self)}
         } else {
@@ -835,6 +838,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         crate::collision::simulate_wreck(f, dt);
         return;
     }
+    if f.ai_bomber{crate::aircraft::tu160::step(f,e,dt);return;}
     if f.vehicle==Vehicle::Gripen && f.aircraft==crate::aircraft::Aircraft::Hornet {crate::aircraft::hornet::step(f,e,dt);return;}
     let spec = f.aircraft.spec();
     let custom = f.aircraft != crate::aircraft::Aircraft::Gripen;

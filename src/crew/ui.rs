@@ -335,7 +335,7 @@ pub fn draw(
         let mut next = (*node).clone();
         let show = match panel.0 {
             0 => !crew.editor,
-            1 => !menu.open && !crew.editor && available && v.missile_follow.is_none(),
+            1 => !menu.open && !crew.editor && !v.map && available && v.missile_follow.is_none(),
             _ => crew.editor,
         };
         next.display = if show { Display::Flex } else { Display::None };
@@ -460,6 +460,9 @@ mod performance_tests {
         app.world_mut().resource_mut::<Crew>().size.x += 30.;
         app.update();
         assert_eq!(app.world().resource::<Changes>().0, initial + 1);
+        app.world_mut().resource_mut::<ViewState>().map=true;app.update();
+        let mut nodes=app.world_mut().query_filtered::<&Node,With<Panel>>();
+        assert!(nodes.iter(app.world()).all(|n|n.display==Display::None));
     }
     #[test]
     fn actual_combat_panels_dock_clear_of_portrait_without_per_frame_layout_changes() {

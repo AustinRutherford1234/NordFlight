@@ -21,6 +21,7 @@ pub struct Menu {
     aircraft: Aircraft,
     scenario: u8,
     difficulty: Difficulty,
+    map_reveal:bool,
     formation: usize,
     defense: bool,
     external: bool,
@@ -41,6 +42,7 @@ impl Default for Menu {
             aircraft: Aircraft::F22,
             scenario: 1,
             difficulty: Difficulty::Balanced,
+            map_reveal:false,
             formation: 1,
             defense: false,
             external: false,
@@ -352,6 +354,7 @@ pub fn controls(
             menu.external = f.systems.external_stores;
             menu.formation = bvr.formation;
             menu.defense = bvr.defense;
+            menu.map_reveal=bvr.reveal;
             menu.difficulty = match view.scenario {
                 5 => Difficulty::Training,
                 6 => Difficulty::Balanced,
@@ -414,6 +417,7 @@ pub fn controls(
                 menu.scenario = 8;
             }
             220 | 221 => menu.defense = id == 221,
+            235=>menu.map_reveal=!menu.map_reveal,
             230 => menu.fbw = !menu.fbw,
             231 => menu.infinite = !menu.infinite,
             232 => menu.external = !menu.external,
@@ -434,6 +438,7 @@ pub fn controls(
                 bvr.formation = menu.formation;
                 bvr.difficulty = menu.difficulty;
                 bvr.defense = menu.defense;
+                bvr.reveal=menu.map_reveal;
                 bvr.open = false;
                 bvr.saved_pause = None;
                 hangar.open = false;
@@ -580,6 +585,7 @@ pub fn ui(
                 if (5..=8).contains(&menu.scenario) || matches!(menu.scenario,13|14) {
                     row(p,|p| {for (i,d) in [Difficulty::Training,Difficulty::Balanced,Difficulty::Hard].into_iter().enumerate(){button(p,200+i as u16,if matches!(menu.scenario,13|14){["EASY","NORMAL","HARD"][i]}else{d.label()},menu.difficulty==d);}});
                 }
+                row(p,|p|{button(p,235,if menu.map_reveal{"MAP DIFFICULTY: ALL CONTACTS"}else{"MAP DIFFICULTY: SHARED SENSORS"},menu.map_reveal);});
                 if menu.scenario==8 {row(p,|p| {button(p,220,"ELIMINATION",!menu.defense);button(p,221,"INTERCEPT / DEFEND",menu.defense);});}
             }
             button(p,900,"F L Y",true);
@@ -841,6 +847,8 @@ mod tests {
             m.difficulty = Difficulty::Hard;
             m.defense = true;
         }
+        click(&mut app,235);
+        assert!(app.world().resource::<Menu>().map_reveal);
         click(&mut app, 900);
         assert_eq!(app.world().resource::<Flight>().aircraft, Aircraft::Hornet);
         assert_eq!(app.world().resource::<ViewState>().scenario, 8);
@@ -849,6 +857,7 @@ mod tests {
             (bvr.formation, bvr.difficulty, bvr.defense),
             (3, Difficulty::Hard, true)
         );
+        assert!(app.world().resource::<crate::combat::bvr::Menu>().reveal);
         assert!(!app.world().resource::<Flight>().paused);
         {
             let mut m = app.world_mut().resource_mut::<Menu>();

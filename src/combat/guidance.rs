@@ -45,8 +45,9 @@ impl Mode {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Gnc {
+    pub exhaust_offset:f64,
     /// Distinct player F-22 loadout; never inferred from the target or camera.
     pub aim9x: bool,
     pub long_range: bool,
@@ -87,6 +88,7 @@ pub struct Gnc {
 impl Default for Gnc {
     fn default() -> Self {
         Self {
+            exhaust_offset:1.6,
             aim9x: false,
             long_range: false,
             mode: Mode::Separation,

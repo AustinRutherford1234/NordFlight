@@ -115,6 +115,7 @@ pub fn spawn(c: &mut Commands) {
                     choice(p, id, label, percent(33.333), 78.);
                 }
             });
+            p.spawn(Node{column_gap:px(12),..default()}).with_children(|p|{choice(p,42,"MAP: SHARED SENSORS",percent(50),42.);choice(p,43,"MAP: ALL CONTACTS",percent(50),42.);});
             heading(p, "03   MISSION");
             p.spawn(Node {
                 column_gap: px(12),
@@ -194,6 +195,7 @@ pub fn controls(
                     _ => Difficulty::Hard,
                 }
             }
+            42..=43=>menu.reveal=choice.0==43,
             40..=41 => menu.defense = choice.0 == 41,
             50 => close = true,
             51 => start = true,
@@ -235,6 +237,7 @@ pub fn draw(
             32 => menu.difficulty == Difficulty::Hard,
             40 => !menu.defense,
             41 => menu.defense,
+            42=>!menu.reveal,43=>menu.reveal,
             51 => true,
             _ => false,
         };

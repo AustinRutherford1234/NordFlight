@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-31",
+  "automated": {
+    "passed": 718,
+    "failed": 0,
+    "test_runtime_s": 58.6
+  },
+  "native": {
+    "captures": 17,
+    "distinct_views": 13,
+    "aggregate_seconds": 329.10735179199946,
+    "manual_user_flight_review": "pending",
+    "paths": "tests/naval-upgrade/"
+  },
+  "transit": {
+    "seconds": 600,
+    "start_range_m": 120000,
+    "sampled_extrema": {
+      "Fighter": {
+        "altitude": {
+          "min": 4140.774750420824,
+          "max": 4999.999656274915
+        },
+        "speed": {
+          "min": 240.07973231044315,
+          "max": 252.89922992679024
+        },
+        "g": {
+          "min": 0.9249263369077584,
+          "max": 5.74676626088207
+        },
+        "bank": {
+          "min": -1.3153844229475418,
+          "max": 1.3100117129914512
+        },
+        "rate": {
+          "min": 0.00015051933799027566,
+          "max": 0.45543378456743167
+        }
+      },
+      "Bomber": {
+        "altitude": {
+          "min": 3424.6363205257803,
+          "max": 4217.211779644713
+        },
+        "speed": {
+          "min": 220.84929921286053,
+          "max": 239.99536735710916
+        },
+        "g": {
+          "min": 0.6537907345527744,
+          "max": 1.3343681618482228
+        },
+        "bank": {
+          "min": -0.6340768312213232,
+          "max": 0.011208317139028154
+        },
+        "rate": {
+          "min": 7.79749041967737e-05,
+          "max": 0.2176184506032411
+        }
+      }
+    },
+    "note": "Extrema from 5-second snapshots; exact in-loop bomber checks enforce <2.7 G and <.8 rad/s."
+  },
+  "performance": "No new sustained FPS benchmark or gain claim; bounded resources and shared effects.",
+  "model_status": "Reduced-order Tu-160 aerodynamics, inertia, propulsion and FBW are documented engineering estimates."
+}

@@ -920,9 +920,9 @@ pub fn controls(
     let Ok(ray) = camera.viewport_to_world(transform, cursor) else {
         return;
     };
-    let origin = f.orientation.conjugate()
-        * (world::render_origin(&f) + world::frame(&f) * ray.origin.as_dvec3() - f.position) - f.aircraft.cabin_offset().as_dvec3();
-    let direction = f.orientation.conjugate() * (world::frame(&f) * ray.direction.as_dvec3());
+    let (origin,direction)=crate::cockpit::cockpit_ray(&f,
+        f.orientation.conjugate() * (world::render_origin(&f) + world::frame(&f) * ray.origin.as_dvec3() - f.position),
+        f.orientation.conjugate() * (world::frame(&f) * ray.direction.as_dvec3()));
     if let Some(action) = pick_bezel(origin, direction) {
         display.hover = Some(action);
         display.hint = format!("OPTION / ALT + CLICK: {}", help(action));
@@ -946,6 +946,7 @@ pub fn controls(
 }
 pub fn draw(data: &mut [u8], c: &Combat, f: &Flight, tactical: bool) {
     let _measure = crate::performance::span(6);
+    if tactical {super::super::tactical::draw_scope(data,c,f,radar_range(c));return;}
     use crate::cockpit::{radar_label as text, radar_line as line};
     let green = [90, 245, 175, 255];
     let dim = [25, 85, 72, 255];
@@ -1131,4 +1132,7 @@ pub fn draw(data: &mut [u8], c: &Combat, f: &Flight, tactical: bool) {
         text(data, "FRND MSL", 40, 37, [100, 185, 255, 255]);
         text(data, "THREAT", 103, 37, [255, 85, 65, 255]);
     }
+}
+#[cfg(test)]mod hornet_picking_regressions{use super::*;
+ #[test]fn every_visible_radar_cap_picks_its_own_action_through_scaled_cabin(){let mut f=Flight::approach();f.aircraft=crate::aircraft::Aircraft::Hornet;for (action,p)in bezel(){let body=p.as_dvec3()*DVec3::new(0.75,1.,1.)+f.aircraft.cabin_offset().as_dvec3();let (o,d)=crate::cockpit::cockpit_ray(&f,body+DVec3::Z*0.5,DVec3::NEG_Z);assert_eq!(pick_bezel(o,d),Some(action));}}
 }

@@ -9,8 +9,7 @@ pub struct NavalVisual {
 }
 #[derive(Resource)]
 pub struct Models {
-    standard: Handle<Mesh>,
-    small: Handle<Mesh>,
+    weapons:[Handle<Mesh>;4],
 }
 fn mesh(polys: Vec<Vec<Vec3>>) -> Mesh {
     let mut p = vec![];
@@ -189,8 +188,10 @@ pub fn setup(
     let surfaces = meshes.add(mesh(wings));
     super::bomber::setup(&mut commands,&server);
     let bomber = std::env::var_os("NORD_BOMBER_REFERENCE").map(|_|meshes.add(bomber()));
-    let standard = meshes.add(Capsule3d::new(0.18, 4.2));
-    let small = meshes.add(Capsule3d::new(0.13, 2.7));
+    let weapons=[Kind::Standard,Kind::Essm,Kind::AntiShip,Kind::AirToAir].map(|kind|meshes.add(super::ordnance::mesh(kind)));
+    let weapon_paint=materials.add(StandardMaterial{base_color:Color::WHITE,metallic:0.35,perceptual_roughness:0.53,..default()});
+    let exhaust=meshes.add(super::ordnance::exhaust());
+    let motor=materials.add(StandardMaterial{base_color:Color::srgba(1.,1.,1.,0.75),emissive:LinearRgba::new(9.,6.,2.,1.),alpha_mode:AlphaMode::Blend,cull_mode:None,unlit:true,..default()});
     let sphere = meshes.add(Sphere::new(1.).mesh().uv(12, 8));
     for index in 0..12 {
         commands
@@ -235,10 +236,11 @@ pub fn setup(
         }
     }
     for index in 0..WEAPON_LIMIT {
+        commands.spawn((NavalVisual{kind:8,index},Mesh3d(exhaust.clone()),MeshMaterial3d(motor.clone()),Transform::default(),Visibility::Hidden,bevy::light::NotShadowCaster));
         commands.spawn((
             NavalVisual { kind: 2, index },
-            Mesh3d(standard.clone()),
-            MeshMaterial3d(skin.clone()),
+            Mesh3d(weapons[0].clone()),
+            MeshMaterial3d(weapon_paint.clone()),
             Transform::default(),
             Visibility::Hidden,
         ));
@@ -310,7 +312,7 @@ pub fn setup(
             Visibility::Hidden,
         ));
     }
-    commands.insert_resource(Models { standard, small });
+    commands.insert_resource(Models { weapons });
     commands.spawn((
         NavalText,
         Text::new(""),
@@ -408,26 +410,18 @@ pub fn draw(
                 2 => {
                     if let Some(m) = n.rounds.get(tag.index).filter(|m| m.alive) {
                         let rot =
-                            DQuat::from_rotation_arc(DVec3::Y, m.velocity.normalize_or(DVec3::Y));
+                            facing(m.velocity.normalize_or(DVec3::NEG_Z),m.position.normalize());
                         pose = Some((m.position, rot, Vec3::ONE));
                         if let Some(mut mesh) = mesh {
-                            let desired = if m.kind == Kind::Standard {
-                                models.standard.clone()
-                            } else {
-                                models.small.clone()
-                            };
+                            let desired=models.weapons[match m.kind{Kind::Standard=>0,Kind::Essm=>1,Kind::AntiShip=>2,Kind::AirToAir=>3}].clone();
                             mesh.set_if_neq(Mesh3d(desired));
                         }
-                        let p = crate::world::local(m.position, &f);
-                        let v = (crate::world::frame(&f).conjugate()
-                            * m.velocity.normalize_or(DVec3::Y))
-                        .as_vec3();
-                        if m.age < 14. {
-                            gizmos.line(p, p - v * 14., Color::srgb(1., 0.65, 0.2));
-                        }
-                        gizmos.line(p - v * 15., p - v * 50., Color::srgba(0.8, 0.82, 0.84, 0.5));
                     }
                 }
+                8=>{if let Some(m)=n.rounds.get(tag.index).filter(|m|m.alive&&m.age>0.18&&m.age<m.kind.burn()){
+                    let (length,diameter)=super::ordnance::dimensions(m.kind);let direction=m.velocity.normalize_or(DVec3::NEG_Z);let flame=if m.kind==Kind::AntiShip{0.8}else{3.};let pulse=1.+0.04*(m.age*41.).sin()as f32;
+                    pose=Some((m.position-direction*(length as f64*0.49),facing(direction,m.position.normalize()),Vec3::new(diameter/0.178,diameter/0.178,flame*pulse)));
+                }}
                 3 => {
                     if let Some(x) = n.flashes.get(tag.index) {
                         pose = Some((

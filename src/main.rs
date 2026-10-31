@@ -1289,7 +1289,7 @@ fn main() {
         initial_flight.paused=true;initial_view.help=false;initial_view.scenario=if mode=="approach"{11}else{12};initial_view.index=0;
         initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
     }
-    if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE"){combat::naval::prepare_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);}
+    if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE"){combat::naval::prepare_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);if mode.starts_with("map-"){bvr_menu.reveal=mode=="map-reveal"||mode=="map-120km";}}
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
     let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
     App::new()
@@ -3026,7 +3026,7 @@ fn update_hud(
                 if v.aircraft_follow.is_some() {
                     "AIRCRAFT FOLLOW / 2 NEXT · 7 RETURN"
                 } else if v.missile_follow.is_some() {
-                    "MISSILE FOLLOW / 6 NEXT · 7 RETURN"
+                    if combat.naval.is_some(){"WEAPON FOLLOW / 6 NEXT · 7 SHIPS"}else{"MISSILE FOLLOW / 6 NEXT · 7 RETURN"}
                 } else if v.index == 9 {
                     "SOLAR SYSTEM / EARTH DISPLAY x180"
                 } else {

@@ -161,6 +161,7 @@ fn layout() -> Vec<(Action, &'static str, Vec3, Vec3)> {
     }
     keys
 }
+pub(crate) fn hornet_hud_layout()->[(Vec3,Vec3);3]{std::array::from_fn(|i|(Vec3::new(-0.086+i as f32*0.086,0.620,-3.42),Vec3::new(0.074,0.017,0.012)))}
 pub fn setup(
     c: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -223,7 +224,7 @@ pub fn setup(
     if aircraft==crate::aircraft::Aircraft::Hornet {
         for spec in &mut specs {if spec.action==Action::Autopilot {spec.action=Action::HudMode;spec.label="HUD MODE";spec.toggle=false;}}
         for (i,(action,label)) in [(Action::HudReject,"HUD REJ"),(Action::HudCage,"CAGE"),(Action::HudAltitude,"B/R ALT")].into_iter().enumerate(){
-            specs.push(Spec{action,label,position:Vec3::new(0.425,0.59-i as f32*0.045,-3.42),size:Vec3::new(0.080,0.030,0.012),rotation:Quat::IDENTITY,toggle:false});
+            let(position,size)=hornet_hud_layout()[i];specs.push(Spec{action,label,position,size,rotation:Quat::IDENTITY,toggle:false});
         }
     }
     if aircraft!=crate::aircraft::Aircraft::Gripen {
@@ -480,11 +481,9 @@ pub fn controls(
         None
     };
     let local = ray.map(|r| {
-        (
-            f.orientation.conjugate()
-                * (world::render_origin(&f) + world::frame(&f) * r.origin.as_dvec3() - f.position) - f.aircraft.cabin_offset().as_dvec3(),
-            f.orientation.conjugate() * (world::frame(&f) * r.direction.as_dvec3()),
-        )
+        crate::cockpit::cockpit_ray(&f,
+            f.orientation.conjugate() * (world::render_origin(&f) + world::frame(&f) * r.origin.as_dvec3() - f.position),
+            f.orientation.conjugate() * (world::frame(&f) * r.direction.as_dvec3()))
     });
     for (button, mut t, mat, aircraft) in &mut buttons {
         if aircraft.0!=f.aircraft{continue;}
@@ -687,4 +686,8 @@ mod tests {
         apply(Action::Weapon, &mut f, &mut v, &mut c);
         assert_ne!(weapon, c.weapon);
     }
+}
+
+#[cfg(test)]mod hornet_layout_tests{use super::*;
+ #[test]fn hud_controls_and_sockets_clear_every_existing_front_control(){for(p,size)in hornet_hud_layout(){for(_,_,q,other)in layout(){assert!((p.x-q.x).abs()>(size.x+other.x+0.008)*0.5||(p.y-q.y).abs()>(size.y+other.y+0.008)*0.5,"HUD {:?} overlaps front {:?}",p,q);}}}
 }

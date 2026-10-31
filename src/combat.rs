@@ -15,6 +15,7 @@ pub mod radar_visual;
 pub mod smoke_gpu;
 pub mod bvr;
 pub mod contact;
+pub mod tactical;
 pub mod damage;
 pub mod dogfight;
 pub mod effects;
@@ -35,6 +36,7 @@ pub(crate) const CANNON_MUZZLE_SPEED: f64 = 4250.0;
 // must not overlap later player launches or change as missiles are fired.
 pub(super) const MISSILE_COUNT: usize = 10;
 const RENDER_MISSILES: usize = 64;
+const EFFECT_MISSILES: usize = RENDER_MISSILES + naval::WEAPON_LIMIT;
 const STATIONS: [DVec3; 4] = [
     DVec3::new(-3.15, -0.48, 0.9),
     DVec3::new(3.15, -0.48, 0.9),
@@ -119,7 +121,7 @@ impl Target {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Missile {
     pub gnc: guidance::Gnc,
     decoy: Option<u64>,
@@ -142,6 +144,7 @@ struct Impact {
 }
 #[derive(Resource)]
 pub struct Combat {
+    pub map_reveal:bool,
     pub naval: Option<naval::State>,
     pub environment: Environment,
     pub bvr: Option<bvr::Battle>,
@@ -175,6 +178,7 @@ pub struct Combat {
 impl Default for Combat {
     fn default() -> Self {
         Self {
+            map_reveal:false,
             environment: Environment::default(),
             bvr: None,
             radar: bvr::Radar::default(),
@@ -1281,6 +1285,8 @@ pub fn setup(
             );
             c.entity(flame).insert(MotorVisual(i, layer));
         }
+    }
+    for i in 0..EFFECT_MISSILES {
         c.spawn((
             SmokeVisual(i),
             Mesh3d(meshes.add(mesh(vec![Vec3::ZERO, Vec3::X, Vec3::Y], vec![0, 1, 2]))),
@@ -1557,7 +1563,7 @@ pub fn camera_controls(
         return;
     }
     let capture = preview.is_some_and(|p| p.0.is_some());
-    if combat.naval.as_ref().is_some_and(|n|n.radio_open) || (combat.naval.is_some() && (keys.just_pressed(KeyCode::Backslash)||keys.just_pressed(KeyCode::Digit6))) {return;}
+    if combat.naval.as_ref().is_some_and(|n|n.radio_open) || (combat.naval.is_some() && keys.just_pressed(KeyCode::Backslash)) {return;}
     if !capture && keys.just_pressed(KeyCode::Digit7) && combat.naval.is_some() {view.cycle_ship();return;}
     if !capture && keys.just_pressed(KeyCode::Digit7) {
         view.restore_camera();
@@ -1599,7 +1605,7 @@ pub fn camera_controls(
             }
         }
     }
-    let airborne: Vec<_> = (0..RENDER_MISSILES)
+    let airborne: Vec<_> = (0..EFFECT_MISSILES)
         .filter(|&i| combat.render_missile(i).is_some_and(|m| m.alive))
         .collect();
     if !capture && keys.just_pressed(KeyCode::Digit6) && f.vehicle == Vehicle::Gripen {
@@ -1873,7 +1879,7 @@ pub fn draw_telemetry(
                 guidance::Mode::Decoy => "DECOY TRACK / COMPROMISED",
                 _ => m.gnc.reason,
             };
-            let readout = format!(
+            let mut readout = format!(
                 "MISSILE / {} · SIGNAL {:.0}%\n{} · M {:.2} · {:.0} m/s\nTURN {:.1}/{:.1} G · FUEL {:.1} kg\n{}\n{}\n{}",
                 if m.kind == Weapon::Heat && m.gnc.mode == guidance::Mode::Supported {
                     "IR / RADAR DATALINK"
@@ -1899,6 +1905,9 @@ pub fn draw_telemetry(
                 eta,
                 instruction
             );
+            if let Some(round)=v.missile_follow.and_then(|follow|follow.missile.checked_sub(RENDER_MISSILES)).and_then(|i|combat.naval.as_ref()?.rounds.get(i)) {
+                readout=format!("{} / {}\n{} / M {:.2} / {:.0} m/s\nAGE {:.1}s / MOTOR TIME {:.1}s\n{}\n6 NEXT WEAPON / 7 SHIP VIEWS",round.kind.label(),if matches!(round.source,naval::TargetId::Ship(_)|naval::TargetId::Player){"FRIENDLY"}else{"HOSTILE"},if round.age<round.kind.burn(){"POWERED"}else{"COAST"},round.velocity.length()/sound,round.velocity.length(),round.age,(round.kind.burn()-round.age).max(0.),if round.support_lost>3.{"TRACK SUPPORT LOST"}else{"GUIDED FLIGHT"});
+            }
             // Unchanged text assigned through Mut still forces a re-layout.
             if text.0 != readout {
                 text.0 = readout;
@@ -2081,7 +2090,7 @@ pub fn smoke(
     mut smoke: Query<(&SmokeVisual, &Mesh3d, &mut MeshMaterial3d<StandardMaterial>, &mut Visibility, &mut Aabb, &mut Transform), Without<FlightCamera>>,
     mut previous: Local<Vec<Option<TrailState>>>,
 ) {
-    previous.resize(RENDER_MISSILES, None);
+    previous.resize(EFFECT_MISSILES, None);
     let basis = world::frame(&f).conjugate();
     let origin = world::render_origin(&f);
     let camera=cameras.iter().next().copied().unwrap_or_default();
@@ -2089,9 +2098,10 @@ pub fn smoke(
         let missile = combat.render_missile(tag.0).filter(|m| {
             combat.active
                 && m.alive
+                && smoke_near_camera(tag.0,m,&f,camera.translation)
                 && !(smoke_gpu::enabled() && (m.gnc.aim9x || m.kind == Weapon::Radar))
                 && m.trail.len() > 2
-                && m.age < (if m.gnc.long_range { 24. } else { m.kind.burn() }) + 3.8
+                && m.age < combat.smoke_duration(tag.0,m) + 3.8
         });
         visibility.set_if_neq(if missile.is_some() {
             Visibility::Inherited
@@ -2159,7 +2169,7 @@ pub fn smoke(
                 continue;
             }
             let tail = state.powered.then(|| {
-                missile.position - missile.gnc.body.normalize_or(missile.velocity.normalize()) * 1.6
+                missile.position - missile.gnc.body.normalize_or(missile.velocity.normalize()) * missile.gnc.exhaust_offset
             });
             *bounds = write_smoke_mesh(
                 asset,
@@ -2992,3 +3002,5 @@ mod side_bay_tests;
 
 #[cfg(test)]
 mod hornet_lock_tests;
+
+fn smoke_near_camera(index:usize,m:&Missile,f:&Flight,eye:Vec3)->bool{index<RENDER_MISSILES||world::local(m.position,f).distance_squared(eye)<35000_f32.powi(2)}

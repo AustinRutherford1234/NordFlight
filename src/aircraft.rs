@@ -3,6 +3,7 @@
 pub mod visual;
 pub mod raptor;
 pub mod hornet;
+pub mod tu160;
 pub mod bays;
 pub mod main_bay;
 use crate::physics::*;
@@ -439,6 +440,7 @@ impl Default for Systems {
 }
 pub fn select(f: &mut Flight, aircraft: Aircraft) {
     if f.carrier.active && aircraft!=Aircraft::Hornet {f.status="CARRIER MODE REQUIRES F/A-18F".into();return;}
+    f.ai_bomber=false;f.bomber_stores=0;
     for side in 0..2 {
         if f.damage.wing_broken[side] {
             f.damage.wings[side] = 1.;

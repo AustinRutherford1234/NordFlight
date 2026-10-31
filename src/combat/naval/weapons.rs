@@ -26,7 +26,7 @@ impl State {
             }
         }
     }
-    fn round(
+    pub(super) fn round(
         &mut self,
         source: TargetId,
         target: TargetId,
@@ -49,6 +49,7 @@ impl State {
             age: 0.,
             alive: true,
             support_lost: 0.,
+            visual:render_round(p,v),
         };
         if let Some(slot) = self.rounds.iter_mut().find(|m| !m.alive) {
             *slot = round;
@@ -239,7 +240,7 @@ impl State {
             }
         }
     }
-    fn hostile_launches(&mut self, c: &Combat, f: &Flight) {
+    pub(super) fn hostile_launches(&mut self, c: &Combat, f: &Flight) {
         for i in 0..self.raiders.len() {
             let r = &self.raiders[i];
             let t = &c.targets[r.slot];
@@ -253,6 +254,7 @@ impl State {
                 && r.role == Role::Fighter
                 && !f.crashed
                 && !f.ejection.active
+                && t.brain.memory.is_some_and(|(_,_,at)|t.brain.elapsed-at<3.)
                 && player.length() < 14000.
                 && (t.orientation * -DVec3::Z).dot(player.normalize_or_zero()) > 0.75;
             let ship = if r.role==Role::Bomber{0}else{(0..3)
@@ -265,7 +267,8 @@ impl State {
                         )
                 })
                 .unwrap_or(0)};
-            let attack = r.stores > 0 && range < 26000.;
+            let attack = r.stores > 0 && !r.withdrew && range < 26000.
+                && (t.orientation*-DVec3::Z).dot((carrier::ship_origin(f,ship,f.elapsed)-t.position).normalize_or_zero())>0.5;
             let source = TargetId::Aircraft(r.id);
             if engage_player || attack {
                 let target = if engage_player {
@@ -510,6 +513,16 @@ impl State {
                 self.intercept(target, c, f, p, e);
             }
         }
+        // Rendering adapter shares the AIM-120 smoke path without running a second
+        // weapon solver. Retained samples are bounded and cleared on slot reuse.
+        for i in 0..self.rounds.len() {
+            let target=self.contact(self.rounds[i].target,c,f);
+            let m=&mut self.rounds[i];let v=&mut m.visual;
+            if let Some((p,velocity))=target{v.gnc.estimate=p;v.gnc.estimated_velocity=velocity;}v.gnc.exhaust_offset=super::ordnance::dimensions(m.kind).0 as f64*0.49;v.gnc.reason=m.kind.label();v.gnc.available_g=match m.kind{Kind::Standard=>30.,Kind::Essm=>40.,Kind::AntiShip=>6.,Kind::AirToAir=>25.};v.gnc.signal=if m.support_lost<3.{1.}else{0.};
+            v.position=m.position;v.velocity=m.velocity;v.age=m.age;v.alive=m.alive;v.gnc.body=m.velocity.normalize_or(DVec3::NEG_Z);v.gnc.attitude=facing(v.gnc.body,m.position.normalize());v.gnc.active=m.age>2.;v.gnc.initialized=true;v.gnc.mode=guidance::Mode::Active;v.gnc.thrust=if m.age<m.kind.burn(){1.}else{0.};
+            v.trail_clock+=dt;
+            if v.trail_clock>=0.075 {v.trail_clock=v.trail_clock.rem_euclid(0.075);if v.gnc.thrust>0.{if v.trail.len()==64{v.trail.remove(0);}v.trail.push(m.position);}else if !v.trail.is_empty(){v.trail.remove(0);}}
+        }
         for m in self.rounds.iter().filter(|m| m.age <= dt * 1.01) {
             crate::sound::emit(
                 &mut c.audio_events,
@@ -741,7 +754,7 @@ mod defense_tests {
 }
 
 #[cfg(test)]mod raid_target_tests{use super::*;
- #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
+ #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
 }
 #[cfg(test)]mod bay_interlock_tests{use super::*;
  #[test]fn bomber_release_waits_for_open_bays_and_empty_bays_close(){

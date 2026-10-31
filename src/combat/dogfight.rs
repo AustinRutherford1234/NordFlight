@@ -306,6 +306,7 @@ impl Combat {
         self.fight.as_ref().map(|f| f.difficulty)
     }
     pub fn render_missile(&self, index: usize) -> Option<&Missile> {
+        if index>=RENDER_MISSILES{return self.naval.as_ref()?.rounds.get(index-RENDER_MISSILES).filter(|m|m.alive).map(|m|&m.visual);}
         if self.bvr.is_some() {
             return self.missiles.get(index);
         }
@@ -317,6 +318,10 @@ impl Combat {
                 .enemy_missiles
                 .get(index - MISSILE_COUNT)
         }
+    }
+    pub fn smoke_duration(&self,index:usize,m:&Missile)->f64 {
+      if index>=RENDER_MISSILES {self.naval.as_ref().and_then(|n|n.rounds.get(index-RENDER_MISSILES)).map_or(0.,|m|m.kind.burn())}
+      else if m.gnc.long_range{24.}else{m.kind.burn()}
     }
     pub fn missiles_for_draw(&self) -> impl Iterator<Item = &Missile> {
         self.missiles.iter().chain(

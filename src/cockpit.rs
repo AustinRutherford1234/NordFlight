@@ -1204,7 +1204,7 @@ pub fn update(
     }
     rwr.update(&combat, &f);
     let tank_signature=f.hornet.tanks.fuel.iter().enumerate().fold(0u64,|hash,(i,fuel)|hash ^ fuel.unwrap_or(-1.).to_bits().rotate_left((i*17)as u32));
-    let signature = tank_signature ^ f.fuel.to_bits().rotate_left(27) ^ (f.hornet.hud.mode as u64).rotate_left(3) ^ (f.hornet.hud.reject as u64).rotate_left(5) ^ (f.hornet.hud.caged as u64).rotate_left(9) ^ (f.hornet.hud.radar_alt as u64).rotate_left(10) ^ (f.hornet.hud.brightness.to_bits() as u64).rotate_left(13) ^ f.elapsed.to_bits()
+    let signature = ((combat.map_reveal as u64)<<59) ^ tank_signature ^ f.fuel.to_bits().rotate_left(27) ^ (f.hornet.hud.mode as u64).rotate_left(3) ^ (f.hornet.hud.reject as u64).rotate_left(5) ^ (f.hornet.hud.caged as u64).rotate_left(9) ^ (f.hornet.hud.radar_alt as u64).rotate_left(10) ^ (f.hornet.hud.brightness.to_bits() as u64).rotate_left(13) ^ f.elapsed.to_bits()
         ^ rwr.fingerprint().rotate_left(31)
         ^ f.throttle.to_bits().rotate_left(7)
         ^ f.gear_extension.to_bits().rotate_left(19)
@@ -1421,4 +1421,19 @@ mod tests {
         assert!(data.chunks_exact(4).filter(|p| p[3] > 0).count() > 300);
         assert_eq!(data[3], 0);
     }
+}
+
+/// Inverse of the actual cabin parent transform; direction is deliberately not
+/// normalized so screen/box ray intersections preserve their parameterization.
+pub(crate) fn cockpit_ray(f:&Flight,body_origin:bevy::math::DVec3,body_direction:bevy::math::DVec3)->(bevy::math::DVec3,bevy::math::DVec3){
+ let scale=if f.aircraft==crate::aircraft::Aircraft::Hornet{bevy::math::DVec3::new(0.75,1.,1.)}else{bevy::math::DVec3::ONE};
+ ((body_origin-f.aircraft.cabin_offset().as_dvec3())/scale,body_direction/scale)
+}
+#[cfg(test)]mod panel_geometry_tests{use super::*;
+ #[test]fn hornet_scaled_cabin_picking_matches_visible_right_bezel(){
+  let mut f=Flight::approach();f.aircraft=crate::aircraft::Aircraft::Hornet;let point=bevy::math::DVec3::new(0.425,0.59,-3.413);let scale=bevy::math::DVec3::new(0.75,1.,1.);let (p,d)=cockpit_ray(&f,point*scale+f.aircraft.cabin_offset().as_dvec3(),bevy::math::DVec3::NEG_Z);assert!((p-point).length()<1e-10);assert_eq!(d,bevy::math::DVec3::NEG_Z);
+ }
+ #[test]fn relocated_hud_keys_clear_all_radar_caps_and_each_other(){
+  for (p,size)in crate::cockpit_controls::hornet_hud_layout(){for (_,b)in crate::combat::bvr::cockpit_radar::bezel(){assert!((p.x-b.x).abs()>(size.x+0.028)*0.5 || (p.y-b.y).abs()>(size.y+0.038)*0.5);}}
+ }
 }

@@ -4,6 +4,7 @@ use dogfight::Difficulty;
 
 #[derive(Clone, Default)]
 pub struct Brain {
+    pub naval:bool,
     pub id: usize,
     pub long_range: bool,
     pub mode: &'static str,
@@ -263,19 +264,20 @@ pub fn fly(t: &mut Target, e: &Environment, desired: DVec3, speed: f64, d: Diffi
     while left > 1e-10 {
         let h = left.min(1. / 120.);
         if !t.dynamics.crashed {
-            let safety = command(
+            let safety = if t.dynamics.ai_bomber {crate::aircraft::tu160::pilot(&mut t.dynamics,desired,speed,h);"BOMBER FBW"}else{command(
                 &mut t.dynamics,
                 desired.normalize_or(t.orientation * -DVec3::Z),
                 speed,
                 d,
                 h,
-            );
+            )};
             t.brain.mode = if safety != "TRACK" {
                 safety
             } else {
                 requested_mode
             };
         }
+        if t.brain.naval{super::naval::tactics::protect(&mut t.dynamics);}
         simulate(&mut t.dynamics, e, h);
         t.brain.physics_steps += 1;
         left -= h;

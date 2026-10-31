@@ -6,6 +6,8 @@ mod radio;
 mod visual;
 mod weapons;
 pub mod bomber;
+mod ordnance;
+pub(super) mod tactics;
 pub use radio::Speech;
 pub use visual::{draw, setup};
 pub const AIRCRAFT_LIMIT: usize = 12;
@@ -29,6 +31,7 @@ pub enum Kind {
     AntiShip,
     AirToAir,
 }
+impl Kind {pub fn label(self)->&'static str{match self{Self::Standard=>"STANDARD-CLASS SAM",Self::Essm=>"ESSM-CLASS SAM",Self::AntiShip=>"ANTI-SHIP CRUISE MISSILE",Self::AirToAir=>"AIR-TO-AIR MISSILE"}} pub fn burn(self)->f64 {match self{Self::Standard=>14.,Self::Essm=>9.,Self::AntiShip=>120.,Self::AirToAir=>7.}}}
 #[derive(Clone, Debug)]
 pub struct Round {
     pub id: u64,
@@ -41,6 +44,7 @@ pub struct Round {
     pub age: f64,
     pub alive: bool,
     pub support_lost: f64,
+    pub visual: Missile,
 }
 #[derive(Clone, Default, Debug)]
 pub struct Track {
@@ -173,7 +177,8 @@ impl State {
         !self.ended && self.ships[0].deck_usable()
     }
     pub fn spawn(&mut self, c: &mut Combat, f: &Flight) {
-        if self.ended || self.clock < self.next_wave || self.raiders.len() + 4 > AIRCRAFT_LIMIT {
+        let blocked=self.raiders.iter().any(|r|r.raid==self.waves&&r.role==Role::Bomber&&c.targets[r.slot].alive&&r.stores>0);
+        if self.ended || blocked || self.clock < self.next_wave || self.raiders.len() + 4 > AIRCRAFT_LIMIT {
             return;
         }
         self.waves += 1;
@@ -189,12 +194,14 @@ impl State {
             let p = carrier::ship_world(
                 f,
                 0,
-                radial * (42000. + k as f64 * 1500.)
+                radial * 120000.
                     + tangent * (k as f64 - 1.5) * 1200.
                     + DVec3::Y * height,
                 f.elapsed,
             );
-            let forward = (carrier::ship_origin(f, 0, f.elapsed) - p).normalize();
+            let p=p.normalize()*(RADIUS+height);
+            let direct=carrier::ship_origin(f,0,f.elapsed)-p;
+            let forward=(direct-p.normalize()*direct.dot(p.normalize())).normalize();
             let id = self.id();
             let slot = (0..c.targets.len())
                 .find(|&i| {
@@ -234,6 +241,8 @@ impl State {
             };
             ai::initialize(&mut t);
             crate::aircraft::select(&mut t.dynamics, crate::aircraft::Aircraft::Su27);
+            if role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,2);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
+
             if slot == c.targets.len() {
                 c.targets.push(t);
             } else {
@@ -252,47 +261,9 @@ impl State {
                 raid: self.waves,
             });
         }
-        self.next_wave = self.clock + [300., 240., 180.][self.difficulty];
+        self.next_wave = self.clock;
     }
-    pub fn pilots(&mut self, c: &mut Combat, f: &Flight, dt: f64) {
-        for t in c.targets.iter_mut().filter(|t|!t.alive){t.wreck_age+=dt;}
-        for r in &mut self.raiders {
-            let Some(t) = c.targets.get_mut(r.slot).filter(|t| t.alive) else {
-                continue;
-            };
-            let ship = carrier::ship_origin(f, 0, f.elapsed);
-            let open=r.role==Role::Bomber&&r.stores>0&&!r.withdrew&&!self.ended&&t.position.distance(ship)<28000.;
-            let desired=if open{1.}else{0.};r.bay+=(desired-r.bay).clamp(-0.5*dt,0.5*dt);
-            let outward = (t.position - ship).normalize();
-            let player = f.position - t.position;
-            let hunt = r.role == Role::Fighter
-                && !f.crashed
-                && !f.ejection.active
-                && player.length() < 18000.;
-            let destination = if r.withdrew {
-                t.position + outward * 20000.
-            } else if hunt {
-                f.position + f.velocity * 3.
-            } else {
-                ship + t.position.normalize() * if r.role == Role::Bomber { 3500. } else { 4200. }
-            };
-            ai::fly(
-                t,
-                &c.environment,
-                (destination - t.position).normalize_or(t.forward),
-                if r.role == Role::Bomber { 230. } else { 270. },
-                match self.difficulty {
-                    0 => dogfight::Difficulty::Training,
-                    1 => dogfight::Difficulty::Balanced,
-                    _ => dogfight::Difficulty::Hard,
-                },
-                dt,
-            );
-            if r.withdrew && t.position.distance(ship) > 65000. {
-                t.alive = false;
-            }
-        }
-    }
+    pub fn pilots(&mut self,c:&mut Combat,f:&Flight,dt:f64){tactics::pilots(self,c,f,dt);}
     fn scan(&mut self, c: &Combat, f: &Flight) {
         if self.clock < self.next_scan {
             return;
@@ -334,7 +305,7 @@ impl State {
         for m in self
             .rounds
             .iter()
-            .filter(|m| m.alive && m.kind == Kind::AntiShip)
+            .filter(|m| m.alive && matches!(m.source,TargetId::Aircraft(_)))
         {
             if (0..3).any(|ship| self.detect(f, ship, m.position, 0.1)) {
                 if let Some(t) = self.missile_tracks.iter_mut().find(|t| t.id == m.id) {
@@ -675,10 +646,10 @@ mod tests {
             n.raiders.iter().filter(|r| r.role == Role::Bomber).count(),
             2
         );
-        for k in 1..5 {
-            n.clock = k as f64 * 241.;
-            n.spawn(&mut c, &f);
-        }
+        for t in &c.targets {assert!((t.position.distance(carrier::ship_origin(&f,0,f.elapsed))-120000.).abs()<1000.);}
+        n.clock=10000.;n.spawn(&mut c,&f);assert_eq!(n.waves,1,"elapsed time cannot bypass armed bombers");
+        let first=n.raiders.iter().find(|r|r.role==Role::Bomber).unwrap().slot;c.targets[first].alive=false;n.spawn(&mut c,&f);assert_eq!(n.waves,1,"one surviving armed bomber blocks spawning");
+        for _ in 0..4 {for r in &mut n.raiders{if r.role==Role::Bomber{r.stores=0;}}n.spawn(&mut c,&f);}
         assert_eq!(n.raiders.len(), 12);
         assert_eq!(n.waves, 3);
         assert_eq!(c.targets.len(), 12);
@@ -870,6 +841,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
     v.generation = 100;
     v.help = false;
     start(c, f, v.generation, 1);
+    if mode=="map-120km" {v.restore_camera();v.map=true;f.paused=true;return;}
     if mode == "baseline" {
         *c = Combat {
             generation: v.generation,
@@ -890,6 +862,8 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
             t.orientation = facing(t.velocity.normalize(), t.position.normalize());
             ai::initialize(t);
             crate::aircraft::select(&mut t.dynamics, crate::aircraft::Aircraft::Su27);
+            if r.role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,2);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
+
         }
         for _ in 0..600 {
             crate::physics::simulate(f, &c.environment, 1. / 120.);
@@ -915,10 +889,33 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
         println!("NAVAL native review {mode}: {}", n.report);
         c.naval = Some(n);
     }
+    if mode.starts_with("weapon-")||mode.starts_with("map-") {
+        if let Some(mut n)=c.naval.take(){
+            n.rounds.clear();let direction=f.forward();
+            for (i,kind)in [Kind::Standard,Kind::Essm,Kind::AntiShip,Kind::AirToAir].into_iter().enumerate(){
+                let p=f.position+direction*300.+f.up()*200.+f.orientation*DVec3::X*(i as f64-1.5)*15.;
+                let source=if i<2{TargetId::Ship(1)}else{TargetId::Aircraft(n.raiders[2].id)};
+                let target=if i<2{TargetId::Aircraft(n.raiders[0].id)}else{TargetId::Player};
+                n.round(source,target,kind,p,direction*if kind==Kind::AntiShip{290.}else{550.});
+                let m=n.rounds.last_mut().unwrap();m.age=2.;m.visual.age=2.;m.visual.gnc.body=direction;m.visual.gnc.thrust=23000.;m.visual.gnc.attitude=facing(direction,p.normalize());m.visual.gnc.reason=kind.label();m.visual.gnc.exhaust_offset=ordnance::dimensions(kind).0 as f64*0.49;
+                m.visual.trail=(0..64).map(|k|p-direction*(64-k)as f64*30.).collect();
+                if i>=2{n.missile_tracks.push(Track{id:m.id,position:p,velocity:m.velocity,seen:n.clock,hits:2,role:None});}
+            }
+            if mode.starts_with("map-"){n.tracks.truncate(2);c.radar.tracks.clear();}
+            c.naval=Some(n);
+        }
+        v.restore_camera();f.paused=true;
+        if mode.starts_with("map-"){v.map=true;}else{let i=match mode{"weapon-standard"|"weapon-smoke"=>0,"weapon-essm"=>1,"weapon-cruise"=>2,_=>3};v.follow_missile(RENDER_MISSILES+i);if mode=="weapon-smoke"{v.zoom=5.;v.yaw=0.85;if let Some(n)=&mut c.naval{n.rounds.truncate(1);}}}
+        return;
+    }
+    if mode=="bomber-live"||mode=="fighter-live"{
+        if let Some(n)=&mut c.naval{n.rounds.clear();for ship in &mut n.ships{ship.standard=0;ship.essm=0;ship.gun=0;}for r in &mut n.raiders{r.next_shot=1e9;}}
+        if mode=="fighter-live"{v.restore_camera();v.follow_aircraft(0);v.zoom=1.3;f.paused=false;return;}
+    }
     if mode.starts_with("bomber-"){
         if let Some(n)=&mut c.naval{for r in &mut n.raiders{if r.role==Role::Bomber{r.bay=if mode.contains("open"){1.}else if mode.contains("half"){0.5}else{0.};}}}
         v.restore_camera();v.follow_aircraft(2);v.yaw=if mode.contains("rear"){0.4}else{2.5};v.pitch=if mode.contains("belly"){0.7}else{-0.3};v.zoom=2.1;
-        f.paused=std::env::var_os("NORD_NAVAL_LIVE").is_none();return;
+        f.paused=mode!="bomber-live"&&std::env::var_os("NORD_NAVAL_LIVE").is_none();return;
     }
     if mode == "hud" {
         *f = flight(false);
@@ -1037,7 +1034,7 @@ mod control_tests {
         assert_eq!(n.defeated, 1);
         n.advance(&mut c, &mut f, 0.01);
         assert_eq!(n.defeated, 1);
-        n.rounds.push(Round{id:99,source:TargetId::Ship(1),target:TargetId::Ship(0),kind:Kind::Standard,position:carrier::world(DVec3::Y*50.,0.),previous:carrier::world(DVec3::Y*50.,0.),velocity:DVec3::Z*100.,age:1.,alive:true,support_lost:0.});
+        n.rounds.push(Round{id:99,source:TargetId::Ship(1),target:TargetId::Ship(0),kind:Kind::Standard,position:carrier::world(DVec3::Y*50.,0.),previous:carrier::world(DVec3::Y*50.,0.),velocity:DVec3::Z*100.,age:1.,alive:true,support_lost:0.,visual:render_round(DVec3::ZERO,DVec3::Z)});
         n.ended=true;n.advance(&mut c,&mut f,0.01);assert!(!n.rounds[0].alive);
         n.ships[0].hull = 0.;
         for _ in 0..200 {
@@ -1069,5 +1066,18 @@ mod geographic_tests {
     }
 }
 #[cfg(test)]mod retirement_tests{use super::*;
- #[test]fn destroyed_raid_slots_age_and_reuse_new_stable_id(){let f=flight(true);let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();let old=n.raiders[0].id;c.targets[0].alive=false;n.pilots(&mut c,&f,11.);assert!(c.targets[0].wreck_age>=11.);n.raiders.retain(|r|r.slot!=0);n.clock=500.;n.spawn(&mut c,&f);let new=n.raiders.iter().find(|r|r.slot==0).unwrap();assert_ne!(new.id,old);assert_eq!(c.targets[0].wreck_age,0.);}
+ #[test]fn destroyed_raid_slots_age_and_reuse_new_stable_id(){let f=flight(true);let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();let old=n.raiders[0].id;c.targets[0].alive=false;n.pilots(&mut c,&f,11.);assert!(c.targets[0].wreck_age>=11.);n.raiders.retain(|r|r.slot!=0);n.clock=500.;for r in &mut n.raiders{if r.role==Role::Bomber{r.stores=0;}}n.spawn(&mut c,&f);let new=n.raiders.iter().find(|r|r.slot==0).unwrap();assert_ne!(new.id,old);assert_eq!(c.targets[0].wreck_age,0.);}
+}
+
+pub(super) fn render_round(p:DVec3,v:DVec3)->Missile{Missile{gnc:guidance::Gnc::default(),decoy:None,position:p,velocity:v,kind:Weapon::Radar,target:0,age:0.,alive:true,guided:true,lost_for:0.,trail:Vec::with_capacity(64),trail_clock:0.}}
+#[cfg(test)]mod upgrade_tests{use super::*;
+ #[test]fn camera_cycles_player_and_fleet_and_hostile_weapons_and_returns_after_last_ends(){
+  let f=flight(false);let mut c=Combat::default();start(&mut c,&f,1,1);
+  let p=f.position+f.forward()*100.;let mut n=c.naval.take().unwrap();n.rounds.push(Round{id:100,source:TargetId::Ship(1),target:TargetId::Aircraft(n.raiders[0].id),kind:Kind::Standard,position:p,previous:p,velocity:f.forward()*400.,age:1.,alive:true,support_lost:0.,visual:render_round(p,f.forward()*400.)});
+  let mut hostile=n.rounds[0].clone();hostile.id=101;hostile.source=TargetId::Aircraft(n.raiders[2].id);hostile.kind=Kind::AntiShip;n.rounds.push(hostile);c.missiles.push(render_round(p,f.forward()*400.));c.naval=Some(n);
+  let mut app=App::new();app.add_plugins(MinimalPlugins).init_resource::<ButtonInput<KeyCode>>().insert_resource(f).insert_resource(c).insert_resource(ViewState::default()).insert_resource(crate::warp::Warp::default()).add_systems(Update,super::super::camera_controls);
+  for expected in [0,RENDER_MISSILES,RENDER_MISSILES+1,0]{let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::Digit6);app.update();assert_eq!(app.world().resource::<ViewState>().missile_follow.unwrap().missile,expected);}
+  {let mut c=app.world_mut().resource_mut::<Combat>();c.missiles[0].alive=false;for m in &mut c.naval.as_mut().unwrap().rounds{m.alive=false;}}
+  app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();app.update();assert!(app.world().resource::<ViewState>().missile_follow.is_none());
+ }
 }

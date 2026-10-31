@@ -519,7 +519,7 @@ pub fn write_smoke(
     col.clear();
     uv.clear();
     let tail = (m.gnc.thrust > 0.)
-        .then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * 1.6);
+        .then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * m.gnc.exhaust_offset);
     let point_count = m.trail.len() + usize::from(tail.is_some());
     let points = m.trail.iter().copied().chain(tail);
     let all: Vec<DVec3> = points.clone().collect();

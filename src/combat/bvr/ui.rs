@@ -183,7 +183,7 @@ pub fn setup(mut c: Commands, mut menu: ResMut<Menu>, mut images: ResMut<Assets<
         },
         GlobalZIndex(60),
     ));
-    for i in 0..77 {
+    for i in 0..128 {
         for kind in 0..3 {
             let mut e = c.spawn((
                 Symbol(i, kind),
@@ -251,6 +251,7 @@ pub fn controls(
     mut combat: ResMut<Combat>,
     warp: Res<crate::warp::Warp>,
 ) {
+    combat.map_reveal=menu.reveal;
     if warp.editing {
         return;
     }
@@ -341,7 +342,8 @@ pub fn controls(
     };
     let (origin, size) = rect(w);
     if menu.last_generation != v.generation {
-        menu.center = Vec2::new(f.position.x as f32, f.position.z as f32 - 50000.);
+        menu.center = Vec2::new(f.position.x as f32, f.position.z as f32 - if combat.bvr.is_some(){50000.}else{0.});
+        if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("map-")){menu.span=if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.contains("120km")){300000.}else{40000.};}
         menu.last_generation = v.generation;
         menu.dirty = true;
     }
@@ -358,31 +360,7 @@ pub fn controls(
             menu.dirty |= motion.delta != Vec2::ZERO;
         }
         if mouse.just_pressed(MouseButton::Left) {
-            let selected = combat
-                .targets
-                .iter()
-                .enumerate()
-                .filter(|(i, t)| {
-                    t.alive
-                        && combat.bvr.as_ref().is_some_and(|b| {
-                            *i < b.enemies
-                                && (menu.reveal || b.radar.tracks[*i].valid(combat.clock))
-                        })
-                })
-                .map(|(i, t)| {
-                    let p = combat
-                        .bvr
-                        .as_ref()
-                        .filter(|_| !menu.reveal)
-                        .map_or(t.position, |b| {
-                            b.radar.tracks[i].position
-                                + b.radar.tracks[i].velocity
-                                    * (combat.clock - b.radar.tracks[i].seen)
-                        });
-                    (i, to_screen(p, &menu, origin, size).distance(cursor))
-                })
-                .filter(|(_, d)| *d < 35.)
-                .min_by(|a, b| a.1.total_cmp(&b.1));
+            let selected=super::super::tactical::contacts(&combat,&f,menu.reveal).into_iter().filter(|m|!m.friendly).filter_map(|m|m.aircraft.map(|i|(i,to_screen(m.position,&menu,origin,size).distance(cursor)))).filter(|(_,d)|*d<35.).min_by(|a,b|a.1.total_cmp(&b.1));
             if let Some((i, _)) = selected {
                 combat.selected = i;
                 combat.lock = 0.;
@@ -390,12 +368,12 @@ pub fn controls(
         }
     }
     if keys.just_pressed(KeyCode::Enter) {
-        if let Some(b) = &mut combat.bvr {
-            b.radar.mode = RadarMode::Stt;
-        }
+        super::cockpit_radar::command(&mut combat,super::cockpit_radar::Command::Lock);
     }
 }
 pub fn draw(
+    time:Res<Time<bevy::time::Real>>,
+    mut last_map:Local<(f64,u64,bool)>,
     mut backdrop: Query<&mut Visibility, With<Backdrop>>,
     mut menu: ResMut<Menu>,
     v: Res<ViewState>,
@@ -465,7 +443,7 @@ pub fn draw(
         let radar = combat
             .bvr
             .as_ref()
-            .map_or("Start a BVR scenario to use radar".into(), |b| {
+            .map_or_else(||format!("SHARED PICTURE / {} CONTACTS",super::super::tactical::contacts(&combat,&f,menu.reveal).len()), |b| {
                 format!(
                     "{} / {:.0} km\nSCAN {:+.0}°  EL {:+.0}°\nTRACKS {} / 8 TWS links",
                     b.radar.mode.label(),
@@ -481,7 +459,7 @@ pub fn draw(
                 )
             });
         let readout = format!(
-            "TACTICAL / LIVE RADAR\n{}\nMAP: {}\nSpan {:.0} km / north up\n\nClick contact: designate\nEnter: single-target lock\nRight-drag: pan\nWheel: zoom\nM: return to flight\n\nScenario configuration is\nunder BVR SETUP.",
+            "TACTICAL / SHARED PICTURE\n{}\nMAP: {}\nSpan {:.0} km / north up\n\nClick contact: designate\nEnter: single-target lock\nRight-drag: pan\nWheel: zoom\nM: return to flight\n\nScenario configuration is\nunder FLIGHT SETUP.",
             radar,
             if menu.reveal {
                 "REVEAL ALL / TRAINING"
@@ -544,6 +522,7 @@ pub fn draw(
         }
     }
     if !tactical {
+        last_map.2=false;
         for (_, mut n, _, _, _, _, mut pick) in &mut symbols {
             if n.display != Display::None {
                 n.display = Display::None;
@@ -576,98 +555,17 @@ pub fn draw(
         }
         menu.dirty = false;
     }
-    let mut marks: Vec<(DVec3, String, Color)> =
-        vec![(f.position, "YOU".into(), Color::srgb(0.4, 1., 0.85))];
-    let mut pick_ids = vec![None];
-    if let Some(b) = &combat.bvr {
-        marks.push((
-            b.objective,
-            if b.defense {
-                "DEFEND / 18 km line"
-            } else {
-                "HOME SECTOR"
-            }
-            .into(),
-            Color::srgb(0.5, 0.8, 1.),
-        ));
-        pick_ids.push(None);
-        for (i, t) in combat.targets.iter().enumerate().filter(|(_, t)| t.alive) {
-            let tr = &b.radar.tracks[i];
-            let friend = b.friendly(i);
-            if !friend && !menu.reveal && !tr.valid(combat.clock) {
-                continue;
-            }
-            pick_ids.push(if friend { None } else { Some(i) });
-            let p = if menu.reveal || friend {
-                t.position
-            } else {
-                tr.position + tr.velocity * (combat.clock - tr.seen)
-            };
-            let label = format!(
-                "{} {}{:02}{}\n{:.1} km / {:.0} m{}",
-                if i == combat.selected {
-                    "*"
-                } else if friend {
-                    "+"
-                } else {
-                    "+"
-                },
-                if friend {
-                    "ALLY "
-                } else if menu.reveal || tr.reports >= 2 {
-                    "HOSTILE "
-                } else {
-                    "UNK "
-                },
-                i + 1,
-                if !menu.reveal && combat.clock - tr.seen > 3. {
-                    " COAST"
-                } else {
-                    ""
-                },
-                f.position.distance(p) / 1000.,
-                p.length() - RADIUS,
-                if tr.friendly_report && !menu.reveal {
-                    " DL"
-                } else {
-                    ""
-                }
-            );
-            marks.push((
-                p,
-                label,
-                if friend {
-                    Color::srgb(0.4, 0.8, 1.)
-                } else {
-                    Color::srgb(1., 0.55, 0.35)
-                },
-            ));
-        }
-        for (m, s) in combat.missiles.iter().zip(&b.shots).filter(|(m, s)| {
-            m.alive
-                && (menu.reveal
-                    || s.friendly
-                    || m.gnc.active && m.position.distance(f.position) < 35000.)
-        }) {
-            let closure = m.gnc.estimated_velocity - m.velocity;
-            let r = m.gnc.estimate - m.position;
-            let closing = (-closure.dot(r.normalize_or_zero())).max(1.);
-            pick_ids.push(None);
-            marks.push((
-                m.position,
-                format!(
-                    "MISSILE {}\n{:.0}s / M{:.1}",
-                    m.gnc.mode.label(),
-                    r.length() / closing,
-                    m.velocity.length() / atmosphere(m.position.length() - RADIUS).3
-                ),
-                if s.friendly {
-                    Color::srgb(0.7, 1., 0.7)
-                } else {
-                    Color::srgb(1., 0.25, 0.3)
-                },
-            ));
-        }
+    let key=v.generation ^ (menu.span.to_bits()as u64).rotate_left(17) ^ (menu.center.x.to_bits()as u64).rotate_left(3) ^ (menu.center.y.to_bits()as u64).rotate_left(29) ^ (combat.selected as u64).rotate_left(41) ^ u64::from(menu.reveal) ^ (size.x.to_bits()as u64).rotate_left(7) ^ (size.y.to_bits()as u64).rotate_left(13);
+    if last_map.2 && last_map.1==key && time.elapsed_secs_f64()-last_map.0<0.1{return;}
+    *last_map=(time.elapsed_secs_f64(),key,true);
+    let mut marks:Vec<(DVec3,String,Color)>=vec![(f.position,"YOU".into(),Color::srgb(0.4,1.,0.85))];
+    let mut pick_ids=vec![None];
+    if let Some(b)=&combat.bvr {marks.push((b.objective,"OBJECTIVE".into(),Color::srgb(0.5,0.8,1.)));pick_ids.push(None);}
+    for mark in super::super::tactical::contacts(&combat,&f,menu.reveal){
+        pick_ids.push(if mark.friendly{None}else{mark.aircraft});
+        let selected=mark.aircraft==Some(combat.selected)&&!mark.friendly;
+        let color=if selected{Color::srgb(1.,0.75,0.25)}else{super::super::tactical::color(&mark)};
+        marks.push((mark.position,format!("{}{}\n{:.1} km / {:.0} m",if selected{"* "}else{""},mark.label,f.position.distance(mark.position)/1000.,mark.position.length()-RADIUS),color));
     }
     let mut layout = Vec::new();
     let mut occupied: Vec<Vec2> = Vec::new();
@@ -864,4 +762,8 @@ mod tests {
             assert_eq!(a.world().resource::<Flight>().paused, paused);
         }
     }
+}
+
+#[cfg(test)]mod shared_map_projection_tests{use super::*;
+ #[test]fn carrier_raid_at_120km_fits_300km_map(){let f=crate::combat::naval::flight(true);let mut c=Combat::default();crate::combat::naval::start(&mut c,&f,100,1);let mut menu=Menu::default();menu.center=Vec2::new(f.position.x as f32,f.position.z as f32);menu.span=300000.;let origin=Vec2::new(310.,165.);let size=Vec2::new(1105.,700.);for m in crate::combat::tactical::contacts(&c,&f,true){let p=to_screen(m.position,&menu,origin,size);println!("{} {:?}",m.label,p);assert!((origin.x..origin.x+size.x).contains(&p.x)&&(origin.y..origin.y+size.y).contains(&p.y));}}
 }

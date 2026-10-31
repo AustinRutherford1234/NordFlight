@@ -63,7 +63,7 @@ fn setup(
         return;
     }
     let material = base.get(&source.smoke).unwrap();
-    for slot in 0..RENDER_MISSILES {
+    for slot in 0..EFFECT_MISSILES {
         c.spawn((
             Trail {
                 slot,
@@ -93,6 +93,7 @@ fn setup(
 fn update(
     f: Res<Flight>,
     combat: Res<Combat>,
+    cameras:Query<&GlobalTransform,With<FlightCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<SmokeMaterial>>,
     mut trails: Query<(
@@ -108,9 +109,10 @@ fn update(
         let missile = combat.render_missile(trail.slot).filter(|m| {
             combat.active
                 && m.alive
+                && cameras.iter().next().is_none_or(|camera|super::smoke_near_camera(trail.slot,m,&f,camera.translation()))
                 && (m.gnc.aim9x || m.kind == Weapon::Radar)
                 && m.trail.len() > 2
-                && m.age < (if m.gnc.long_range { 24. } else { m.kind.burn() }) + 3.8
+                && m.age < combat.smoke_duration(trail.slot,m) + 3.8
         });
         visibility.set_if_neq(if missile.is_some() {
             Visibility::Inherited
@@ -138,7 +140,7 @@ fn update(
         let t = Transform::from_translation(world::local(trail.anchor, &f))
             .with_rotation(world::local_rot(DQuat::IDENTITY, &f));
         transform.set_if_neq(t);
-        let head = m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * 1.6;
+        let head = m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * m.gnc.exhaust_offset;
         let parameters = Parameters {
             time: Vec4::new(
                 m.age as f32,
@@ -183,7 +185,7 @@ fn encode(asset: &mut Mesh, m: &Missile, anchor: DVec3) -> Aabb {
     colors.clear();
     uv.clear();
     up.clear();
-    let tail = (m.gnc.thrust > 0.).then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * 1.6);
+    let tail = (m.gnc.thrust > 0.).then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * m.gnc.exhaust_offset);
     let count = m.trail.len() + usize::from(tail.is_some());
     let points = m.trail.iter().copied().chain(tail);
     let mut margin = 20_f32;
@@ -281,7 +283,7 @@ mod tests {
             advanced.age += 0.03;
             advanced.trail_clock += 0.03;
             advanced.position += advanced.velocity * 0.03;
-            let head = (advanced.position - advanced.gnc.body.normalize_or(advanced.velocity.normalize_or_zero()) * 1.6 - anchor)
+            let head = (advanced.position - advanced.gnc.body.normalize_or(advanced.velocity.normalize_or_zero()) * advanced.gnc.exhaust_offset - anchor)
                 .as_vec3();
             let eye = Vec3::new(80., 20., 30.);
             let mut reference = mesh(vec![], vec![]);
