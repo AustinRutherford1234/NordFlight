@@ -122,7 +122,8 @@ pub fn update(
         if show {
             let t = &c.targets[root.slot];
             transform.translation = crate::world::local(t.position, &f);
-            transform.rotation = crate::world::local_rot(t.orientation, &f);
+            // The imported Tu-160 nose points +Z; flight body-forward is -Z.
+            transform.rotation = crate::world::local_rot(t.orientation, &f) * model_alignment();
         }
     }
     for (door, mut transform) in &mut doors {
@@ -137,7 +138,7 @@ pub fn update(
     }
 }
 pub fn release_station(remaining: u8) -> DVec3 {
-    DVec3::new(0., -1.8, if remaining >= 2 { -11.12 } else { 3.63 })
+    model_alignment().as_dquat() * DVec3::new(0., -1.8, if remaining >= 2 { -11.12 } else { 3.63 })
 }
 #[cfg(test)]
 mod tests {
@@ -153,5 +154,15 @@ mod tests {
             let p = release_station(n);
             assert!(p.y < -1.33 && p.x.abs() < 0.9);
         }
+    }
+}
+
+// Apply only to the imported exterior, leaving aerodynamic attitude unchanged.
+fn model_alignment() -> Quat { Quat::from_rotation_y(std::f32::consts::PI) }
+#[cfg(test)] mod alignment_tests {
+    use super::*;
+    #[test] fn imported_nose_matches_body_forward_and_keeps_up() {
+        assert!((model_alignment()*Vec3::Z-Vec3::NEG_Z).length()<1e-6);
+        assert!((model_alignment()*Vec3::Y-Vec3::Y).length()<1e-6);
     }
 }
