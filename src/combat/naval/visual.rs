@@ -383,7 +383,7 @@ pub fn draw(
             }
             if n.radio_open {
                 text.0
-                    .push_str("RADIO: 6 RADAR SWEEP / 1 SERVICE / 2 RESPAWN / 3 END / ESC CLOSE\n");
+                    .push_str("SHIFT+N: FRESH F/A-18 ON CARRIER\nRADIO: 6 RADAR SWEEP / 1 SERVICE / 2 RESPAWN / 3 END / ESC CLOSE\n");
             }
             if f.crashed || f.ejection.active {
                 text.0

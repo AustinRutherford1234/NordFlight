@@ -164,6 +164,7 @@ pub fn setup(mut c: Commands, mut menu: ResMut<Menu>, mut images: ResMut<Assets<
             (8, "MODE: SEARCH / TWS / STT"),
             (9, "SENSORS / REVEAL ALL"),
             (10, "CENTER ON PLAYER"),
+            (13, "SPAWN F/A-18 / SHIFT+N"),
             (11, "CLOSE PANEL / MAP"),
         ] {
             button(p, id, label);
@@ -245,6 +246,7 @@ pub fn controls(
     scroll: Res<AccumulatedMouseScroll>,
     windows: Query<&Window>,
     mut buttons: Query<(&Action, &Interaction, &mut BackgroundColor), Changed<Interaction>>,
+    mut spawn_buttons: Query<(&Action,&mut Node)>,
     mut menu: ResMut<Menu>,
     mut v: ResMut<ViewState>,
     mut f: ResMut<Flight>,
@@ -253,6 +255,9 @@ pub fn controls(
     time: Res<Time<bevy::time::Real>>,
 ) {
     combat.map_reveal=menu.reveal;
+    for (action,mut node) in &mut spawn_buttons {
+        if action.0==13 {node.display=if combat.naval.is_some(){Display::Flex}else{Display::None};}
+    }
     if warp.editing {
         return;
     }
@@ -327,6 +332,12 @@ pub fn controls(
             }
             11 => {
                 v.map = false;
+            }
+            13 if v.map => {
+                if let Some(mut n)=combat.naval.take() {
+                    if n.spawn_player(&mut combat,&mut f,&mut v) {v.map=false;}
+                    combat.naval=Some(n);
+                }
             }
             12 => super::cockpit_radar::command(&mut combat, super::cockpit_radar::Command::Power),
             _ => {}

@@ -2202,7 +2202,7 @@ fn input(
     if keys.just_pressed(KeyCode::KeyY) && (f.aircraft!=aircraft::Aircraft::F35B || keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) {
         f.airbrake = !f.airbrake;
     }
-    if keys.just_pressed(KeyCode::KeyN) {
+    if keys.just_pressed(KeyCode::KeyN) && !(f.carrier.defense && (keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight))) {
         f.infinite_fuel = !f.infinite_fuel;
     }
     if keys.just_pressed(KeyCode::KeyT) {

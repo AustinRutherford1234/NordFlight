@@ -465,6 +465,36 @@ impl State {
             c.targets[r.slot].alive || c.missiles.iter().any(|m| m.alive && m.target == r.slot)
         });
     }
+    pub fn spawn_player(&mut self,c:&mut Combat,f:&mut Flight,view:&mut ViewState)->bool {
+        if !self.deck_usable() {c.notify("CARRIER DECK UNAVAILABLE");return false;}
+        let time = f.elapsed;
+        let motion = f.carrier.motion;
+        let mut fresh = flight(true);
+        fresh.elapsed = time;
+        fresh.carrier.motion = motion;
+        let p = fresh.carrier.deck_position;
+        fresh.position = carrier::ship_world(
+            &fresh,
+            0,
+            p + DVec3::Y * (crate::collision::wheel_clearance(&fresh) - 0.12),
+            time,
+        );
+        fresh.orientation = carrier::ship_rotation(&fresh, 0, time);
+        fresh.velocity = carrier::ship_velocity(&fresh, 0, fresh.position, time);
+        if self.loadout_tanks {
+            crate::aircraft::hornet::stores::fit(&mut fresh);
+        }
+        *f = fresh;
+        c.ammo = f.aircraft.spec().ammo;
+        c.lock = 0.;
+        c.pending_main = None;
+        c.pending_side = None;
+        view.restore_camera();
+        self.radio_open = false;
+        if let Some(fight)=&mut c.fight {fight.gun=f.aircraft.spec().gun;fight.flares=24;fight.chaff=24;}
+        f.status="FRESH F/A-18 / CARRIER DEFENSE CONTINUES".into();
+        true
+    }
     pub fn service(&mut self, c: &mut Combat, f: &mut Flight) -> bool {
         if !self.deck_usable()
             || !f.landed
@@ -562,6 +592,12 @@ pub fn radio_controls(
         speech.update(view.generation, None);
         return;
     };
+    if keys.just_pressed(KeyCode::KeyN)
+        && (keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight))
+        && !(keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) {
+        n.spawn_player(&mut c,&mut f,&mut view);
+        keys.clear_just_pressed(KeyCode::KeyN);
+    }
     if keys.just_pressed(KeyCode::Backslash) {
         n.radio_open = !n.radio_open;
         keys.clear_just_pressed(KeyCode::Backslash);
@@ -590,30 +626,7 @@ pub fn radio_controls(
         }
         if keys.just_pressed(KeyCode::Digit2) && (f.crashed || f.ejection.active) && n.deck_usable()
         {
-            let time = f.elapsed;
-            let motion = f.carrier.motion;
-            let mut fresh = flight(true);
-            fresh.elapsed = time;
-            fresh.carrier.motion = motion;
-            let p = fresh.carrier.deck_position;
-            fresh.position = carrier::ship_world(
-                &fresh,
-                0,
-                p + DVec3::Y * (crate::collision::wheel_clearance(&fresh) - 0.12),
-                time,
-            );
-            fresh.orientation = carrier::ship_rotation(&fresh, 0, time);
-            fresh.velocity = carrier::ship_velocity(&fresh, 0, fresh.position, time);
-            if n.loadout_tanks {
-                crate::aircraft::hornet::stores::fit(&mut fresh);
-            }
-            *f = fresh;
-            c.ammo = f.aircraft.spec().ammo;
-            c.lock = 0.;
-            c.pending_main = None;
-            c.pending_side = None;
-            view.restore_camera();
-            n.radio_open = false;
+            n.spawn_player(&mut c,&mut f,&mut view);
             keys.clear_just_pressed(KeyCode::Digit2);
         }
         if keys.just_pressed(KeyCode::Digit3) {
@@ -1093,5 +1106,33 @@ pub(super) fn render_round(p:DVec3,v:DVec3)->Missile{Missile{gnc:guidance::Gnc::
   for expected in [0,RENDER_MISSILES,RENDER_MISSILES+1,0]{let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::Digit6);app.update();assert_eq!(app.world().resource::<ViewState>().missile_follow.unwrap().missile,expected);}
   {let mut c=app.world_mut().resource_mut::<Combat>();c.missiles[0].alive=false;for m in &mut c.naval.as_mut().unwrap().rounds{m.alive=false;}}
   app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();app.update();assert!(app.world().resource::<ViewState>().missile_follow.is_none());
+ }
+}
+
+#[cfg(test)] mod fresh_player_tests {
+ use super::*;
+ #[test] fn fresh_player_spawn_preserves_battle_and_rejects_unusable_deck() {
+  let mut f=flight(false);let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();
+  n.clock=321.;n.ships[1].standard=2;n.ships[1].hull=0.7;f.elapsed=321.;f.crashed=true;c.ammo=[0,0];
+  let ids:Vec<_>=n.raiders.iter().map(|r|r.id).collect();let mut view=ViewState::default();
+  assert!(n.spawn_player(&mut c,&mut f,&mut view));assert!(!f.crashed);assert!(f.carrier.active);
+  assert_eq!(f.elapsed,321.);assert_eq!(n.clock,321.);assert_eq!(n.ships[1].standard,2);assert_eq!(n.ships[1].hull,0.7);
+  assert_eq!(ids,n.raiders.iter().map(|r|r.id).collect::<Vec<_>>());assert_eq!(c.ammo,f.aircraft.spec().ammo);
+  assert!(f.velocity.distance(carrier::ship_velocity(&f,0,f.position,f.elapsed))<1e-8);
+  n.ended=true;let p=f.position;assert!(!n.spawn_player(&mut c,&mut f,&mut view));assert_eq!(p,f.position);
+ }
+}
+
+#[cfg(test)] mod spawn_hotkey_tests {
+ use super::*;
+ #[test] fn shifted_n_spawns_and_consumes_edge_while_plain_n_remains_available() {
+  for shift in [false,true] {
+   let mut f=flight(false);let mut c=Combat::default();start(&mut c,&f,1,1);f.fuel=123.;
+   let mut app=App::new();app.insert_resource(f).insert_resource(c).insert_resource(ViewState::default())
+    .insert_resource(Speech::silent()).init_resource::<ButtonInput<KeyCode>>().add_systems(Update,radio_controls);
+   {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.press(KeyCode::KeyN);if shift {keys.press(KeyCode::ShiftLeft);}}
+   app.update();assert_eq!(app.world().resource::<ButtonInput<KeyCode>>().just_pressed(KeyCode::KeyN),!shift);
+   if shift {assert!(app.world().resource::<Flight>().fuel>123.);}else{assert_eq!(app.world().resource::<Flight>().fuel,123.);}
+  }
  }
 }
