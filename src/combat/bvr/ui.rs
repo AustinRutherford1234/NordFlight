@@ -184,7 +184,7 @@ pub fn setup(mut c: Commands, mut menu: ResMut<Menu>, mut images: ResMut<Assets<
         GlobalZIndex(60),
     ));
     for i in 0..128 {
-        for kind in 0..3 {
+        for kind in 0..4 {
             let mut e = c.spawn((
                 Symbol(i, kind),
                 PickTarget(None),
@@ -201,7 +201,7 @@ pub fn setup(mut c: Commands, mut menu: ResMut<Menu>, mut images: ResMut<Assets<
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.01, 0.025, 0.04, 0.85)),
-                GlobalZIndex(65),
+                GlobalZIndex(if kind==3 {66}else{65}),
             ));
             if kind == 1 {
                 e.insert(Button);
@@ -250,6 +250,7 @@ pub fn controls(
     mut f: ResMut<Flight>,
     mut combat: ResMut<Combat>,
     warp: Res<crate::warp::Warp>,
+    time: Res<Time<bevy::time::Real>>,
 ) {
     combat.map_reveal=menu.reveal;
     if warp.editing {
@@ -345,6 +346,17 @@ pub fn controls(
         menu.center = Vec2::new(f.position.x as f32, f.position.z as f32 - if combat.bvr.is_some(){50000.}else{0.});
         if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("map-")){menu.span=if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.contains("120km")){300000.}else{40000.};}
         menu.last_generation = v.generation;
+        menu.dirty = true;
+    }
+    let axis = Vec2::new(
+        (keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight)) as i32 as f32
+            - (keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft)) as i32 as f32,
+        (keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown)) as i32 as f32
+            - (keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp)) as i32 as f32,
+    ).normalize_or_zero();
+    if axis != Vec2::ZERO {
+        let distance = menu.span * 0.4 * time.delta_secs().min(0.1);
+        menu.center += axis * distance;
         menu.dirty = true;
     }
     if let Some(cursor) = w.cursor_position().filter(|p| {
@@ -459,7 +471,7 @@ pub fn draw(
                 )
             });
         let readout = format!(
-            "TACTICAL / SHARED PICTURE\n{}\nMAP: {}\nSpan {:.0} km / north up\n\nClick contact: designate\nEnter: single-target lock\nRight-drag: pan\nWheel: zoom\nM: return to flight\n\nScenario configuration is\nunder FLIGHT SETUP.",
+            "TACTICAL / SHARED PICTURE\n{}\nMAP: {}\nSpan {:.0} km / north up\n\nClick contact: designate\nEnter: single-target lock\nWASD / arrows: pan\nRight-drag: pan\nWheel: zoom\nM: return to flight\n\nScenario configuration is\nunder FLIGHT SETUP.",
             radar,
             if menu.reveal {
                 "REVEAL ALL / TRAINING"
@@ -558,23 +570,28 @@ pub fn draw(
     let key=v.generation ^ (menu.span.to_bits()as u64).rotate_left(17) ^ (menu.center.x.to_bits()as u64).rotate_left(3) ^ (menu.center.y.to_bits()as u64).rotate_left(29) ^ (combat.selected as u64).rotate_left(41) ^ u64::from(menu.reveal) ^ (size.x.to_bits()as u64).rotate_left(7) ^ (size.y.to_bits()as u64).rotate_left(13);
     if last_map.2 && last_map.1==key && time.elapsed_secs_f64()-last_map.0<0.1{return;}
     *last_map=(time.elapsed_secs_f64(),key,true);
-    let mut marks:Vec<(DVec3,String,Color)>=vec![(f.position,"YOU".into(),Color::srgb(0.4,1.,0.85))];
+    let mut marks:Vec<(DVec3,String,Color,bool)>=vec![(f.position,"YOU".into(),Color::srgb(0.4,1.,0.85),false)];
     let mut pick_ids=vec![None];
-    if let Some(b)=&combat.bvr {marks.push((b.objective,"OBJECTIVE".into(),Color::srgb(0.5,0.8,1.)));pick_ids.push(None);}
+    if let Some(b)=&combat.bvr {marks.push((b.objective,"OBJECTIVE".into(),Color::srgb(0.5,0.8,1.),false));pick_ids.push(None);}
     for mark in super::super::tactical::contacts(&combat,&f,menu.reveal){
         pick_ids.push(if mark.friendly{None}else{mark.aircraft});
         let selected=mark.aircraft==Some(combat.selected)&&!mark.friendly;
         let color=if selected{Color::srgb(1.,0.75,0.25)}else{super::super::tactical::color(&mark)};
-        marks.push((mark.position,format!("{}{}\n{:.1} km / {:.0} m",if selected{"* "}else{""},mark.label,f.position.distance(mark.position)/1000.,mark.position.length()-RADIUS),color));
+        let weapon=mark.category==super::super::tactical::Category::Weapon;
+        let label=if weapon {mark.label}else{format!("{}{}\n{:.1} km / {:.0} m",if selected{"* "}else{""},mark.label,f.position.distance(mark.position)/1000.,mark.position.length()-RADIUS)};
+        marks.push((mark.position,label,color,weapon));
     }
+    let label_width=(size.x-8.).min(250.);
     let mut layout = Vec::new();
-    let mut occupied: Vec<Vec2> = Vec::new();
-    for (p, label, c) in &marks {
+    let mut occupied: Vec<(Vec2, f32)> = Vec::new();
+    for (p, label, c, weapon) in &marks {
         let anchor = to_screen(*p, &menu, origin, size);
         let inside = anchor.x >= origin.x
             && anchor.y >= origin.y
             && anchor.x < origin.x + size.x
             && anchor.y < origin.y + size.y;
+        let rows:f32=label.lines().map(|line|(line.chars().count() as f32*7.5/label_width).ceil().max(1.)).sum();
+        let height = rows * 16. + 4.;
         let mut position = anchor + Vec2::new(10., -8.);
         if inside {
             for attempt in 0..200 {
@@ -582,10 +599,10 @@ pub fn draw(
                 let column = attempt / 40;
                 let horizontal = match column {
                     0 => 10.,
-                    1 => 190.,
-                    2 => -170.,
-                    3 => 370.,
-                    _ => -350.,
+                    1 => 270.,
+                    2 => -250.,
+                    3 => 530.,
+                    _ => -510.,
                 };
                 let offset = if row % 2 == 0 {
                     row as f32 / 2.
@@ -593,20 +610,20 @@ pub fn draw(
                     -((row + 1) as f32 / 2.)
                 } * 36.;
                 let test = Vec2::new(
-                    (anchor.x + horizontal).clamp(origin.x + 4., origin.x + size.x - 174.),
-                    (anchor.y - 8. + offset).clamp(origin.y + 4., origin.y + size.y - 36.),
+                    (anchor.x + horizontal).clamp(origin.x + 4., origin.x + size.x - label_width - 4.),
+                    (anchor.y - 8. + offset).clamp(origin.y + 4., (origin.y + size.y - height - 4.).max(origin.y+4.)),
                 );
                 if occupied
                     .iter()
-                    .all(|p| (p.x - test.x).abs() > 175. || (p.y - test.y).abs() > 33.)
+                    .all(|(p,h)| (p.x - test.x).abs() > label_width+5. || test.y >= p.y + h + 3. || p.y >= test.y + height + 3.)
                 {
                     position = test;
                     break;
                 }
             }
-            occupied.push(position);
+            occupied.push((position,height));
         }
-        layout.push((anchor, position, label, c, inside));
+        layout.push((anchor, position, label, c, inside, height,weapon));
     }
     for (tag, mut n, mut t, mut color, mut transform, mut bg, mut pick) in &mut symbols {
         n.display = Display::None;
@@ -614,8 +631,9 @@ pub fn draw(
         if !tactical {
             continue;
         }
-        if let Some((anchor, position, label, c, inside)) = layout.get(tag.0) {
+        if let Some((anchor, position, label, c, inside, height,weapon)) = layout.get(tag.0) {
             if *inside {
+                if tag.1==3 && !**weapon {continue;}
                 n.display = Display::Flex;
                 transform.rotation = Rot2::IDENTITY;
                 if tag.1 == 0 {
@@ -630,11 +648,18 @@ pub fn draw(
                     pick.0 = pick_ids[tag.0];
                     n.left = px(position.x);
                     n.top = px(position.y);
-                    n.width = px(170);
-                    n.height = px(32);
-                    t.0 = (*label).clone();
+                    n.width = px(label_width);
+                    n.height = px(*height);
+                    t.0 = if **weapon {label.lines().next().unwrap_or("").into()}else{(*label).clone()};
                     color.0 = **c;
                     bg.0 = Color::srgb(0.012, 0.035, 0.047);
+                } else if tag.1==3 {
+                    n.left=px(position.x);n.top=px(position.y+16.);
+                    n.width=px(label_width);n.height=px(18.);
+                    t.0=label.lines().nth(1).unwrap_or("").into();
+                    let rgba=c.to_srgba();
+                    color.0=Color::srgba(rgba.red+(1.-rgba.red)*0.12,rgba.green+(1.-rgba.green)*0.12,rgba.blue+(1.-rgba.blue)*0.12,rgba.alpha);
+                    bg.0=Color::NONE;
                 } else {
                     let end = *position + Vec2::new(0., 8.);
                     let delta = end - *anchor;
@@ -766,4 +791,29 @@ mod tests {
 
 #[cfg(test)]mod shared_map_projection_tests{use super::*;
  #[test]fn carrier_raid_at_120km_fits_300km_map(){let f=crate::combat::naval::flight(true);let mut c=Combat::default();crate::combat::naval::start(&mut c,&f,100,1);let mut menu=Menu::default();menu.center=Vec2::new(f.position.x as f32,f.position.z as f32);menu.span=300000.;let origin=Vec2::new(310.,165.);let size=Vec2::new(1105.,700.);for m in crate::combat::tactical::contacts(&c,&f,true){let p=to_screen(m.position,&menu,origin,size);println!("{} {:?}",m.label,p);assert!((origin.x..origin.x+size.x).contains(&p.x)&&(origin.y..origin.y+size.y).contains(&p.y));}}
+}
+
+#[cfg(test)] mod keyboard_map_tests {
+ use super::*;
+ fn scene()->App {
+  let mut a=App::new();a.add_plugins(MinimalPlugins)
+   .init_resource::<ButtonInput<KeyCode>>().init_resource::<ButtonInput<MouseButton>>()
+   .init_resource::<AccumulatedMouseMotion>().init_resource::<AccumulatedMouseScroll>()
+   .init_resource::<Menu>().init_resource::<ViewState>().init_resource::<crate::warp::Warp>()
+   .insert_resource(Flight::runway()).init_resource::<Combat>().add_systems(Update,controls);
+  a.world_mut().spawn(Window::default());a.world_mut().resource_mut::<ViewState>().map=true;
+  // Manual wall-clock advancement keeps map panning independent of pause/time warp.
+  a.world_mut().insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(20)));
+  a.update();a
+ }
+ #[test] fn both_key_sets_pan_without_a_cursor_and_stop_when_map_closes() {
+  let mut a=scene();
+  for (key,axis) in [(KeyCode::KeyW,Vec2::NEG_Y),(KeyCode::ArrowUp,Vec2::NEG_Y),(KeyCode::KeyS,Vec2::Y),(KeyCode::ArrowDown,Vec2::Y),(KeyCode::KeyA,Vec2::NEG_X),(KeyCode::ArrowLeft,Vec2::NEG_X),(KeyCode::KeyD,Vec2::X),(KeyCode::ArrowRight,Vec2::X)] {
+   a.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();a.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+   let before=a.world().resource::<Menu>().center;a.update();let delta=a.world().resource::<Menu>().center-before;
+   assert!(delta.dot(axis)>0.);assert!(delta.perp_dot(axis).abs()<1.);
+  }
+  let before=a.world().resource::<Menu>().center;a.world_mut().resource_mut::<ViewState>().map=false;a.update();assert_eq!(a.world().resource::<Menu>().center,before);
+  a.world_mut().resource_mut::<ViewState>().map=true;a.world_mut().resource_mut::<crate::warp::Warp>().editing=true;a.update();assert_eq!(a.world().resource::<Menu>().center,before);
+ }
 }

@@ -5,6 +5,7 @@ pub mod damage;
 mod radio;
 mod visual;
 mod weapons;
+mod tracking;
 pub mod bomber;
 mod ordnance;
 pub(super) mod tactics;
@@ -44,6 +45,7 @@ pub struct Round {
     pub age: f64,
     pub alive: bool,
     pub support_lost: f64,
+    next_sensor: f64,
     pub visual: Missile,
 }
 #[derive(Clone, Default, Debug)]
@@ -69,6 +71,8 @@ pub struct Raider {
     pub bay:f64,
     pub aam: u8,
     pub next_shot: f64,
+    chaff: u8,
+    next_chaff: f64,
     pub withdrew: bool,
     pub raid: u32,
 }
@@ -96,6 +100,9 @@ pub struct State {
     pub raiders: Vec<Raider>,
     pub tracks: Vec<Track>,
     pub missile_tracks: Vec<Track>,
+    ship_chaff: [u8;3],
+    next_ship_chaff: [f64;3],
+    next_countermeasures: f64,
     pub rounds: Vec<Round>,
     pub bursts: Vec<Burst>,
     pub flashes: Vec<Flash>,
@@ -148,6 +155,9 @@ impl State {
             seed,
             active_raids: [None; 12],
             weapon_budget: WEAPON_LIMIT,
+            ship_chaff: [16;3],
+            next_ship_chaff: [0.;3],
+            next_countermeasures: 0.,
             next_id: 1,
             next_scan: 0.,
             next_engage: 0.,
@@ -257,6 +267,8 @@ impl State {
                 bay:0.,
                 aam: if role == Role::Fighter { 4 } else { 0 },
                 next_shot: self.clock + 10.,
+                chaff: 12,
+                next_chaff: self.clock,
                 withdrew: false,
                 raid: self.waves,
             });
@@ -865,7 +877,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
             if r.role==Role::Bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,2);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
 
         }
-        for _ in 0..600 {
+        for _ in 0..if mode=="map-guidance-hostile" {1800}else{600} {
             crate::physics::simulate(f, &c.environment, 1. / 120.);
             c.naval = Some(n);
             c.tick(f, 1. / 120.);
@@ -889,6 +901,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
         println!("NAVAL native review {mode}: {}", n.report);
         c.naval = Some(n);
     }
+    if mode.starts_with("map-guidance") {v.restore_camera();v.map=true;f.paused=true;return;}
     if mode.starts_with("weapon-")||mode.starts_with("map-") {
         if let Some(mut n)=c.naval.take(){
             n.rounds.clear();let direction=f.forward();
@@ -1034,7 +1047,7 @@ mod control_tests {
         assert_eq!(n.defeated, 1);
         n.advance(&mut c, &mut f, 0.01);
         assert_eq!(n.defeated, 1);
-        n.rounds.push(Round{id:99,source:TargetId::Ship(1),target:TargetId::Ship(0),kind:Kind::Standard,position:carrier::world(DVec3::Y*50.,0.),previous:carrier::world(DVec3::Y*50.,0.),velocity:DVec3::Z*100.,age:1.,alive:true,support_lost:0.,visual:render_round(DVec3::ZERO,DVec3::Z)});
+        n.rounds.push(Round{id:99,source:TargetId::Ship(1),target:TargetId::Ship(0),kind:Kind::Standard,position:carrier::world(DVec3::Y*50.,0.),previous:carrier::world(DVec3::Y*50.,0.),velocity:DVec3::Z*100.,age:1.,alive:true,support_lost:0.,next_sensor:0.,visual:render_round(DVec3::ZERO,DVec3::Z)});
         n.ended=true;n.advance(&mut c,&mut f,0.01);assert!(!n.rounds[0].alive);
         n.ships[0].hull = 0.;
         for _ in 0..200 {
@@ -1073,7 +1086,7 @@ pub(super) fn render_round(p:DVec3,v:DVec3)->Missile{Missile{gnc:guidance::Gnc::
 #[cfg(test)]mod upgrade_tests{use super::*;
  #[test]fn camera_cycles_player_and_fleet_and_hostile_weapons_and_returns_after_last_ends(){
   let f=flight(false);let mut c=Combat::default();start(&mut c,&f,1,1);
-  let p=f.position+f.forward()*100.;let mut n=c.naval.take().unwrap();n.rounds.push(Round{id:100,source:TargetId::Ship(1),target:TargetId::Aircraft(n.raiders[0].id),kind:Kind::Standard,position:p,previous:p,velocity:f.forward()*400.,age:1.,alive:true,support_lost:0.,visual:render_round(p,f.forward()*400.)});
+  let p=f.position+f.forward()*100.;let mut n=c.naval.take().unwrap();n.rounds.push(Round{id:100,source:TargetId::Ship(1),target:TargetId::Aircraft(n.raiders[0].id),kind:Kind::Standard,position:p,previous:p,velocity:f.forward()*400.,age:1.,alive:true,support_lost:0.,next_sensor:0.,visual:render_round(p,f.forward()*400.)});
   let mut hostile=n.rounds[0].clone();hostile.id=101;hostile.source=TargetId::Aircraft(n.raiders[2].id);hostile.kind=Kind::AntiShip;n.rounds.push(hostile);c.missiles.push(render_round(p,f.forward()*400.));c.naval=Some(n);
   let mut app=App::new();app.add_plugins(MinimalPlugins).init_resource::<ButtonInput<KeyCode>>().insert_resource(f).insert_resource(c).insert_resource(ViewState::default()).insert_resource(crate::warp::Warp::default()).add_systems(Update,super::super::camera_controls);
   for expected in [0,RENDER_MISSILES,RENDER_MISSILES+1,0]{let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::Digit6);app.update();assert_eq!(app.world().resource::<ViewState>().missile_follow.unwrap().missile,expected);}

@@ -49,6 +49,7 @@ impl State {
             age: 0.,
             alive: true,
             support_lost: 0.,
+            next_sensor: 0.,
             visual:render_round(p,v),
         };
         if let Some(slot) = self.rounds.iter_mut().find(|m| !m.alive) {
@@ -283,6 +284,9 @@ impl State {
                 };
                 let p = if r.role==Role::Bomber{t.position+t.orientation*super::bomber::release_station(r.stores)}else{t.position-t.position.normalize()*2.};
                 if self.round(source, target, kind, p, t.velocity) {
+                    if let Some((position,velocity))=self.contact(target,c,f) {
+                        if let Some(m)=self.rounds.iter_mut().find(|m|m.id==self.next_id-1) {tracking::seed(m,position,velocity);}
+                    }
                     let r = &mut self.raiders[i];
                     if engage_player {
                         r.aam -= 1;
@@ -389,7 +393,42 @@ impl State {
             s.next_burst = self.clock + 0.5;
         }
     }
+    fn countermeasures(&mut self, c:&mut Combat, f:&Flight) {
+        if self.clock<self.next_countermeasures {return;}
+        self.next_countermeasures=self.clock+0.2;
+        let Some(fight)=c.fight.as_mut() else{return;};
+        for r in &mut self.raiders {
+            let t=&c.targets[r.slot];
+            if !t.alive || r.chaff==0 || self.clock<r.next_chaff || fight.decoys.len()>126 {continue;}
+            let threat=self.rounds.iter().any(|m|m.alive && m.target==TargetId::Aircraft(r.id)
+                && m.position.distance(t.position)<6500. && guidance::terrain_visible(t.position,m.position))
+                || c.missiles.iter().any(|m|m.alive && m.target==r.slot && m.position.distance(t.position)<5000.
+                    && guidance::terrain_visible(t.position,m.position));
+            if !threat {continue;}
+            r.chaff-=1;r.next_chaff=self.clock+6.;
+            for kind in [Weapon::Radar,Weapon::Heat] {
+                let id=fight.next_decoy;fight.next_decoy+=1;
+                fight.decoys.push(dogfight::Decoy{owner:Some(r.slot),id,kind,
+                    position:t.position-t.orientation*DVec3::Z*3.,
+                    velocity:t.velocity+t.orientation*DVec3::new(12.,-8.,30.),age:0.});
+            }
+        }
+        for ship in 0..3 {
+            if self.ships[ship].sunk || self.ships[ship].power<0.2 || self.ship_chaff[ship]==0
+                || self.clock<self.next_ship_chaff[ship] || fight.decoys.len()>=128 {continue;}
+            let position=carrier::ship_world(f,ship,DVec3::new(-10.,18.,25.),f.elapsed);
+            let incoming=self.rounds.iter().any(|m|m.alive && m.target==TargetId::Ship(ship)
+                && m.position.distance(position)<6000.
+                && self.missile_tracks.iter().any(|t|t.id==m.id && t.valid(self.clock)));
+            if !incoming {continue;}
+            self.ship_chaff[ship]-=1;self.next_ship_chaff[ship]=self.clock+8.;
+            let id=fight.next_decoy;fight.next_decoy+=1;
+            fight.decoys.push(dogfight::Decoy{owner:None,id,kind:Weapon::Radar,position,
+                velocity:carrier::ship_velocity(f,ship,position,f.elapsed)+carrier::ship_rotation(f,ship,f.elapsed)*DVec3::new(-15.,18.,0.),age:0.});
+        }
+    }
     pub fn weapons(&mut self, c: &mut Combat, f: &mut Flight, dt: f64) {
+        self.countermeasures(c, f);
         self.hostile_launches(c, f);
         self.engage(c, f);
         self.ciws(c, f, dt);
@@ -411,26 +450,23 @@ impl State {
             } else {
                 self.contact(target, c, f)
             };
-            let Some((target_p, target_v)) = contact else {
-                self.rounds[i].alive = false;
-                continue;
-            };
+            let target_contact=contact.map(|(position,velocity)|guidance::Contact {
+                position,velocity,forward:velocity.normalize_or_zero(),throttle:1.,engine:true,
+                alive:true,decoy:false,strength:match target {TargetId::Ship(_)=>100.,TargetId::Missile(_)=>0.15,_=>1.},
+            });
             let support = match self.rounds[i].source {
-                TargetId::Ship(s) => {
-                    self.ships[s].radar * self.ships[s].power > 0.2
-                        && match target {
-                            TargetId::Aircraft(id) => self
-                                .tracks
-                                .iter()
-                                .any(|t| t.id == id && self.clock - t.seen < 3.),
-                            TargetId::Missile(id) => self
-                                .missile_tracks
-                                .iter()
-                                .any(|t| t.id == id && self.clock - t.seen < 3.),
-                            _ => false,
-                        }
+                TargetId::Ship(s) if self.ships[s].radar*self.ships[s].power>0.2 && !self.ships[s].sunk => {
+                    let tracks=if matches!(target,TargetId::Missile(_)){&self.missile_tracks}else{&self.tracks};
+                    let id=match target{TargetId::Aircraft(id)|TargetId::Missile(id)=>Some(id),_=>None};
+                    tracks.iter().find(|t|Some(t.id)==id && t.valid(self.clock) && self.clock-t.seen<3.)
+                        .map(|t|(t.position+t.velocity*(self.clock-t.seen),t.velocity))
                 }
-                _ => true,
+                TargetId::Aircraft(id) if target==TargetId::Player => self.raiders.iter().find(|r|r.id==id)
+                    .and_then(|r|c.targets.get(r.slot)).filter(|t|t.alive && t.damage.radar>0.25
+                        && (t.orientation*-DVec3::Z).dot((f.position-t.position).normalize_or_zero())>65f64.to_radians().cos())
+                    .and_then(|t|t.brain.memory.filter(|(_,_,at)|t.brain.elapsed-at<3.)
+                        .map(|(p,v,at)|(p+v*(t.brain.elapsed-at),v))),
+                _=>None,
             };
             let m = &mut self.rounds[i];
             m.previous = m.position;
@@ -441,14 +477,18 @@ impl State {
                 Kind::AntiShip => (290., 45., 6., 120., 180.),
                 Kind::AirToAir => (850., 150., 25., 7., 45.),
             };
-            if !support {
-                m.support_lost += dt;
-            } else {
-                m.support_lost = 0.;
+            if support.is_none() {m.support_lost+=dt;}else{m.support_lost=0.;}
+            // A seeded launch coordinate is available to the anti-ship INS. Other
+            // weapons need an actual datalink or seeker measurement to initialize.
+            if m.kind==Kind::AntiShip && !m.visual.gnc.initialized {
+                if let Some((p,v))=contact {tracking::seed(m,p,v);}
             }
-            let delta = target_p - m.position;
+            let tracked=tracking::update(m,target_contact,support,
+                c.fight.as_ref().map_or(&[],|fight|fight.decoys.as_slice()),c.sun,dt);
+            let (estimate,estimated_velocity)=tracked.unwrap_or((m.position+m.velocity,DVec3::ZERO));
+            let delta = estimate - m.position;
             let intercept = (delta.length() / m.velocity.length().max(200.)).min(12.);
-            let mut goal = target_p + target_v * intercept;
+            let mut goal = estimate + estimated_velocity * intercept;
             if m.kind == Kind::AntiShip {
                 let height = if delta.length() > 5000. { 18. } else { 5. };
                 let terrain = terrain_height(goal.x, goal.z).max(0.);
@@ -464,11 +504,13 @@ impl State {
             let up = m.position.normalize();
             let gravity = up * 9.81;
             let compensation = gravity - direction * gravity.dot(direction);
-            let guidance = if m.support_lost > 3. && m.kind == Kind::Standard {
+            let guidance = if tracked.is_none() {
                 DVec3::ZERO
             } else {
                 (lateral + compensation).clamp_length_max(turn * 9.81)
             };
+            m.visual.gnc.commanded_acceleration=guidance;
+            m.visual.gnc.actual_g=guidance.length()/9.81;
             let thrust = if m.age < burn && speed < max_speed {
                 accel
             } else {
@@ -493,10 +535,9 @@ impl State {
             } else {
                 14.
             };
-            let hit = closest(
-                m.previous - (target_p - target_v * dt),
-                m.position - target_p,
-            ) < fuse;
+            let hit = contact.is_some_and(|(target_p,target_v)|closest(
+                m.previous - (target_p - target_v * dt),m.position - target_p,
+            ) < fuse);
             let event = if let Some(h) = hull {
                 Some((TargetId::Ship(h.ship), h.point, 1.2))
             } else if hit && m.age > 0.5 {
@@ -516,10 +557,9 @@ impl State {
         // Rendering adapter shares the AIM-120 smoke path without running a second
         // weapon solver. Retained samples are bounded and cleared on slot reuse.
         for i in 0..self.rounds.len() {
-            let target=self.contact(self.rounds[i].target,c,f);
             let m=&mut self.rounds[i];let v=&mut m.visual;
-            if let Some((p,velocity))=target{v.gnc.estimate=p;v.gnc.estimated_velocity=velocity;}v.gnc.exhaust_offset=super::ordnance::dimensions(m.kind).0 as f64*0.49;v.gnc.reason=m.kind.label();v.gnc.available_g=match m.kind{Kind::Standard=>30.,Kind::Essm=>40.,Kind::AntiShip=>6.,Kind::AirToAir=>25.};v.gnc.signal=if m.support_lost<3.{1.}else{0.};
-            v.position=m.position;v.velocity=m.velocity;v.age=m.age;v.alive=m.alive;v.gnc.body=m.velocity.normalize_or(DVec3::NEG_Z);v.gnc.attitude=facing(v.gnc.body,m.position.normalize());v.gnc.active=m.age>2.;v.gnc.initialized=true;v.gnc.mode=guidance::Mode::Active;v.gnc.thrust=if m.age<m.kind.burn(){1.}else{0.};
+            v.gnc.exhaust_offset=super::ordnance::dimensions(m.kind).0 as f64*0.49;v.gnc.available_g=match m.kind{Kind::Standard=>30.,Kind::Essm=>40.,Kind::AntiShip=>6.,Kind::AirToAir=>25.};
+            v.position=m.position;v.velocity=m.velocity;v.age=m.age;v.alive=m.alive;v.gnc.body=m.velocity.normalize_or(DVec3::NEG_Z);v.gnc.attitude=facing(v.gnc.body,m.position.normalize());v.gnc.thrust=if m.age<m.kind.burn(){1.}else{0.};
             v.trail_clock+=dt;
             if v.trail_clock>=0.075 {v.trail_clock=v.trail_clock.rem_euclid(0.075);if v.gnc.thrust>0.{if v.trail.len()==64{v.trail.remove(0);}v.trail.push(m.position);}else if !v.trail.is_empty(){v.trail.remove(0);}}
         }
@@ -765,5 +805,27 @@ mod defense_tests {
   assert!(n.raiders.iter().all(|r|r.bay>0.99));n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);
   for m in &n.rounds{let TargetId::Aircraft(id)=m.source else{panic!("aircraft source")};let r=n.raiders.iter().find(|r|r.id==id).unwrap();let t=&c.targets[r.slot];assert!(m.position.distance(t.position+t.orientation*super::super::bomber::release_station(2))<1e-6);}
   for r in &mut n.raiders{r.stores=0;r.withdrew=true;}for _ in 0..240{n.pilots(&mut c,&f,1./120.);}assert!(n.raiders.iter().all(|r|r.bay<0.01));
+ }
+}
+
+#[cfg(test)] mod countermeasure_tests {
+ use super::*;
+ #[test] fn raider_dispenses_finite_pairs_with_cooldown_and_ship_chaff_requires_detection() {
+  let mut f=flight(true);let mut c=Combat::default();start(&mut c,&f,100,1);let mut n=c.naval.take().unwrap();
+  let r=&n.raiders[0];let id=r.id;let slot=r.slot;let p=c.targets[slot].position;
+  assert!(n.round(TargetId::Ship(1),TargetId::Aircraft(id),Kind::Standard,p-DVec3::Z*2000.,DVec3::Z*500.));
+  n.countermeasures(&mut c,&f);assert_eq!(n.raiders[0].chaff,11);
+  assert_eq!(c.fight.as_ref().unwrap().decoys.len(),2);
+  n.clock=0.3;n.countermeasures(&mut c,&f);assert_eq!(c.fight.as_ref().unwrap().decoys.len(),2);
+  n.clock=6.1;n.countermeasures(&mut c,&f);assert_eq!(n.raiders[0].chaff,10);
+  n.rounds.clear();let p=carrier::ship_world(&f,0,DVec3::new(0.,30.,-3000.),f.elapsed);
+  assert!(n.round(TargetId::Aircraft(id),TargetId::Ship(0),Kind::AntiShip,p,DVec3::Z*250.));
+  n.clock=7.;n.countermeasures(&mut c,&f);assert_eq!(n.ship_chaff[0],16);
+  let m=&n.rounds[0];n.missile_tracks.push(Track{id:m.id,position:p,velocity:m.velocity,seen:n.clock,hits:2,role:None});
+  n.clock=7.3;n.countermeasures(&mut c,&f);assert_eq!(n.ship_chaff[0],15);
+  assert!(c.fight.as_ref().unwrap().decoys.iter().any(|d|d.owner.is_none()&&d.kind==Weapon::Radar));
+  n.clock=7.6;n.countermeasures(&mut c,&f);assert_eq!(n.ship_chaff[0],15);
+  // Service and player respawn must not silently refill fleet expendables.
+  f.landed=false;assert!(!n.service(&mut c,&mut f));assert_eq!(n.ship_chaff[0],15);
  }
 }

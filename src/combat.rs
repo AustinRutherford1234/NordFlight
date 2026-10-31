@@ -1877,7 +1877,9 @@ pub fn draw_telemetry(
             };
             let instruction = match m.gnc.mode {
                 guidance::Mode::Supported => {
-                    if combat.bvr.is_some() {
+                    if v.missile_follow.is_some_and(|follow|follow.missile>=RENDER_MISSILES) {
+                        "AUTOMATIC LAUNCHER TRACK SUPPORT"
+                    } else if combat.bvr.is_some() {
                         "MAINTAIN TWS TRACK / STT SUPPORT"
                     } else {
                         "KEEP TARGET SELECTED / RADAR SUPPORT"

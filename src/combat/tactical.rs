@@ -100,12 +100,8 @@ pub fn contacts(c: &Combat, f: &Flight, reveal: bool) -> Vec<Contact> {
                 friendly: own,
                 category: Category::Weapon,
                 aircraft: None,
-                label: if own {
-                    "FRIEND MISSILE"
-                } else {
-                    "HOSTILE MISSILE"
-                }
-                .into(),
+                label: format!("{}\n{}",if own {crate::aircraft::missile_name(f.aircraft,m.kind)}
+                    else if m.kind==Weapon::Heat {"IR AAM"}else{"RADAR AAM"},m.gnc.mode.label()),
                 freshness: 1.,
             });
         }
@@ -137,12 +133,7 @@ pub fn contacts(c: &Combat, f: &Flight, reveal: bool) -> Vec<Contact> {
                     friendly: friend,
                     category: Category::Weapon,
                     aircraft: None,
-                    label: if friend {
-                        "FLEET MISSILE"
-                    } else {
-                        "HOSTILE MISSILE"
-                    }
-                    .into(),
+                    label: format!("{}\n{}",match m.kind {naval::Kind::Standard=>"STANDARD",naval::Kind::Essm=>"ESSM",naval::Kind::AntiShip=>"ANTI-SHIP MISSILE",naval::Kind::AirToAir=>"RADAR AAM"},m.visual.gnc.mode.label()),
                     freshness: (1. - age / 8.).max(0.2) as f32,
                 });
             }
@@ -296,4 +287,20 @@ mod tests {
         c.active = false;
         assert!(contacts(&c, &f, true).is_empty());
     }
+}
+
+#[cfg(test)] mod weapon_telemetry_tests {
+ use super::*;
+ #[test] fn map_reports_all_guidance_states_without_revealing_hidden_weapons() {
+  let f=super::super::flight();let mut c=Combat::default();c.start(&f,1);c.lock=Weapon::Heat.lock_time();assert!(c.fire(&f));
+  for mode in [guidance::Mode::Separation,guidance::Mode::Supported,guidance::Mode::Active,guidance::Mode::Infrared,guidance::Mode::Inertial,guidance::Mode::Memory,guidance::Mode::Ballistic,guidance::Mode::Decoy] {
+   let m=&mut c.missiles[0];m.gnc.mode=mode;m.gnc.reason="RADAR SUPPORT LOST";m.gnc.confidence=0.75;m.gnc.signal=0.4;m.decoy=Some(42);m.lost_for=1.2;m.gnc.thrust=100.;
+   let marks=contacts(&c,&f,false);let label=&marks.iter().find(|t|t.category==Category::Weapon).unwrap().label;
+   assert_eq!(label.lines().count(),2);assert_eq!(label.lines().nth(1),Some(mode.label()));
+   assert!(!label.contains("SIG")&&!label.contains("RADAR SUPPORT LOST"));
+  }
+  let mut hostile=c.missiles.remove(0);hostile.position=f.position+f.forward()*100000.;c.start_air(&f,1,5);c.fight.as_mut().unwrap().enemy_missiles.push(hostile);
+  assert!(!contacts(&c,&f,false).iter().any(|t|t.category==Category::Weapon));
+  assert!(contacts(&c,&f,true).iter().any(|t|t.category==Category::Weapon&&!t.friendly));
+ }
 }

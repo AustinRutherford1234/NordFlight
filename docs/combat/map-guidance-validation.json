@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-31",
+  "automated": {
+    "passed": 730,
+    "failed": 0,
+    "execution_seconds": 41.09
+  },
+  "native": {
+    "snapshots": [
+      "map-guidance",
+      "map-guidance-hostile"
+    ],
+    "simulation_times_s": [
+      5,
+      15
+    ],
+    "later_contact_count": 27,
+    "final_pair_wall_seconds": 37.0,
+    "followup_wall_seconds": 74.8,
+    "shared_approved_window_total_seconds": 403.9,
+    "shared_approved_limit_seconds": 600,
+    "inspection": "two-line missile labels, affiliation colors with subtly lighter guidance states, no overlapping labels in reviewed snapshots, fleet datalink/active and hostile maritime active guidance",
+    "evidence_directory": "tests/naval-upgrade",
+    "flight_restore": true,
+    "scope": "scripted paused snapshots after physics warm-up; not a user-flown review or performance benchmark"
+  },
+  "mac_app": {
+    "rebuilt": true,
+    "signature_verified": true
+  },
+  "parameters": "documented simulation estimates"
+}

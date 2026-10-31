@@ -28,6 +28,7 @@ pub enum Mode {
     Supported,
     Active,
     Infrared,
+    Inertial,
     Memory,
     Ballistic,
     Decoy,
@@ -39,6 +40,7 @@ impl Mode {
             Self::Supported => "RADAR / DATALINK",
             Self::Active => "ACTIVE RADAR",
             Self::Infrared => "IR TRACK",
+            Self::Inertial => "INERTIAL NAV",
             Self::Memory => "TRACK MEMORY",
             Self::Ballistic => "NO TRACK",
             Self::Decoy => "DECOY TRACK",
@@ -51,6 +53,8 @@ pub struct Gnc {
     /// Distinct player F-22 loadout; never inferred from the target or camera.
     pub aim9x: bool,
     pub long_range: bool,
+    /// Surface-search RF processing retains slow maritime targets in sea clutter.
+    pub maritime: bool,
     pub mode: Mode,
     pub body: DVec3,
     pub body_rate: DVec3,
@@ -91,6 +95,7 @@ impl Default for Gnc {
             exhaust_offset:1.6,
             aim9x: false,
             long_range: false,
+            maritime: false,
             mode: Mode::Separation,
             body: DVec3::ZERO,
             body_rate: DVec3::ZERO,
@@ -327,6 +332,17 @@ pub fn quality(kind: Weapon, observer: DVec3, contact: Contact, sun: DVec3) -> (
         )
     }
 }
+/// Estimated maritime return: sea-clutter/grazing loss, without an airborne
+/// ground-clutter Doppler notch that would reject stationary ships.
+pub fn maritime_quality(observer:DVec3,contact:Contact)->(f64,&'static str) {
+    if !contact.alive {return (0.,"TARGET LOST");}
+    if !terrain_visible(observer,contact.position) {return (0.,"TERRAIN MASK");}
+    let offset=contact.position-observer;let range=offset.length().max(1.);
+    let grazing=(offset.normalize_or_zero().dot(observer.normalize()).abs()/10f64.to_radians().sin()).clamp(0.,1.);
+    let clutter=0.45+0.55*grazing;
+    let signal=(contact.strength*(16000./range).powi(4)).min(1.)*clutter;
+    (signal,if signal<0.18 {"SEA CLUTTER / WEAK RETURN"}else{"MARITIME RADAR RETURN"})
+}
 pub fn support_quality(support: Support, contact: Contact, sun: DVec3) -> f64 {
     if !support.available
         || support.position.distance(contact.position) > 20000.0
@@ -339,7 +355,7 @@ pub fn support_quality(support: Support, contact: Contact, sun: DVec3) -> f64 {
     }
     quality(Weapon::Radar, support.position, contact, sun).0
 }
-fn rotate_toward(current: DVec3, desired: DVec3, rate: f64, dt: f64) -> DVec3 {
+pub(super) fn rotate_toward(current: DVec3, desired: DVec3, rate: f64, dt: f64) -> DVec3 {
     let angle = current.dot(desired).clamp(-1.0, 1.0).acos();
     let axis = current.cross(desired);
     if angle < 1e-10 {
@@ -376,8 +392,9 @@ pub fn decoy_probability(
     {
         return 0.0;
     }
-    let aircraft_signal = quality(m.kind, m.position, aircraft, sun).0.max(0.01);
-    let decoy_signal = quality(m.kind, m.position, decoy, sun).0;
+    let measured = |contact| if m.gnc.maritime {maritime_quality(m.position,contact).0}else{quality(m.kind,m.position,contact,sun).0};
+    let aircraft_signal = measured(aircraft).max(0.01);
+    let decoy_signal = measured(decoy);
     if decoy_signal < 0.18 {
         return 0.0;
     }

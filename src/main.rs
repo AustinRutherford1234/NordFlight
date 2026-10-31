@@ -2275,7 +2275,7 @@ fn input(
     let roll = (keys.pressed(KeyCode::KeyE) || keys.pressed(KeyCode::ArrowRight)) as i32
         - (keys.pressed(KeyCode::KeyQ) || keys.pressed(KeyCode::ArrowLeft)) as i32;
     let yaw = keys.pressed(KeyCode::KeyA) as i32 - keys.pressed(KeyCode::KeyD) as i32;
-    f.controls = if f.ejection.active {v.index=0;v.map=false;DVec3::ZERO}else{DVec3::new(pitch as f64, yaw as f64, roll as f64)};
+    f.controls = if f.ejection.active {v.index=0;v.map=false;DVec3::ZERO}else if v.map && f.vehicle == Vehicle::Gripen {DVec3::ZERO}else{DVec3::new(pitch as f64, yaw as f64, roll as f64)};
     if v.map {
         v.map_zoom = (v.map_zoom * (-scroll.delta.y * 0.08).exp()).clamp(0.03, 100.0);
     } else {
@@ -3698,6 +3698,19 @@ mod camera_input_tests {
         app.update();assert!(!app.world().resource::<Flight>().autopilot);
         {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::KeyT);}
         app.update();assert!(!app.world().resource::<Flight>().assist);
+    }
+    #[test]
+    fn map_navigation_keys_do_not_deflect_aircraft_controls() {
+        let mut app=scene(false);app.world_mut().resource_mut::<ViewState>().map=true;
+        for key in [KeyCode::KeyW,KeyCode::KeyA,KeyCode::KeyS,KeyCode::KeyD,KeyCode::ArrowUp,KeyCode::ArrowRight,KeyCode::ArrowDown,KeyCode::ArrowLeft] {
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);app.update();
+            assert_eq!(app.world().resource::<Flight>().controls,DVec3::ZERO);
+        }
+        app.world_mut().resource_mut::<ViewState>().map=false;
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyW);app.update();
+        assert_eq!(app.world().resource::<Flight>().controls.x,-1.);
     }
     #[test]
     fn hornet_shift_alone_sets_full_throttle_on_both_shift_keys() {
