@@ -16,6 +16,7 @@ pub struct Brain {
 }
 pub fn airframe() -> Flight {
     let mut f = flight();
+    crate::aircraft::select(&mut f,crate::aircraft::Aircraft::Su27);
     f.gear_extension = 0.;
     f.gear_door = 0.;
     f.gear_phase = 0;
@@ -225,13 +226,13 @@ pub fn command(f: &mut Flight, desired: DVec3, speed: f64, d: Difficulty, dt: f6
     let throttle = if recovery || terrain {
         1.
     } else {
-        let drag = 0.5 * f.density * airspeed * airspeed * WING_AREA * f.aero_coeff.drag.max(0.);
+        let drag = 0.5 * f.density * airspeed * airspeed * f.aircraft.spec().area * f.aero_coeff.drag.max(0.);
         let requested = drag + f.mass() * ((speed - airspeed) * 0.3 + 9.81 * path.sin());
         let engine = crate::propulsion::JetConditions::new(f.density, f.mach);
         let (mut lo, mut hi) = (0., 1.);
         for _ in 0..10 {
             let mid = (lo + hi) * 0.5;
-            if engine.output(mid).0 * f.damage.engine < requested {
+            if (if f.aircraft==crate::aircraft::Aircraft::Gripen {engine.output(mid).0}else{crate::aircraft::jet_output(f.aircraft,mid,f.density,f.mach).0}) * f.damage.engine < requested {
                 lo = mid;
             } else {
                 hi = mid;
@@ -543,6 +544,7 @@ mod tests {
                 assert!(t.alive);
                 assert!(t.dynamics.rates.is_finite());
             }
+            println!("TURN stalled={stalled} heading={} speed={} alpha={} G={peak} bank={}",t.dynamics.forward().dot(desired).acos().to_degrees(),t.dynamics.airspeed,t.dynamics.alpha,t.dynamics.roll());
             assert!(t.dynamics.forward().dot(desired) > 10_f64.to_radians().cos());
             assert!((t.dynamics.airspeed - 250.).abs() < 10.);
             assert!(t.dynamics.alpha.abs() < 0.15);

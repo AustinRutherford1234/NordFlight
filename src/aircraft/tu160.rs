@@ -60,8 +60,19 @@ pub fn pilot(f: &mut Flight, desired: DVec3, speed: f64, dt: f64) {
         ((bank - f.roll()) * 1.4).clamp(-1., 1.),
     );
     f.controls += (request - f.controls) * (1. - (-dt / 0.35).exp());
-    f.throttle = (0.35 + (speed - f.airspeed) * 0.008 + path * 0.8).clamp(0.08, 0.92);
+    let q=0.5*f.density*f.airspeed*f.airspeed;
+    let drag=q*AREA*f.aero_coeff.drag.max(0.023);
+    let required=(drag+mass(f)*((speed-f.airspeed)*0.12+9.80665*path.sin())).max(0.);
+    let lapse=engine_lapse(f.density,f.mach)*f.damage.engine;
+    let sea_level=required/lapse.max(0.01);
+    // Analytic inverse of the same piecewise dry/afterburner thrust curve.
+    f.throttle=if sea_level<=548800. {0.85*sea_level/548800.}
+        else {0.85+0.15*(sea_level-548800.)/431200.};
+    f.throttle=f.throttle.clamp(0.,1.);
     f.autopilot = false;
+}
+fn engine_lapse(rho:f64,mach:f64)->f64 {
+    (rho.max(0.)/1.225).powf(0.7)*(1.+0.35*mach*mach)/(1.+0.12*mach.powi(3))
 }
 pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     f.elapsed += dt;
@@ -126,19 +137,24 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     let cd = 0.023
         + 0.075 * cl * cl
         + 0.25 * beta * beta
-        + 0.14 * ((f.mach - 0.85).max(0.)).powi(2)
+        + 0.018 * (-((f.mach-1.05)/0.18).powi(2)).exp()
+        + 0.012 * ((f.mach-0.95)/0.6).clamp(0.,1.)
+        + 0.015 * (f.mach-2.0).max(0.).powi(2)
+        + f.bomber_stores as f64*0.00012
+        + f.systems.bays*0.02
         + if attached < 0.8 {
             0.15 * (1. - attached)
         } else {
             0.
         };
+    f.aero_coeff.lift=cl;f.aero_coeff.drag=cd;
     let dir = air / speed;
     let span = f.orientation * DVec3::X;
     let lift = span.cross(dir).normalize_or(f.orientation * DVec3::Y);
     let powered = f.engine && f.fuel > 0.;
     let target = if powered { f.throttle } else { 0. };
     f.spool += (target - f.spool) * (1. - (-dt / 2.8).exp());
-    let lapse = (rho / 1.225).powf(0.7) * (1. - 0.15 * f.mach).max(0.5);
+    let lapse = engine_lapse(rho,f.mach);
     let thrust = 4.
         * (137200. * (f.spool / 0.85).min(1.).powi(1)
             + 107800. * ((f.spool - 0.85) / 0.15).max(0.))

@@ -900,7 +900,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     let elastic_incidence = if f.aircraft == crate::aircraft::Aircraft::F22 {
         raptor_elastic_incidence(f, b)
     } else { (0., 0., 0.) };
-    let evaluate=if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::evaluate_raptor}else{crate::aerodynamics::evaluate};
+    let evaluate=if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::evaluate_raptor}else if f.aircraft==crate::aircraft::Aircraft::Su27{crate::aircraft::su27::evaluate}else{crate::aerodynamics::evaluate};
     let mut coefficients = evaluate(
         crate::aerodynamics::Conditions {
             alpha: alpha + elastic_incidence.0,
@@ -1097,10 +1097,11 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     // Match fly-by-wire authority to the actual surface model, including flap trim.
     let target = if f.aircraft==crate::aircraft::Aircraft::F22 && f.assist && !f.landed {
         crate::aircraft::raptor::target_rates(f,command)
-    }else{DVec3::new(command.x * 0.65, command.y * 0.38, -command.z * 1.55)};
+    }else if f.aircraft==crate::aircraft::Aircraft::Su27 && f.assist && !f.landed {crate::aircraft::su27::target_rates(f,command)}else{DVec3::new(command.x * 0.65, command.y * 0.38, -command.z * 1.55)};
     let request = if f.assist && f.damage.avionics > 0.25 {
         let airborne_raptor=f.aircraft==crate::aircraft::Aircraft::F22 && !f.landed;
-        let center=if airborne_raptor {f.surface} else {DVec3::ZERO};
+        let nonlinear_center=airborne_raptor || (f.aircraft==crate::aircraft::Aircraft::Su27 && !f.landed);
+        let center=if nonlinear_center {f.surface} else {DVec3::ZERO};
         // Large deflections and separated flow change every coupled
         // derivative. Probe the current state once for all three axes.
         let derivative = |axis: DVec3| {
@@ -1108,7 +1109,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         };
         let vector = if f.aircraft==crate::aircraft::Aircraft::F22{crate::aircraft::raptor::vector_jacobian(f)}else{DMat3::ZERO};
         let mut panel_matrix=DMat3::from_cols(derivative(DVec3::X),derivative(DVec3::Y),derivative(DVec3::Z));
-        let mut panel_bias=if airborne_raptor {panel_loads(center).moment-panel_matrix*center} else {neutral_panels.moment};
+        let mut panel_bias=if nonlinear_center {panel_loads(center).moment-panel_matrix*center} else {neutral_panels.moment};
         if f.aircraft==crate::aircraft::Aircraft::F22 && f.landed {
             // Preserve the ground roll's existing pitch-trim response until
             // weight is off the wheels; the airborne law is not a taxi mode.

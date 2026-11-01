@@ -38,7 +38,8 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             && r.stores > 0
             && !r.withdrew
             && !n.ended
-            && t.position.distance(ship) < 28000.;
+            && t.position.distance(ship) < 28000.
+            && t.dynamics.mach<0.95;
         r.bay += ((if open { 1. } else { 0. }) - r.bay).clamp(-0.5 * dt, 0.5 * dt);
         if r.role == Role::Fighter {
             ai::sense_player(t, f, difficulty, c.sun, dt);
@@ -75,9 +76,21 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
                 (forward + (goal - t.position) / 7000.).normalize(),
                 "ESCORT",
             )
+        } else if r.role==Role::Bomber {
+            // Fly a straight release corridor, then turn outside the fleet and
+            // repeat. Pursuing the ship centre continuously creates an orbit
+            // whose nose never aligns with the remaining launch target.
+            let axis=(r.strike_axis-up*r.strike_axis.dot(up)).normalize();
+            let along=(t.position-ship).dot(axis);
+            if !r.strike_reverse && along>35000. {r.strike_reverse=true;}
+            if r.strike_reverse && along< -35000. {r.strike_reverse=false;}
+            let target=ship+axis*if r.strike_reverse {-40000.}else{40000.};
+            let altitude=if t.position.distance(ship)>45000. && r.stores==BOMBER_MISSILES {10000.}else{8000.};
+            let goal=target.normalize()*(RADIUS+altitude);
+            ((goal-t.position).normalize_or(-outward),"STRIKE RUN")
         } else {
-            let goal = ship.normalize() * (RADIUS + 3500.);
-            ((goal - t.position).normalize_or(-outward), "STRIKE")
+            let goal=ship.normalize()*(RADIUS+8000.);
+            ((goal-t.position).normalize_or(-outward),"STRIKE")
         };
         let avoid = ai::avoidance_iter(
             t.position,
@@ -109,18 +122,15 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
         t.brain.naval = true;
         if r.role == Role::Bomber {
             t.dynamics.bomber_stores = r.stores;
+            t.dynamics.systems.bays = r.bay;
         }
+        let release_configuration=if r.role==Role::Bomber && !r.withdrew && (t.position.distance(ship)<40000. || r.stores<BOMBER_MISSILES) {1.}else{r.bay};
+        let speed=mission_speed(r.role,t.dynamics.altitude(),release_configuration,intercept.is_some(),r.withdrew);
         ai::fly(
             t,
             &c.environment,
             desired,
-            if r.role == Role::Bomber {
-                240.
-            } else if intercept.is_some() {
-                290.
-            } else {
-                250.
-            },
+            speed,
             difficulty,
             dt,
         );
@@ -128,6 +138,16 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             t.alive = false;
         }
     }
+}
+/// Mission speed is an envelope request, never an imposed velocity.
+pub fn mission_speed(role:Role,altitude:f64,bay:f64,intercept:bool,withdraw:bool)->f64 {
+    let sound=atmosphere(altitude).3;
+    let q_limit=if role==Role::Bomber {45000.}else{65000.};
+    let indicated_limit=(2.*q_limit/atmosphere(altitude).2.max(0.001)).sqrt();
+    let mach=if role==Role::Bomber {
+        if bay>0.02 {0.9}else if withdraw {1.6}else{1.45}
+    }else if intercept {1.65}else{1.5};
+    (mach*sound).min(indicated_limit)
 }
 /// Su-27 AI command governor. The existing physical FBW/actuator allocator
 /// remains authoritative; protections reduce requests instead of moving poses.
@@ -169,8 +189,8 @@ mod tests {
         let mut peak_bomber_g: f64 = 0.;
         let mut peak_bomber_rate: f64 = 0.;
         let mut samples = vec![];
-        // Allow the full 24-store salvo at the existing five-second cadence.
-        for k in 0..16000 {
+        // Include the full 24-store salvo and physically flown turn-around passes.
+        for k in 0..28000 {
             let dt = 0.05;
             f.elapsed += dt;
             n.clock += dt;
@@ -179,7 +199,7 @@ mod tests {
             for r in &n.raiders {
                 let t = &c.targets[r.slot];
                 assert!(
-                    t.alive,
+                    t.alive || (r.withdrew && !t.dynamics.crashed),
                     "role {:?} k={} cause={} alt={} speed={}",
                     r.role,
                     k,
@@ -201,6 +221,7 @@ mod tests {
             "raid bomber peak_g={peak_bomber_g} peak_rate={peak_bomber_rate} rounds={}",
             n.rounds.len()
         );
+        for r in n.raiders.iter().filter(|r|r.role==Role::Bomber) {let t=&c.targets[r.slot];println!("BOMBER END stores={} withdrew={} distance={} M={} throttle={} bank={} altitude={}",r.stores,r.withdrew,t.position.distance(carrier::ship_origin(&f,0,f.elapsed)),t.dynamics.mach,t.dynamics.throttle,t.dynamics.roll(),t.dynamics.altitude());}
         assert!(peak_bomber_g < 2.7 && peak_bomber_rate < 0.8);
         assert!(
             n.raiders

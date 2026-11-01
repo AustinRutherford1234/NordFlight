@@ -248,7 +248,7 @@ impl State {
             if !t.alive || self.clock < r.next_shot {
                 continue;
             }
-            if r.role==Role::Bomber&&r.bay<0.98{continue;}
+            if r.role==Role::Bomber&&(r.bay<0.98 || t.dynamics.mach>0.95){continue;}
             let range = t.position.distance(carrier::ship_origin(f, 0, f.elapsed));
             let player = f.position - t.position;
             let engage_player = r.aam > 0
@@ -794,7 +794,7 @@ mod defense_tests {
 }
 
 #[cfg(test)]mod raid_target_tests{use super::*;
- #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
+ #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());t.dynamics.mach=t.velocity.length()/atmosphere(t.position.length()-RADIUS).3;}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
 }
 #[cfg(test)]mod bay_interlock_tests{use super::*;
  #[test]fn bomber_release_waits_for_open_bays_and_empty_bays_close(){
@@ -838,6 +838,7 @@ mod defense_tests {
    assert_eq!(r.stores,BOMBER_MISSILES);assert_eq!(c.targets[r.slot].dynamics.bomber_stores,BOMBER_MISSILES);
    r.bay=1.;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);
    t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());
+   t.dynamics.mach=t.velocity.length()/atmosphere(t.position.length()-RADIUS).3;
   }
   for shot in 0..BOMBER_MISSILES {n.clock=shot as f64*5.;n.hostile_launches(&c,&f);
    assert_eq!(n.rounds.len(),(shot as usize+1)*2);

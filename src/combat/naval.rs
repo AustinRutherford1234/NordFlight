@@ -76,6 +76,8 @@ pub struct Raider {
     next_chaff: f64,
     pub withdrew: bool,
     pub raid: u32,
+    strike_axis: DVec3,
+    strike_reverse: bool,
 }
 #[derive(Clone, Debug)]
 pub struct Burst {
@@ -201,7 +203,7 @@ impl State {
         let tangent = DVec3::new(radial.z, 0., -radial.x);
         for k in 0..4 {
             let role = if k < 2 { Role::Fighter } else { Role::Bomber };
-            let height = if role == Role::Bomber { 3800. } else { 5000. };
+            let height = if role == Role::Bomber { 10000. } else { 11000. };
             let p = carrier::ship_world(
                 f,
                 0,
@@ -240,7 +242,7 @@ impl State {
                 health: if role == Role::Bomber { 2. } else { 1. },
                 pilot: None,
                 position: p,
-                velocity: forward * 240.,
+                velocity: forward * 300.,
                 orientation: facing(forward, p.normalize()),
                 alive: true,
                 center: p,
@@ -248,7 +250,7 @@ impl State {
                 forward,
                 phase: 0.,
                 altitude: p.length() - RADIUS,
-                speed: 240.,
+                speed: 300.,
             };
             ai::initialize(&mut t);
             crate::aircraft::select(&mut t.dynamics, crate::aircraft::Aircraft::Su27);
@@ -272,6 +274,8 @@ impl State {
                 next_chaff: self.clock,
                 withdrew: false,
                 raid: self.waves,
+                strike_axis: forward,
+                strike_reverse: false,
             });
         }
         self.next_wave = self.clock;
@@ -867,6 +871,22 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
     v.generation = 100;
     v.help = false;
     start(c, f, v.generation, 1);
+    if mode.starts_with("flight-model-") {
+        let bomber=mode.ends_with("bomber");let slot=if bomber {2}else{0};
+        let t=&mut c.targets[slot];t.position=carrier::world(DVec3::new(30000.,11000.,-40000.),0.);
+        t.velocity=carrier::rotation(0.)*DVec3::NEG_Z*360.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());
+        ai::initialize(t);if bomber {crate::aircraft::tu160::initialize(&mut t.dynamics,BOMBER_MISSILES);t.fuel=t.dynamics.fuel;t.orientation=t.dynamics.orientation;}
+        let mut peak=0f64;
+        for _ in 0..36000 {
+            let up=t.position.normalize();let forward=(t.velocity-up*t.velocity.dot(up)).normalize();
+            let desired=(forward+up*((11000.-t.dynamics.altitude())/30000.).clamp(-0.1,0.1)).normalize();
+            ai::fly(t,&c.environment,desired,if bomber {480.}else{530.},dogfight::Difficulty::Hard,1./120.);
+            peak=peak.max(t.dynamics.mach);assert!(t.alive,"native flight model crash: {}",t.dynamics.status);
+        }
+        println!("FLIGHT MODEL REVIEW bomber={bomber} peak_mach={peak} final_mach={} speed={} altitude={} g={} fuel={}",t.dynamics.mach,t.dynamics.airspeed,t.dynamics.altitude(),t.dynamics.g_load,t.fuel);
+        assert!(peak>1.1);
+        v.restore_camera();v.follow_aircraft(slot);v.yaw=2.5;v.pitch=-0.15;v.zoom=1.1;f.paused=true;return;
+    }
     if mode=="map-120km" {v.restore_camera();v.map=true;f.paused=true;return;}
     if mode == "baseline" {
         *c = Combat {

@@ -1,0 +1,48 @@
+{
+  "date": "2026-11-01",
+  "automated": {
+    "passed": 741,
+    "failed": 0,
+    "execution_seconds": 54.69,
+    "command": "cargo test -- --test-threads=4"
+  },
+  "native": {
+    "aggregate_seconds": 124.36408829200809,
+    "approved_limit_seconds": 180,
+    "altitude_feedback_acceleration_duration_sim_s": 300,
+    "acceleration": [
+      {
+        "role": "bomber",
+        "peak_mach": 1.6273255979546348,
+        "final_mach": 1.6273128165164725,
+        "speed": 480.17036855033615,
+        "altitude": 11106.533640322275,
+        "g": 0.9937846482322232,
+        "fuel": 37740.86285465787
+      },
+      {
+        "role": "fighter",
+        "peak_mach": 1.713322902230626,
+        "final_mach": 1.713322902230626,
+        "speed": 505.5493209786832,
+        "altitude": 12335.59670853801,
+        "g": 0.9915165575051361,
+        "fuel": 4695.56811266822
+      }
+    ],
+    "inspected_views": [
+      "flight-model-bomber",
+      "flight-model-fighter",
+      "fighter-live",
+      "bomber-live"
+    ],
+    "sessions_restored": true,
+    "evidence": "tests/raid-flight-review",
+    "scope": "scripted acceleration and short live-flight screenshots; not user-flown acceptance or an FPS benchmark"
+  },
+  "mac_app": {
+    "rebuilt": true,
+    "ad_hoc_signature_verified": true
+  },
+  "fidelity": "Reduced-order estimates, broad public envelope anchors; no claim of proprietary aerodynamic/control-law fidelity or certified maximum-speed validation"
+}

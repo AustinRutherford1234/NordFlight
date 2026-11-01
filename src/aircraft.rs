@@ -4,6 +4,7 @@ pub mod visual;
 pub mod raptor;
 pub mod hornet;
 pub mod tu160;
+pub mod su27;
 pub mod bays;
 pub mod main_bay;
 use crate::physics::*;
@@ -560,6 +561,7 @@ pub fn stores_mass(f: &Flight) -> f64 {
 fn store_unit_mass(a:Aircraft,i:usize)->f64{if matches!(a,Aircraft::F22|Aircraft::Hornet){if i<2{84.37}else{152.}}else{160.}}
 pub fn jet_output(a: Aircraft, power: f64, rho: f64, mach: f64) -> (f64, f64) {
     if a == Aircraft::F22 { return raptor::flight_model::engine(power, rho, mach); }
+    if a == Aircraft::Su27 { return su27::engine(power,rho,mach); }
     let s = a.spec();
     let lapse = (rho / 1.225).max(0.).powf(0.62) * (1. + 0.32 * mach * mach)
         / (1. + 0.16 * mach * mach * mach);
@@ -837,7 +839,7 @@ pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3
     let burner = (s.wet - s.dry) * ((f.spool - 0.88) / 0.12).clamp(0., 1.) * (1. - conv);
     let installed = if f.aircraft == Aircraft::F22 {
         raptor::flight_model::installed_at(f, rho, mach).0
-    } else { ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse };
+    } else if f.aircraft==Aircraft::Su27 {su27::engine(f.spool,rho,mach).0} else { ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse };
     let running = f.engine && (f.fuel > 0. || f.infinite_fuel);
     let mut force = DVec3::ZERO;
     let mut moment = DVec3::ZERO;

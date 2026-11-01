@@ -2465,7 +2465,7 @@ mod tests {
         for a in crate::aircraft::Aircraft::ALL {let mut f=flight();crate::aircraft::select(&mut f,a);f.systems.bays=1.;f.systems.main_stroke=[1.;6];f.systems.side_bays=[crate::aircraft::bays::State{door:1.,launcher:1.};2];let mut c=Combat::default();c.start(&f,1);
             assert_eq!(c.ammo,a.spec().ammo);
             for kind in [Weapon::Heat,Weapon::Radar]{c.weapon=kind;let n=c.ammo[kind.index()];for _ in 0..n {c.lock=kind.lock_time();c.clock+=1.;c.radar.mode=bvr::RadarMode::Stt;bvr::sense_local(&mut c,&f);assert!(c.fire(&f),"{a:?} {kind:?}: {}",c.message);let m=c.missiles.last().unwrap();assert!(m.position.distance(f.position)<a.spec().length);assert!(m.position.is_finite());let index=c.missiles.len()-1;assert!(std::ptr::eq(c.render_missile(index).expect("every launch must be visible"),m));}assert!(!c.fire(&f));}
-            assert_eq!(c.ammo,[0,0]);assert_eq!(c.missiles.len(),(a.spec().ammo[0]+a.spec().ammo[1])as usize);assert!(c.targets.iter().all(|t|t.dynamics.aircraft==crate::aircraft::Aircraft::Gripen));
+            assert_eq!(c.ammo,[0,0]);assert_eq!(c.missiles.len(),(a.spec().ammo[0]+a.spec().ammo[1])as usize);assert!(c.targets.iter().all(|t|t.dynamics.aircraft==crate::aircraft::Aircraft::Su27));
         }
     }
     #[test]
