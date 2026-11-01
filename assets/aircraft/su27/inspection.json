@@ -37,16 +37,16 @@
   ],
   "lods": [
     {
-      "triangles": 28374,
-      "bytes": 11249508
+      "triangles": 7708,
+      "bytes": 10468132
     },
     {
-      "triangles": 9930,
-      "bytes": 10592692
+      "triangles": 2731,
+      "bytes": 10221140
     },
     {
-      "triangles": 2837,
-      "bytes": 10237240
+      "triangles": 824,
+      "bytes": 10113876
     }
   ]
 }

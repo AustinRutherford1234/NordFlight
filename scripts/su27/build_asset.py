@@ -22,18 +22,21 @@ for o in list(bpy.data.objects):
  obj=bpy.data.objects.new('Su27_'+o.name,mesh);bpy.context.collection.objects.link(obj);meshes.append(obj)
 # The supplied radome is modeled in its raised maintenance pose. Replace it
 # with an original closed ogive fitted to the imported forward fuselage.
-verts=[];faces=[]
-for j in range(17):
- t=j/16;radius=0.62*math.sin(t*math.pi/2)
- for k in range(32):
-  a=k*math.tau/32;verts.append(conversion@__import__('mathutils').Vector((radius*math.cos(a),-8.+2.9*t,-0.68+radius*0.86*math.sin(a))))
-for j in range(16):
- for k in range(32):a=j*32+k;b=j*32+(k+1)%32;faces.append((a,b,b+32,a+32))
-mesh=bpy.data.meshes.new('ClosedRadome');mesh.from_pydata(verts,[],faces);mesh.update()
-obj=bpy.data.objects.new('Su27ClosedRadome',mesh);bpy.context.collection.objects.link(obj);meshes.append(obj)
-mat=bpy.data.materials.new('RadomeGray');mat.diffuse_color=(0.20,0.27,0.29,1);mat.use_nodes=True
-mat.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=mat.diffuse_color;mesh.materials.append(mat)
-for poly in mesh.polygons:poly.use_smooth=True
+def radome(rings,segments):
+ verts=[];faces=[]
+ for j in range(rings+1):
+  t=j/rings;radius=0.49*math.sin(t*math.pi/2)
+  for k in range(segments):
+   a=k*math.tau/segments;verts.append(conversion@__import__('mathutils').Vector((-0.015+radius*math.cos(a),-8.+2.9*t,-1.35+radius*0.65*math.sin(a))))
+ for j in range(rings):
+  for k in range(segments):a=j*segments+k;b=j*segments+(k+1)%segments;faces.append((a,a+segments,b+segments,b))
+ faces.append(tuple(reversed(range(rings*segments,(rings+1)*segments))))
+ mesh=bpy.data.meshes.new('ClosedRadome');mesh.from_pydata(verts,[],faces);mesh.update()
+ obj=bpy.data.objects.new('Su27ClosedRadome',mesh);bpy.context.collection.objects.link(obj)
+ mat=bpy.data.materials.new('RadomeGray');mat.diffuse_color=(0.20,0.27,0.29,1);mat.use_nodes=True
+ mat.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=mat.diffuse_color;mesh.materials.append(mat)
+ for poly in mesh.polygons:poly.use_smooth=True
+ return obj
 for o in list(bpy.data.objects):
  if o not in meshes:bpy.data.objects.remove(o,do_unlink=True)
 for m in bpy.data.materials:
@@ -43,11 +46,14 @@ for m in bpy.data.materials:
 # Material-batch meshes while retaining UVs and canopy materials.
 bpy.ops.object.select_all(action='SELECT');bpy.context.view_layer.objects.active=meshes[0];bpy.ops.object.join();hull=bpy.context.object;hull.name='Su27AirborneExterior';base=hull.data.copy()
 meta={'author':'Rhine_Lab_Muelsyse','license':'CC BY 4.0','source':'https://sketchfab.com/3d-models/sukhoi-su-27p-flanker-b-4b73e72471b440be949b5cbc3ca36184','source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'length_m':21.9,'nose_body':[0,0,-1],'removed':removed,'lods':[]}
-for i,ratio in enumerate([1.,.35,.10]):
+for i,ratio in enumerate([.26,.09,.027]):
  hull.data=base.copy()
  if ratio<1:
   mod=hull.modifiers.new('Distance LOD','DECIMATE');mod.ratio=ratio;bpy.ops.object.modifier_apply(modifier=mod.name)
+ nose=radome(*[(12,24),(8,16),(5,8)][i])
  hull.data.calc_loop_triangles()
  bpy.ops.export_scene.gltf(filepath=str(OUT/f'lod{i}.glb'),export_format='GLB',export_animations=False,export_yup=True,export_apply=True)
- meta['lods'].append({'triangles':len(hull.data.loop_triangles),'bytes':(OUT/f'lod{i}.glb').stat().st_size})
+ nose.data.calc_loop_triangles()
+ meta['lods'].append({'triangles':len(hull.data.loop_triangles)+len(nose.data.loop_triangles),'bytes':(OUT/f'lod{i}.glb').stat().st_size})
+ bpy.data.objects.remove(nose,do_unlink=True)
 (OUT/'inspection.json').write_text(json.dumps(meta,indent=2)+'\n');print(json.dumps(meta))

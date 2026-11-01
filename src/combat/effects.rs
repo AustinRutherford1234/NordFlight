@@ -310,6 +310,24 @@ mod tests {
         }
     }
     #[test]
+    fn enemy_hit_diagrams_preserve_type_and_show_distinct_damage() {
+        let f=super::super::naval::flight(false);let mut c=Combat::default();super::super::naval::start(&mut c,&f,1,1);
+        let mut images=Vec::new();
+        std::fs::create_dir_all("tests/enemy-model-review").unwrap();
+        for (slot,name,bomber) in [(0,"fighter",false),(2,"bomber",true)] {
+            let mut damaged=c.targets[slot].clone();damaged.damage.engine=0.2;
+            let snapshot=HitReport::new(slot,&damaged,0.);assert!(snapshot.damage.engines.iter().all(|h|*h<=0.2));
+            let mut r=HitReport::new(slot,&c.targets[slot],0.);assert_eq!(r.bomber,bomber);
+            let mut pixels=vec![0;220*100*4];draw_hit_diagram(&mut pixels,&r,0.);
+            std::fs::write(format!("tests/enemy-model-review/{name}.rgba"),&pixels).unwrap();
+            assert!(hit_damage_label(&r).contains("100%"));
+            let healthy=pixels.clone();r.damage.wings[0]=0.;r.damage.engines[0]=0.;draw_hit_diagram(&mut pixels,&r,0.);assert_ne!(healthy,pixels);
+            assert!(pixels.chunks_exact(4).any(|p|p==[255,65,60,255]));
+            images.push(healthy);c.targets[slot].dynamics.ai_bomber=!bomber;assert_eq!(r.bomber,bomber);
+        }
+        assert_ne!(images[0],images[1]);
+    }
+    #[test]
     fn flames_stay_near_the_damaged_region_at_high_airspeed() {
         let mut f = Flight::runway();
         f.velocity = f.forward() * 500.;
@@ -474,7 +492,7 @@ mod tests {
                 .get::<Text>(text)
                 .unwrap()
                 .0
-                .contains("L OUTER ELEVON LOST")
+                .contains("L AILERON LOST")
         );
         assert_eq!(app.world().get::<Node>(panel).unwrap().top, px(60));
         app.world_mut().resource_mut::<ViewState>().simple = false;
@@ -509,6 +527,7 @@ pub struct DiagramImage;
 pub struct DiagramTexture(pub Handle<Image>);
 /// A hit-time snapshot survives target selection changes and aircraft breakup.
 pub struct HitReport {
+    pub bomber: bool,
     pub index: usize,
     pub damage: AircraftDamage,
     pub integrity: f64,
@@ -519,7 +538,8 @@ impl HitReport {
     pub fn new(index: usize, target: &super::Target, at: f64) -> Self {
         Self {
             index,
-            damage: target.damage.clone(),
+            bomber: target.dynamics.ai_bomber,
+            damage: {let mut d=target.damage.clone();if d.aircraft==crate::aircraft::Aircraft::Gripen {for e in &mut d.engines{*e=e.min(d.engine);}} if !target.dynamics.ai_bomber{d.aircraft=crate::aircraft::Aircraft::Su27;} d},
             integrity: target.health,
             destroyed: !target.alive,
             at,
@@ -806,21 +826,22 @@ pub fn render_hit(
         color.0 = Color::srgba(1., 0.8, 0.55, alpha);
         if *previous != Some(key) {
             text.0 = format!(
-                "ENEMY {:02} / {}\n{}",
+                "ENEMY {:02} / {} / {}\n{}",
                 r.index + 1,
+                if r.bomber {"TU-160 BOMBER"} else {"SU-27 FIGHTER"},
                 if r.destroyed {
                     "DESTROYED"
                 } else {
                     "HIT CONFIRMED"
                 },
-                diagram_label(&r.damage, r.integrity, r.destroyed)
+                hit_damage_label(r)
             );
         }
     }
     if *previous != Some(key) {
         if let Some(image) = images.get_mut_untracked(&texture.0) {
             if let Some(data) = image.data.as_mut() {
-                draw_diagram(data, &r.damage, r.integrity, combat.clock);
+                draw_hit_diagram(data, r, combat.clock);
             }
             uploads.publish(&texture.0, image);
         }
@@ -1136,6 +1157,30 @@ fn draw_diagram(data: &mut [u8], d: &AircraftDamage, integrity: f64, elapsed: f6
         );
     }
 }
+fn hit_damage_label(r:&HitReport)->String {
+    if !r.bomber{return diagram_label(&r.damage,r.integrity,r.destroyed);}
+    let d=&r.damage;
+    format!("HULL {:.0}% / L WING {:.0}% / R WING {:.0}%\nENG L {:.0}% / ENG R {:.0}% / HYD {:.0}%{}",
+        (r.integrity/2.).clamp(0.,1.)*100.,d.wings[0]*100.,d.wings[1]*100.,d.engines[0]*100.,d.engines[1]*100.,d.hydraulics*100.,if d.fire>0.05{" / FIRE"}else{""})
+}
+fn draw_hit_diagram(data:&mut[u8],r:&HitReport,elapsed:f64) {
+    if !r.bomber {draw_diagram(data,&r.damage,r.integrity,elapsed);return;}
+    data.fill(0);let d=&r.damage;
+    // Tu-160 top view: slender fuselage, swept variable-geometry wings,
+    // swept tail and paired engine nacelles. Colours retain subsystem health.
+    polygon(data,&[(110.,5.),(114.,15.),(117.,36.),(117.,75.),(113.,91.),(107.,91.),(103.,75.),(103.,36.),(106.,15.)],color((r.integrity/2.).clamp(0.,1.),SurfaceState::Operational));
+    for side in [0,1] {
+        let mirror=|p:&[(f32,f32)]|p.iter().map(|&(x,y)|(if side==0{x}else{220.-x},y)).collect::<Vec<_>>();
+        polygon(data,&mirror(&[(104.,29.),(89.,36.),(26.,70.),(30.,75.),(100.,54.)]),color(d.wings[side],SurfaceState::Operational));
+        polygon(data,&mirror(&[(106.,72.),(78.,86.),(80.,91.),(108.,84.)]),color(d.surfaces[side*4],d.surface_state[side*4]));
+        for x in [94.,100.] {polygon(data,&mirror(&[(x-2.,56.),(x+2.,56.),(x+2.,75.),(x-2.,75.)]),color(d.engines[side],SurfaceState::Operational));}
+    }
+    for (y,h) in [(17.,d.radar),(29.,d.avionics),(44.,d.hydraulics),(61.,1./(1.+d.fuel_leak))] {
+        polygon(data,&[(107.,y-3.),(113.,y-3.),(113.,y+3.),(107.,y+3.)],color(h,SurfaceState::Operational));
+    }
+    if d.fire>0.05 {let pulse=(elapsed*9.).sin()as f32*2.;polygon(data,&[(126.,87.),(127.,72.+pulse),(132.,80.),(135.,68.-pulse),(141.,88.)],[255,110,20,255]);}
+}
+
 fn draw_fleet_diagram(data:&mut[u8],d:&AircraftDamage,integrity:f64,elapsed:f64){
     data.fill(0);let a=d.aircraft;let s=a.spec();let scale=(85./s.length).min(170./s.span)as f32;
     let project=|p:Vec3|(110.+p.x*scale,48.+p.z*scale);
