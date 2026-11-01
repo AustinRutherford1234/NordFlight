@@ -36,6 +36,9 @@ impl Default for Warp {
     }
 }
 impl Warp {
+    pub(crate) fn ground_priority(&self, f: &Flight) -> bool {
+        !f.paused && f.landed && f.vehicle == Vehicle::Gripen && self.allowed(f) >= 10.
+    }
     pub fn normal(&mut self) {self.selected=self.rates.iter().position(|r|*r==1.).unwrap_or(0);}
     fn path() -> std::path::PathBuf {
         let base = std::env::var_os("HOME")
@@ -140,6 +143,21 @@ impl Warp {
             })
         }
     }
+}
+/// Save and restore the user's original focused/unfocused window policy. A
+/// reactive display avoids continuously spending CPU/GPU work chasing VSync;
+/// window events can still wake it immediately for controls and menu changes.
+pub(crate) fn ground_pacing(
+    f: Res<Flight>, warp: Res<Warp>, mut settings: ResMut<bevy::winit::WinitSettings>,
+    mut saved: Local<Option<bevy::winit::WinitSettings>>,
+) {
+    if warp.ground_priority(&f) {
+        if saved.is_none() {
+            *saved=Some(settings.clone());
+            let mode=bevy::winit::UpdateMode::reactive_low_power(std::time::Duration::from_secs_f64(1./15.));
+            settings.focused_mode=mode;settings.unfocused_mode=mode;
+        }
+    } else if let Some(original)=saved.take() { *settings=original; }
 }
 /// Accelerated-time parking convenience, expressed in the supporting surface's
 /// frame so the carrier keeps transporting the aircraft. Never holds a launch.
@@ -448,6 +466,30 @@ pub fn ui(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ground_pacing_restores_original_modes_after_pause_rate_change_or_takeoff() {
+        use bevy::winit::{WinitSettings,UpdateMode};
+        let original=WinitSettings::continuous();
+        let mut app=App::new();
+        let mut w=Warp::default();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();
+        app.insert_resource(crate::carrier::scenario(true)).insert_resource(w)
+            .insert_resource(original.clone()).add_systems(Update,ground_pacing);
+        for exit in 0..3 {
+            {let mut f=app.world_mut().resource_mut::<Flight>();f.paused=false;f.landed=true;}
+            {let mut w=app.world_mut().resource_mut::<Warp>();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();}
+            app.update();app.update();
+            assert!(matches!(app.world().resource::<WinitSettings>().focused_mode,UpdateMode::Reactive{..}));
+            match exit {
+                0=>app.world_mut().resource_mut::<Flight>().paused=true,
+                1=>app.world_mut().resource_mut::<Warp>().normal(),
+                _=>app.world_mut().resource_mut::<Flight>().landed=false,
+            }
+            app.update();
+            let restored=app.world().resource::<WinitSettings>();
+            assert_eq!(restored.focused_mode,original.focused_mode);
+            assert_eq!(restored.unfocused_mode,original.unfocused_mode);
+        }
+    }
     #[test]
     fn comma_below_normal_time_and_reset_use_actual_one_times_index() {
         let mut w=Warp::default();assert_eq!(w.rates[w.selected],1.);

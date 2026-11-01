@@ -1404,6 +1404,7 @@ fn main() {
         )
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_plugins(performance::PerformancePlugin)
+        .add_systems(Last, warp::ground_pacing)
         .add_plugins(aircraft::visual::hornet::HeatPlugin)
         .add_plugins(earth_gpu::EarthGpuPlugin)
         .add_plugins(ocean::OceanPlugin)
@@ -2364,6 +2365,7 @@ fn step(
 ) {
     let _measure = performance::span(0);
     let mut combat = combat;
+    clock.prioritize_ground(warp.ground_priority(&f));
     let wall = clock.wall_duration(time.delta_secs_f64(), f.elapsed, f.paused, view.as_ref().map(|v|v.generation));
     if f.paused || wall <= 0. { return; }
     warp.effective = warp.allowed(&f);
@@ -2388,8 +2390,9 @@ fn step(
         return;
     }
     let (steps, dt) = clock.steps(wall, warp.effective, warp.timestep);
+    let mut hold = warp::GroundHold::capture(&f, warp.effective);
     for _ in 0..steps {
-        let hold = warp::GroundHold::capture(&f, warp.effective);
+        if hold.is_none() {hold=warp::GroundHold::capture(&f,warp.effective);}
         if let Some(ref hold) = hold {hold.apply(&mut f);}
         e.advance(dt);
         simulate(&mut f, &e, dt);
@@ -2399,7 +2402,7 @@ fn step(
             combat.tick(&mut f, dt);
             combat::effects::advance(combat, &f, dt);
         }
-        if let Some(hold) = hold {hold.apply(&mut f);}
+        if let Some(ref hold) = hold {hold.apply(&mut f);}
     }
     performance::advanced(steps as f64 * dt);
 }
@@ -3888,7 +3891,7 @@ mod realtime_flight_regressions {
     use std::time::Duration;
     #[test]
     fn accelerated_ground_time_runs_simulation_and_holds_runway_or_moving_deck() {
-        for deck in [false,true] {
+        for (deck,fps) in [(false,15),(true,15),(false,60),(true,60)] {
             let mut app=scene();
             let mut f=if deck {carrier::scenario(true)}else{Flight::runway()};
             f.carrier.attached=false;
@@ -3896,8 +3899,8 @@ mod realtime_flight_regressions {
             let p=f.position;let q=f.orientation;
             let local=if deck {carrier::ship_relative(&f,0,p,0.)}else{p};
             app.insert_resource(f);
-            {let mut w=app.world_mut().resource_mut::<warp::Warp>();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();}
-            for _ in 0..60 {frame(&mut app,Duration::from_secs_f64(1./60.));}
+            {let mut w=app.world_mut().resource_mut::<warp::Warp>();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();if fps==15 {w.timestep=0.001;}}
+            for _ in 0..fps {frame(&mut app,Duration::from_secs_f64(1./fps as f64));}
             let f=app.world().resource::<Flight>();
             assert!((f.elapsed-10.).abs()<1e-8);
             assert!((app.world().resource::<Environment>().time-10.).abs()<1e-8);

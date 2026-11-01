@@ -189,6 +189,15 @@ pub fn exercise(
     }
     let scripted =
         session.soak || matches!(script.as_str(), "ascent" | "descent" | "landing" | "warp");
+    if script == "ground-warp" {
+        if session.phase.is_none() {
+            *f=crate::carrier::scenario(true);f.paused=false;
+            v.scenario=12;v.index=3;v.help=false;
+            w.selected=w.rates.iter().position(|r|*r==10.).unwrap();
+            e.wind_enabled=false;session.phase=Some(0);
+        }
+        return;
+    }
     if script == "carrier-live" {
         // Initialize once, then leave position, attitude and velocity entirely
         // to the ordinary simulation. Never recycle a crashed flight.
