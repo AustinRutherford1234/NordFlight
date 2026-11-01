@@ -42,6 +42,19 @@ pub fn output(power: f64, rho: f64, mach: f64) -> (f64, f64) {
         (dry * 0.000021 + wet * 0.000065) * lapse * ram,
     )
 }
+/// Engineering blend: engine suction dominates low-speed inlet direction.
+/// Freestream incidence becomes meaningful as dynamic pressure builds. These
+/// bounds are estimates, not measured F414 compressor stability data.
+fn inlet_distortion(air: DVec3, density: f64) -> f64 {
+    let speed = air.length();
+    if speed < 1e-6 { return 0.; }
+    let q = 0.5 * density.max(0.) * speed * speed;
+    let blend = ((q - 250.) / (4000. - 250.)).clamp(0., 1.);
+    let blend = blend * blend * (3. - 2. * blend);
+    let alpha = (-air.y).atan2(-air.z);
+    let beta = (air.x / speed).clamp(-1., 1.).asin();
+    blend * ((alpha.abs() - 0.65).max(0.) + (beta.abs() - 0.3).max(0.) * 1.5)
+}
 pub fn advance(f: &mut Flight, dt: f64) -> Loads {
     let altitude = f.altitude();
     let mut result = Loads::default();
@@ -49,10 +62,11 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
     let mut flow = 0.;
     let mut spool = 0.;
     let fueled = f.fuel + super::stores::fuel(f) > 0. || f.infinite_fuel;
+    let air = f.orientation.conjugate() * (f.velocity - f.wind);
+    let distortion = inlet_distortion(air, f.density);
     for i in 0..2 {
         let health = f.damage.engines[i].clamp(0., 1.);
         let state = &mut f.hornet.engines[i];
-        let distortion = (f.alpha.abs() - 0.65).max(0.) + (f.beta.abs() - 0.3).max(0.) * 1.5;
         state.distortion_time = if distortion > 0.6 {
             state.distortion_time + dt
         } else {
@@ -94,7 +108,6 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
         if state.temperature > 1120. {
             f.damage.engines[i] = (health - dt * (state.temperature - 1120.) * 0.00001).max(0.);
         }
-        let air = f.orientation.conjugate() * (f.velocity - f.wind);
         let windmill = if state.thrust == 0. {
             -air.normalize_or_zero() * (f.density * f.airspeed.powi(2) * 0.018)
         } else {
@@ -128,4 +141,55 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
         super::stores::burn(f, dt * (flow + f.damage.fuel_leak));
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn run(f:&mut Flight,seconds:f64,hz:usize) {
+        for _ in 0..(seconds*hz as f64)as usize {
+            f.airspeed=(f.velocity-f.wind).length(); advance(f,1./hz as f64);
+        }
+    }
+    #[test]
+    fn carrier_airflow_never_shuts_down_a_healthy_taxiing_engine() {
+        for hz in [60,120,240] { for heading in [0f64,45.,90.,135.,180.,225.,270.,315.] {
+            let mut f=crate::carrier::scenario(true);
+            f.orientation=crate::carrier::rotation(0.)*DQuat::from_rotation_y(heading.to_radians());
+            f.apu=false;f.throttle=0.3;
+            run(&mut f,15.,hz);
+            assert!(f.hornet.engines.iter().all(|e|!e.flameout&&e.thrust>1000.&&e.flow>0.),"heading={heading} hz={hz}");
+            assert!(f.hornet.hydraulic_pressure>0.9);
+        }}
+    }
+    #[test]
+    fn static_and_low_speed_tail_crosswinds_allow_idle_and_full_power() {
+        for speed in [0f64,10.,20.,30.] { for angle in [0f64,90.,180.,270.] {for power in [0.,1.] {
+            let mut f=crate::carrier::scenario(true);f.apu=false;f.throttle=power;
+            f.velocity=f.orientation*(DQuat::from_rotation_y(angle.to_radians())*DVec3::NEG_Z*speed);f.wind=DVec3::ZERO;
+            run(&mut f,15.,120);
+            assert!(f.hornet.engines.iter().all(|e|!e.flameout&&e.thrust>0.),"speed={speed} angle={angle} power={power}");
+        }}}
+    }
+    #[test]
+    fn real_high_speed_distortion_failure_and_restart_still_apply() {
+        let mut f=crate::carrier::scenario(true);f.apu=false;f.throttle=0.6;
+        f.velocity=f.orientation*DVec3::Z*180.;f.wind=DVec3::ZERO;
+        run(&mut f,3.,120);assert!(f.hornet.engines.iter().all(|e|e.flameout&&e.thrust==0.));
+        f.velocity=DVec3::ZERO;f.apu=true;
+        run(&mut f,6.,120);assert!(f.hornet.engines.iter().all(|e|!e.flameout&&e.thrust>0.));
+        f.damage.engines[0]=0.05;run(&mut f,1.,120);assert_eq!(f.hornet.engines[0].thrust,0.);assert!(f.hornet.engines[1].thrust>0.);
+        f.engine=false;run(&mut f,1.,120);assert_eq!(f.thrust,0.);
+        f.engine=true;f.fuel=0.;f.hornet.tanks=Default::default();run(&mut f,1.,120);assert_eq!(f.thrust,0.);
+    }
+    #[test]
+    fn distortion_is_continuous_and_uses_air_relative_velocity() {
+        assert_eq!(inlet_distortion(DVec3::ZERO,1.225),0.);
+        assert_eq!(inlet_distortion(DVec3::Z*12.86,1.225),0.);
+        for q in [250f64,4000.] {
+            let a=inlet_distortion(DVec3::Z*(2.*(q-0.001)/1.225).sqrt(),1.225);
+            let b=inlet_distortion(DVec3::Z*(2.*(q+0.001)/1.225).sqrt(),1.225);
+            assert!((b-a).abs()<1e-6);
+        }
+    }
 }
