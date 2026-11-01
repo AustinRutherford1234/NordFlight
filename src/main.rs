@@ -2367,7 +2367,7 @@ fn step(
     let wall = clock.wall_duration(time.delta_secs_f64(), f.elapsed, f.paused, view.as_ref().map(|v|v.generation));
     if f.paused || wall <= 0. { return; }
     warp.effective = warp.allowed(&f);
-    if warp.effective > 4.0 {
+    if warp.effective > 4.0 && f.vehicle == Vehicle::Spacecraft {
         let requested = wall * warp.effective;
         let duration = f
             .space
@@ -2389,6 +2389,8 @@ fn step(
     }
     let (steps, dt) = clock.steps(wall, warp.effective, warp.timestep);
     for _ in 0..steps {
+        let hold = warp::GroundHold::capture(&f, warp.effective);
+        if let Some(ref hold) = hold {hold.apply(&mut f);}
         e.advance(dt);
         simulate(&mut f, &e, dt);
         if let Some(ref mut combat) = combat {
@@ -2397,6 +2399,7 @@ fn step(
             combat.tick(&mut f, dt);
             combat::effects::advance(combat, &f, dt);
         }
+        if let Some(hold) = hold {hold.apply(&mut f);}
     }
     performance::advanced(steps as f64 * dt);
 }
@@ -3883,6 +3886,29 @@ mod camera_input_tests {
 mod realtime_flight_regressions {
     use super::*;
     use std::time::Duration;
+    #[test]
+    fn accelerated_ground_time_runs_simulation_and_holds_runway_or_moving_deck() {
+        for deck in [false,true] {
+            let mut app=scene();
+            let mut f=if deck {carrier::scenario(true)}else{Flight::runway()};
+            f.carrier.attached=false;
+            f.velocity=carrier::ground_velocity(&f,f.position);
+            let p=f.position;let q=f.orientation;
+            let local=if deck {carrier::ship_relative(&f,0,p,0.)}else{p};
+            app.insert_resource(f);
+            {let mut w=app.world_mut().resource_mut::<warp::Warp>();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();}
+            for _ in 0..60 {frame(&mut app,Duration::from_secs_f64(1./60.));}
+            let f=app.world().resource::<Flight>();
+            assert!((f.elapsed-10.).abs()<1e-8);
+            assert!((app.world().resource::<Environment>().time-10.).abs()<1e-8);
+            assert!(!f.crashed&&f.landed,"{}",f.status);
+            assert!((f.velocity-carrier::ground_velocity(f,f.position)).length()<1e-9);
+            if deck {
+                assert!(carrier::ship_relative(f,0,f.position,f.elapsed).distance(local)<1e-6);
+                assert!(f.position.distance(p)>120.);
+            } else {assert_eq!(f.position,p);assert_eq!(f.orientation,q);}
+        }
+    }
     fn scene() -> App {
         let mut app = App::new();
         let mut f = carrier::scenario(false);

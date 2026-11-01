@@ -112,6 +112,10 @@ impl Warp {
     }
     pub fn allowed(&self, f: &Flight) -> f64 {
         let requested = self.rates[self.selected.min(self.rates.len() - 1)];
+        if f.vehicle == Vehicle::Gripen && f.landed && !f.crashed && !f.ejection.active
+            && f.carrier.launch.is_none() {
+            return requested.min(10.0);
+        }
         if f.crashed || f.landed || f.agl() < 100.0 {
             return requested.min(1.0);
         }
@@ -135,6 +139,48 @@ impl Warp {
                 4.0
             })
         }
+    }
+}
+/// Accelerated-time parking convenience, expressed in the supporting surface's
+/// frame so the carrier keeps transporting the aircraft. Never holds a launch.
+pub(crate) struct GroundHold {
+    position: DVec3,
+    orientation: DQuat,
+    deck: bool,
+}
+impl GroundHold {
+    pub(crate) fn capture(f: &Flight, rate: f64) -> Option<Self> {
+        if rate <= 1. || f.vehicle != Vehicle::Gripen || !f.landed || f.crashed
+            || f.ejection.active || f.carrier.launch.is_some() {
+            return None;
+        }
+        let deck = crate::carrier::deck(f, f.position).is_some();
+        if deck && !f.carrier.operational { return None; }
+        if (f.velocity - crate::carrier::ground_velocity(f, f.position)).length() >= 0.5 {
+            return None;
+        }
+        Some(Self {
+            position: if deck {crate::carrier::ship_relative(f, 0, f.position, f.elapsed)} else {f.position},
+            orientation: if deck {crate::carrier::ship_rotation(f, 0, f.elapsed).conjugate()*f.orientation} else {f.orientation},
+            deck,
+        })
+    }
+    pub(crate) fn apply(&self, f: &mut Flight) {
+        if f.crashed || f.ejection.active || f.carrier.launch.is_some()
+            || (self.deck && (!f.carrier.active || !f.carrier.operational)) { return; }
+        if self.deck {
+            let q=crate::carrier::ship_rotation(f,0,f.elapsed);
+            f.position=crate::carrier::ship_world(f,0,self.position,f.elapsed);
+            f.orientation=q*self.orientation;
+            f.velocity=crate::carrier::ship_velocity(f,0,f.position,f.elapsed);
+            f.rates=f.orientation.conjugate()*(crate::carrier::rotation(f.elapsed)*f.carrier.motion[0].angular);
+        } else {
+            f.position=self.position;
+            f.orientation=self.orientation;
+            f.velocity=DVec3::ZERO;
+            f.rates=DVec3::ZERO;
+        }
+        f.landed=true;
     }
 }
 /// Spacecraft use bounded patched-conic universal-variable drifts. The legacy
@@ -431,7 +477,43 @@ mod tests {
         assert_eq!(w.allowed(&f), 1000.0);
         f.throttle = 0.2;
         assert_eq!(w.allowed(&f), 4.0);
-        assert_eq!(w.allowed(&Flight::runway()), 1.0);
+        assert_eq!(w.allowed(&Flight::runway()), 10.0);
+    }
+    #[test]
+    fn ground_warp_preserves_slow_motion_and_excludes_launch_crash_and_low_flight() {
+        let mut w=Warp::default();
+        let mut f=crate::carrier::scenario(true);
+        w.selected=w.rates.iter().position(|r|*r==0.5).unwrap();
+        assert_eq!(w.allowed(&f),0.5);
+        assert!(GroundHold::capture(&f,0.5).is_none());
+        w.selected=w.rates.iter().position(|r|*r==50.).unwrap();
+        assert_eq!(w.allowed(&f),10.);
+        assert!(GroundHold::capture(&f,10.).is_some());
+        f.carrier.launch=Some(0.);
+        assert_eq!(w.allowed(&f),1.);
+        assert!(GroundHold::capture(&f,10.).is_none());
+        f.carrier.launch=None;f.crashed=true;
+        assert_eq!(w.allowed(&f),1.);
+        assert!(GroundHold::capture(&f,10.).is_none());
+        f.crashed=false;f.landed=false;
+        assert_eq!(w.allowed(&f),1.);
+        assert!(GroundHold::capture(&f,10.).is_none());
+    }
+    #[test]
+    fn parking_hold_uses_surface_relative_speed_and_follows_deck_motion() {
+        let mut f=crate::carrier::scenario(true);
+        f.carrier.attached=false;
+        f.velocity+=crate::carrier::ship_rotation(&f,0,0.)*DVec3::X*0.4;
+        let p=crate::carrier::ship_relative(&f,0,f.position,0.);
+        let hold=GroundHold::capture(&f,10.).unwrap();
+        f.elapsed=10.;hold.apply(&mut f);
+        assert!(crate::carrier::ship_relative(&f,0,f.position,10.).distance(p)<1e-7);
+        assert!(f.velocity.distance(crate::carrier::ground_velocity(&f,f.position))<1e-9);
+        assert!(f.velocity.length()>12.);
+        f.velocity+=f.orientation*DVec3::X*0.6;
+        assert!(GroundHold::capture(&f,10.).is_none());
+        f.carrier.operational=false;let before=f.position;f.elapsed=11.;hold.apply(&mut f);
+        assert_eq!(f.position,before);
     }
     #[test]
     fn lunar_and_interplanetary_warp_rates_allow_100000_only_on_safe_coasts() {
