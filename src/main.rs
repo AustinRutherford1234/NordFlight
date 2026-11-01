@@ -1410,7 +1410,7 @@ fn main() {
                 ejection::setup,
                 instruments::setup,
                 warp::setup,
-                map::setup,
+                (combat::fighter_model::setup,map::setup).chain(),
                 lunar::setup,
                 aero_fx::setup,
                 combat::setup,
@@ -1453,7 +1453,7 @@ fn main() {
                     step.in_set(FlightStage::Simulation),
                 (
                     combat::camera_controls.run_if(start_screen::flight_controls),
-                    (combat::naval::bomber::register,combat::naval::bomber::update,combat::naval::draw).chain(),
+                    (combat::fighter_model::update,combat::naval::bomber::register,combat::naval::bomber::update,combat::naval::draw).chain(),
                     (
                         terrain::update,
                         update_world,

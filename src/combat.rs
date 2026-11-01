@@ -26,6 +26,7 @@ pub mod rwr;
 const TARGET_COUNT: usize = 3;
 const MAX_AIRCRAFT: usize = 12;
 pub mod naval;
+pub mod fighter_model;
 // Mechanism children never carry the generic presentation roles. These filters
 // let Bevy prove independent transform/visibility access without relaxing any
 // input, simulation, camera, or damage ordering.
@@ -1709,10 +1710,8 @@ pub fn render(
         if *visibility != desired { *visibility = desired; }
     }
     for (tag, mut transform, mut visibility) in &mut targets {
-        let target = combat
-            .targets
-            .get(tag.0)
-            .filter(|t| combat.active && t.alive && combat.naval.is_none());
+        // Legacy procedural roots remain hidden; fighter_model owns combat exteriors.
+        let target = combat.targets.get(tag.0).filter(|_| false);
         visibility.set_if_neq(if target.is_some() {
             Visibility::Inherited
         } else {

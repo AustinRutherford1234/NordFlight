@@ -1,0 +1,11 @@
+# Imported Su-27P fighter exterior
+
+The user-supplied larger GLB is the textured Su-27P Flanker-B by Rhine_Lab_Muelsyse, CC BY 4.0. Source, attribution, checksum and reproducible Blender conversion are included under assets/aircraft/su27 and scripts/su27. Both downloads contain the same 39 source meshes; the larger copy retains the higher-resolution main texture.
+
+All live combat fighter slots now use the imported exterior in target practice, dogfight, BVR and Carrier Defense. Naval bomber slots retain the Tu-160. The replacement is a visual change: AI, flight dynamics, weapon inventories, seeker logic and collision/damage physics are unchanged. BVR friendly aircraft share the same exterior as the existing common combat-model path did previously. Legacy procedural combat roots remain hidden; the old naval fighter meshes are removed.
+
+Three shared scene assets provide 28,374 / 9,930 / 2,837 triangles. Switching distances are 800 and 3,000 metres from the camera with 10% hysteresis. Only one LOD per fighter is visible. Source textures/UVs are retained, with no runtime model animation player. The exterior is a static airborne pose; this change does not add animated gear or control surfaces to enemies.
+
+Conversion uses 21.9 m length, source -Y nose to simulator -Z nose, and +Z source up to simulator +Y. The source radome was raised: an original closed ogive replaces that portion, and the canopy is rotated into a closed airborne pose. Gear, dampers, open gear hatches, bombs, loose source stores and pylons are removed. These are visual repairs rather than a claim of CAD-accurate reconstruction. The original GLB is retained for future refinements.
+
+Validation: 736 automated tests passed (including new fighter/bomber filtering and LOD hysteresis tests). The standalone asset validator checks all GLB headers, finite bounds, physical length/span, decreasing triangle counts, absence of source animation clips and attribution. Native fighter-follow captures were inspected for textures, orientation and assembly repairs. This used the remaining previously approved bounded review window and restored the user's running session. Snapshot FPS is not a before/after performance benchmark; no measured performance gain is claimed. Mac app rebuilt and strict/deep ad-hoc signature checked.

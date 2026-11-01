@@ -162,30 +162,6 @@ pub fn setup(
         unlit: true,
         ..default()
     });
-    let fighter = meshes.add(crate::aircraft::visual::hull_mesh(
-        crate::aircraft::Aircraft::Su27,
-        false,
-    ));
-    let radome = meshes.add(crate::aircraft::visual::hull_mesh(
-        crate::aircraft::Aircraft::Su27,
-        true,
-    ));
-    let mut wings = vec![];
-    for side in [-1., 1.] {
-        wings.push(crate::aircraft::visual::wing(crate::aircraft::Aircraft::Su27, side).to_vec());
-        wings.push(
-            crate::aircraft::visual::fin(crate::aircraft::Aircraft::Su27, side)
-                .0
-                .to_vec(),
-        );
-        wings.push(vec![
-            Vec3::new(side, 0., 5.),
-            Vec3::new(side * 4., 0., 8.),
-            Vec3::new(side * 4., 0., 9.),
-            Vec3::new(side, 0., 8.),
-        ]);
-    }
-    let surfaces = meshes.add(mesh(wings));
     super::bomber::setup(&mut commands,&server);
     let bomber = std::env::var_os("NORD_BOMBER_REFERENCE").map(|_|meshes.add(bomber()));
     let weapons=[Kind::Standard,Kind::Essm,Kind::AntiShip,Kind::AirToAir].map(|kind|meshes.add(super::ordnance::mesh(kind)));
@@ -200,23 +176,7 @@ pub fn setup(
                 Transform::default(),
                 Visibility::Hidden,
             ))
-            .with_children(|p| {
-                p.spawn((
-                    Mesh3d(fighter.clone()),
-                    MeshMaterial3d(skin.clone()),
-                    Transform::default(),
-                ));
-                p.spawn((
-                    Mesh3d(radome.clone()),
-                    MeshMaterial3d(dark.clone()),
-                    Transform::default(),
-                ));
-                p.spawn((
-                    Mesh3d(surfaces.clone()),
-                    MeshMaterial3d(skin.clone()),
-                    Transform::default(),
-                ));
-            });
+            ;
         if let Some(bomber)=&bomber{
         commands
             .spawn((

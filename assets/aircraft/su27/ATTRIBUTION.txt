@@ -1,0 +1,7 @@
+Sukhoi Su-27P Flanker-B by Rhine_Lab_Muelsyse
+https://sketchfab.com/3d-models/sukhoi-su-27p-flanker-b-4b73e72471b440be949b5cbc3ca36184
+Licensed Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+Changes for Nord Flight: scale and coordinate normalization, static airborne exterior,
+removed gear/bombs/ECM geometry, material batching, distance LOD simplification.
+Original user-downloaded GLB retained in source/original.glb.

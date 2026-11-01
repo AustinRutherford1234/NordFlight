@@ -1,0 +1,52 @@
+{
+  "author": "Rhine_Lab_Muelsyse",
+  "license": "CC BY 4.0",
+  "source": "https://sketchfab.com/3d-models/sukhoi-su-27p-flanker-b-4b73e72471b440be949b5cbc3ca36184",
+  "source_sha256": "610809fcb5bd66e1fa7ec6788864219dc728fd8de45d88c47829d11abff36840",
+  "length_m": 21.9,
+  "nose_body": [
+    0,
+    0,
+    -1
+  ],
+  "removed": [
+    "AAM_wings_Material #106_0",
+    "BOMB1_Material #106_0",
+    "BOMB2_Material #106_0",
+    "BOMB3_Material #106_0",
+    "ECM_Material #106_0",
+    "FijoEI_Material #106_0",
+    "FijoII_Material #106_0",
+    "FijoMD_Material #106_0",
+    "gear_hatch_l1_Material #106_0",
+    "gear_hatch_l2_Material #106_0",
+    "gear_hatch_r1_Material #106_0",
+    "gear_hatch_r2_Material #106_0",
+    "Left_Damper_Material #106_0",
+    "Left_Gear_Material #106_0",
+    "nose_gear_hatch_Material #106_0",
+    "nose_gear_Material #106_0",
+    "nose_Material #106_0",
+    "Right_Damper_Material #106_0",
+    "Right_Gear_Material #106_0",
+    "SopDFR_Material #106_0",
+    "SopDIFR_Material #106_0",
+    "SopIFCA_Material #106_0",
+    "SopIFCB_Material #106_0",
+    "SopIFMI_Material #106_0"
+  ],
+  "lods": [
+    {
+      "triangles": 28374,
+      "bytes": 11249508
+    },
+    {
+      "triangles": 9930,
+      "bytes": 10592692
+    },
+    {
+      "triangles": 2837,
+      "bytes": 10237240
+    }
+  ]
+}
