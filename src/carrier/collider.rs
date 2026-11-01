@@ -109,6 +109,16 @@ impl Skin {
         }
     }
 }
+/// Add the moving launch deflector without rebuilding the static ship BVH.
+fn query_skin(state: Option<&State>, ship:usize, lo:DVec3, hi:DVec3, mut visit:impl FnMut(&Triangle)) {
+    ship_skin(ship).query(lo,hi,&mut visit);
+    if ship==0 { if let Some(s)=state.filter(|s|s.deflector>0.01) {
+        for p in super::deflector::triangles(s.deflector) {
+            let t=Triangle{p,lo:p[0].min(p[1]).min(p[2]),hi:p[0].max(p[1]).max(p[2])};
+            if overlaps(lo,hi,t.lo,t.hi){visit(&t);}
+        }
+    }}
+}
 pub fn preload() {
     let _ = skin();
 
@@ -206,7 +216,7 @@ fn aircraft_ship(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64, ship: usize
                 + (r * (DVec3::Z * half.z)).abs()
                 + DVec3::splat(margin);
             let c = origin + r * center;
-            ship_skin(ship).query(
+            query_skin(Some(&f.carrier),ship,
                 c.min(c + delta) - extent,
                 c.max(c + delta) + extent,
                 |tri| {
@@ -238,7 +248,7 @@ fn aircraft_ship(f: &Flight, previous: DVec3, old_q: DQuat, dt: f64, ship: usize
             for (point, radius) in [(wheel, tire_radius), ((mount + wheel) * 0.5, 0.12)] {
                 let ga = a + qa * point;
                 let gb = b + qb * point;
-                ship_skin(ship).query(
+                query_skin(Some(&f.carrier),ship,
                     ga.min(gb) - DVec3::splat(radius),
                     ga.max(gb) + DVec3::splat(radius),
                     |tri| {
@@ -292,7 +302,7 @@ fn sweep_ship(f:Option<&State>,end_time: f64, a: DVec3, b: DVec3, dt: f64, radiu
         return None;
     }
     let mut first: Option<(f64, DVec3)> = None;
-    ship_skin(ship).query(
+    query_skin(f,ship,
         start.min(end) - DVec3::splat(radius),
         start.max(end) + DVec3::splat(radius),
         |tri| {
@@ -374,6 +384,25 @@ fn root(a: f64, b: f64, c: f64) -> Option<f64> {
     (t >= 0. && t <= 1.).then_some(t)
 }
 
+#[cfg(test)]
+mod deflector_tests {
+    use super::*;
+    #[test]
+    fn raised_panel_blocks_a_swept_weapon_and_lowered_panel_clears_it() {
+        let mut f=scenario(true);
+        let h=super::super::deflector::hinge();
+        let a=ship_world(&f,0,h+DVec3::new(0.,2.,-5.),0.);
+        let b=ship_world(&f,0,h+DVec3::new(0.,2.,6.),0.);
+        assert!(sweep(&f,a,b,0.,0.10).is_none());
+        f.carrier.deflector=1.;
+        let hit=sweep(&f,a,b,0.,0.10).expect("raised deflector collision");
+        assert_eq!(hit.ship,0);assert!((0. ..1.).contains(&hit.fraction));
+        f.carrier.motion[0].rotation=DQuat::from_rotation_z(0.1);
+        let a=ship_world(&f,0,h+DVec3::new(0.,2.,-5.),0.);
+        let b=ship_world(&f,0,h+DVec3::new(0.,2.,6.),0.);
+        assert!(sweep(&f,a,b,0.,0.10).is_some());
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

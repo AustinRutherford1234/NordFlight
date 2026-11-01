@@ -1,0 +1,62 @@
+{
+  "test_command": "cargo test --bin gripen-flight -- --nocapture",
+  "test_result": "test result: ok. 752 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 79.05s",
+  "taxi_samples": [
+    "TAXI high=false sign=1 hz=240 yaw=55.54162903922595 speed=2.0253737770715015 roll=0.27107878034842914 steer=-22.101188709224616",
+    "TAXI high=true sign=1 hz=240 yaw=143.31018684661876 speed=1.0415515587821538 roll=0.24675045346791433 steer=-74.73928872380841",
+    "TAXI high=true sign=-1 hz=240 yaw=-143.15691523693317 speed=1.039472287201337 roll=-0.2438609619554031 steer=74.74026117029237",
+    "TAXI high=true sign=1 hz=240 yaw=143.31018684661876 speed=1.0415515587821538 roll=0.24675045346791433 steer=-74.73928872380841",
+    "TAXI high=true sign=1 hz=60 yaw=143.46649753104367 speed=1.0415515587821538 roll=0.24675045346791433 steer=-74.73928872380841",
+    "TAXI high=true sign=1 hz=120 yaw=143.36229635495863 speed=1.0415515587821538 roll=0.24675045346791433 steer=-74.73928872380841"
+  ],
+  "idle_hold": "IDLE HOLD speed=0.003265169172369298 hydraulic=0.999987024244969 steer=-0.0000000000010917246483752884 compression=[0.0919332782179117, 0.13780678514391181, 0.13783106472343204]",
+  "off_field_stop": "OFF FIELD STOP time=39.99999999999837 speed=0.00011963194204618582 compression=[0.32, 0.1674622315168381, 0.16739839028567077]",
+  "carrier_arrest_samples": [
+    "assist=false bank=-3 offset=-6 peak=3.10 slow=1.34 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=-3 offset=0 peak=3.00 slow=0.60 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=-3 offset=6 peak=3.92 slow=1.67 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=0 offset=-6 peak=3.06 slow=1.31 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=0 offset=0 peak=1.23 slow=0.56 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=0 offset=6 peak=3.93 slow=1.72 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=3 offset=-6 peak=3.04 slow=1.25 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=3 offset=0 peak=3.01 slow=0.55 crash=false status=WIRE 1 CAUGHT",
+    "assist=false bank=3 offset=6 peak=3.92 slow=1.71 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=-3 offset=-6 peak=3.04 slow=1.20 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=-3 offset=0 peak=3.00 slow=0.51 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=-3 offset=6 peak=3.80 slow=1.52 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=0 offset=-6 peak=3.02 slow=1.18 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=0 offset=0 peak=1.12 slow=0.50 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=0 offset=6 peak=3.80 slow=1.53 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=3 offset=-6 peak=3.03 slow=1.15 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=3 offset=0 peak=3.01 slow=0.48 crash=false status=WIRE 1 CAUGHT",
+    "assist=true bank=3 offset=6 peak=3.80 slow=1.58 crash=false status=WIRE 1 CAUGHT"
+  ],
+  "native_review": {
+    "approved_limit_seconds": 240,
+    "aggregate_seconds": 165.57083566599613,
+    "initial_views": [
+      "jbd-flat",
+      "jbd-half",
+      "jbd-raised",
+      "jbd-lowered",
+      "taxi-left",
+      "taxi-right"
+    ],
+    "post_fit_views": [
+      "jbd-flat",
+      "jbd-raised"
+    ],
+    "images_inspected": true,
+    "user_flight_restored": true,
+    "capture_script": "scripts/fa18f/capture_ground_review.py",
+    "captures_directory": "tests/ground-review",
+    "scope": "Frozen in-app snapshots of simulated taxi states and staged deflector animation; automated tests cover controls/forces. Not a user flight review."
+  },
+  "physical_fidelity": "Reduced-order engineering estimates; public steering travel; not a certified aircraft or tyre database.",
+  "post_fit_carrier_regression": {
+    "command": "cargo test --bin gripen-flight carrier:: -- --nocapture",
+    "result": "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 719 filtered out; finished in 21.05s"
+  },
+  "app_sha256": "c01c58dbe3e175ba3d96f30556f911e0aae6939e251751881ec99f113576138f",
+  "signature_verification": "codesign --verify --deep --strict: passed"
+}

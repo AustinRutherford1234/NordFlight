@@ -110,7 +110,9 @@ pub fn advance(f: &mut Flight, dt: f64) -> Loads {
         .hornet
         .engines
         .iter()
-        .any(|e| e.thrust > 0. && e.spool > 0.15)
+        // Spool here is normalized commanded power, not physical N2 RPM.
+        // Running idle (0.06) must continue driving the hydraulic pumps.
+        .any(|e| e.thrust > 0. && e.spool > 0.025)
     {
         1.
     } else if f.apu {

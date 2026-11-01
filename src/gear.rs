@@ -133,6 +133,7 @@ pub fn panel_pose(f: &Flight, d: Door) -> Transform {
 }
 /// Steering diminishes with airspeed; the same yaw input already drives ground handling.
 pub fn nose_steering(f: &Flight) -> f32 {
+    if f.aircraft == crate::aircraft::Aircraft::Hornet { return -f.hornet.nose_steering as f32; }
     (f.controls.y * 30_f64.to_radians() / (1.0 + (f.airspeed / 18.0).powi(2))) as f32
 }
 pub fn wheel_rotation(f: &Flight, index: usize) -> Quat {

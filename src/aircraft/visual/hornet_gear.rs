@@ -51,9 +51,38 @@ pub fn pose(name:&str, extension:f32, door:f32)->Option<Transform> {
  None
 }
 
+/// Steer the twin-wheel axle and fork together about the lower strut centre.
+/// Imported coordinates have +X forward; Y rotation commutes with the model basis.
+pub fn steered_pose(name:&str,extension:f32,door:f32,angle:f32)->Option<Transform> {
+    let mut t=pose(name,extension,door)?;
+    let q=Quat::from_rotation_y(angle*extension);
+    if name.starts_with("HornetWheelNose") {
+        let root=p(63.,0.,-6.);let axle=nose_axle(0.,1.-extension);
+        t.translation=axle+q*(root+t.translation-axle)-root;
+    } else if name.starts_with("HornetStrutFork") {
+        let axle=nose_axle(0.,1.-extension);
+        t.translation=axle+q*(t.translation-axle);t.rotation=q*t.rotation;
+    }
+    Some(t)
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test]
+ fn steering_rotates_both_wheels_and_forks_about_the_shared_axle() {
+  let root=p(63.,0.,-6.);let centre=nose_axle(0.,0.);
+  for angle in [-75f32.to_radians(),0.,75f32.to_radians()] {
+   let q=Quat::from_rotation_y(angle);
+   for side in [-1.,1.] {
+    let wheel=steered_pose(if side<0.{"HornetWheelNoseL"}else{"HornetWheelNoseR"},1.,0.,angle).unwrap();
+    let expected=centre+q*(nose_axle(side,0.)-centre);
+    assert!((root+wheel.translation-expected).length()<1e-4);
+    let fork=steered_pose(if side<0.{"HornetStrutForkLNose"}else{"HornetStrutForkRNose"},1.,0.,angle).unwrap();
+    assert!((fork.transform_point(Vec3::Y*0.5)-expected).length()<1e-4);
+   }
+  }
+ }
  #[test]
  fn strut_mesh_long_axis_follows_the_link_not_its_radius() {
   for leg in ["Nose","MainL","MainR"] {

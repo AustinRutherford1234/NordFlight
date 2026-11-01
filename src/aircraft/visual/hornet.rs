@@ -284,7 +284,7 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
     let dt=if f.paused {0.} else {time.delta_secs().min(0.1)};
     if f.hornet.initialized {*hook=f.hornet.hook_angle as f32;}else{*hook += (desired-*hook).clamp(-0.32*dt,0.32*dt);}
     if f.landed && f.gear_extension > 0.98 {
-        *wheel_spin = (*wheel_spin - f.velocity.length() as f32*dt/0.32).rem_euclid(std::f32::consts::TAU);
+        *wheel_spin = (*wheel_spin - crate::aircraft::hornet::ground::speed(&f) as f32*dt/0.32).rem_euclid(std::f32::consts::TAU);
     }
     for i in 0..2 {
         let spool=if f.hornet.initialized {f.hornet.engines[i].spool} else if f.engine&&f.systems.engine_on[i] {f.spool} else {0.};
@@ -310,7 +310,7 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
             "HornetGearNose" => Some(Quat::from_rotation_z(retract*1.35)),
             "HornetGearMainL" => Some(Quat::from_rotation_z(-retract*0.35)*Quat::from_rotation_x(-retract*1.35)),
             "HornetGearMainR" => Some(Quat::from_rotation_z(-retract*0.35)*Quat::from_rotation_x(retract*1.35)),
-            "HornetWheelNoseL" | "HornetWheelNoseR" => Some(Quat::from_rotation_y((if f.hornet.initialized{f.hornet.nose_steering as f32}else{-f.controls.y as f32*0.35/(1.+f.airspeed as f32*0.1)})*f.gear_extension as f32)*Quat::from_rotation_z(*wheel_spin)),
+            "HornetWheelNoseL" | "HornetWheelNoseR" => Some(Quat::from_rotation_y(crate::gear::nose_steering(&f)*f.gear_extension as f32)*Quat::from_rotation_z(*wheel_spin)),
             "HornetWheelMainL" | "HornetWheelMainR" => Some(Quat::from_rotation_z(*wheel_spin)),
             _ if name.starts_with("HornetPanel") => name.strip_prefix("HornetPanel").and_then(|s|s.parse::<usize>().ok()).filter(|i|*i<angles.len()).map(|i| {
                 let value=crate::control_surfaces::effective_angle(&f.damage,i,angles[i]) as f32;
@@ -319,7 +319,7 @@ pub fn update(f: Res<Flight>, view: Res<crate::ViewState>, time: Res<Time>, mut 
             _=>None,
         };
         if let Some(rotation)=rotation { transform.rotation=rotation; }
-        if let Some(pose)=gear_motion::pose(name,f.gear_extension as f32,f.gear_door as f32) {
+        if let Some(pose)=gear_motion::steered_pose(name,f.gear_extension as f32,f.gear_door as f32,crate::gear::nose_steering(&f)) {
             if name.starts_with("HornetStrut") { *transform=pose; }
             else if name.starts_with("HornetWheel") { transform.translation=pose.translation; transform.rotation=pose.rotation*transform.rotation; }
             else { transform.rotation=pose.rotation; }

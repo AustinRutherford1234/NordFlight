@@ -167,8 +167,22 @@ pub fn suspension(f: &mut Flight, dt: f64) -> (DVec3, DVec3) {
         let damping = (if i == 0 { 7000.0 } else { 16000.0 })*mass_scale;
         let bump_stop = (-gap - GEAR_TRAVEL).max(0.0) * 900000.0*mass_scale;
         let load = (compression * stiffness - vn * damping + bump_stop).clamp(0.0, 400000.0*mass_scale);
-        force += surface_normal * load;
-        torque += body.cross(f.orientation.conjugate() * (surface_normal * load));
+        let forward=(f.forward()-surface_normal*f.forward().dot(surface_normal)).normalize_or_zero();
+        let right=forward.cross(surface_normal).normalize_or_zero();
+        let speed=(velocity-surface_normal*vn).length();
+        let angle=if i==0 {-f.controls.y*30f64.to_radians()/(1.+(speed/18.).powi(2))}else{0.};
+        let forward=forward*angle.cos()+right*angle.sin();
+        let right=forward.cross(surface_normal).normalize_or_zero();
+        let paved=crate::carrier::deck(f,p).is_some()||crate::terrain::paved(p.x,p.z);
+        let inertia=f.aircraft.spec().inertia*(f.mass()/if f.aircraft==crate::aircraft::Aircraft::Gripen{8300.}else{f.aircraft.spec().empty+f.aircraft.spec().fuel*0.6});
+        let effective=|axis:DVec3| {let axis=f.orientation.conjugate()*axis;
+            1./(1./f.mass()+(body.cross(axis)/inertia).cross(body).dot(axis)).max(1e-9)};
+        let tyre=crate::ground::tyre(velocity.dot(forward),velocity.dot(right),load,
+            if paved{0.65}else{0.50},if paved{0.015}else{0.038},
+            i!=0&&(f.brakes||f.autopilot),effective(forward),effective(right),dt);
+        let contact=surface_normal*load+forward*tyre.x+right*tyre.y;
+        force+=contact;
+        torque+=body.cross(f.orientation.conjugate()*contact);
         if load > 220000.0*mass_scale {
             f.gear_health[i] = (f.gear_health[i] - (load - 220000.0*mass_scale) * dt / (45000.0*mass_scale)).max(0.0);
         }

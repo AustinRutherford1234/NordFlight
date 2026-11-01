@@ -1263,26 +1263,10 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         }
 
         let (suspension, angular) = crate::collision::suspension(f, dt);
-        let normal = suspension.dot(up);
+        // Suspension now includes tyre forces at each wheel. Steering moments
+        // come from those forces; no stationary yaw input or velocity damping.
         acc += suspension;
         f.rates += angular * dt;
-        let surface_normal = crate::carrier::normal(f,f.position);
-        let relative=f.velocity-surface_velocity;
-        let tangent = relative - surface_normal * relative.dot(surface_normal);
-        let braking = if f.brakes || f.autopilot {
-            if on_runway { 0.55 } else { 0.30 }
-        } else if on_runway {
-            0.015
-        } else {
-            0.038
-        };
-        acc -= tangent.normalize_or_zero() * (normal + 9.81) * braking;
-        // Tire lateral grip with a mild nose-wheel steering response.
-        acc -= right * (relative.dot(right) * 2.0).clamp(-4.0, 4.0);
-        f.rates.y += command.y * dt * 0.6;
-        if speed < 2.0 && f.throttle < 0.1 {
-            f.velocity = surface_velocity+(f.velocity-surface_velocity)*(-dt * 4.0).exp();
-        }
     } else if f.agl() > clearance + 4.0 {
         f.landed = false;
         f.gear_compression = [0.0; 3];
@@ -1294,9 +1278,12 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     // rather than the attitude already advanced above.
     f.velocity += acc * dt;
     f.position += f.velocity * dt;
-    // A hard lower bound backs up the compliant landing-gear spring.
-    if contact && f.altitude() < ground + clearance - 0.28 {
-        f.position = f.position.normalize() * (RADIUS + ground + clearance - 0.28);
+    // Leave room for the physical bump stops to carry weight before the
+    // emergency position guard. The old 0.28 m guard clipped the 0.32 m
+    // suspension before its stops engaged, silently removing tyre normal load.
+    let max_compression = crate::collision::GEAR_TRAVEL + 0.15;
+    if contact && f.altitude() < ground + clearance - max_compression {
+        f.position = f.position.normalize() * (RADIUS + ground + clearance - max_compression);
         let vn = (f.velocity-crate::carrier::ground_velocity(f,f.position)).dot(up);
         if vn < 0.0 {
             f.velocity -= up * vn * 0.8;

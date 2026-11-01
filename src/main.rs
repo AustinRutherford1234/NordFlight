@@ -29,6 +29,7 @@ mod earth;
 mod earth_gpu;
 mod flight_study;
 mod gear;
+mod ground;
 mod hangar;
 mod instruments;
 mod lunar;
@@ -1289,6 +1290,33 @@ fn main() {
         initial_flight.paused=true;initial_view.help=false;initial_view.scenario=if mode=="approach"{11}else{12};initial_view.index=0;
         initial_view.yaw=0.7;initial_view.pitch=-0.2;initial_view.zoom=1.0;
     }
+    if let Ok(mode)=std::env::var("NORD_TAXI_CAPTURE") {
+        let e=Environment{wind_enabled:false,..Default::default()};
+        initial_view.simple=true;initial_view.help=false;initial_view.index=0;
+        if mode.starts_with("jbd-") {
+            initial_flight=carrier::scenario(true);
+            let seconds=if mode=="jbd-flat"{0.}else if mode=="jbd-half"{2.}else{4.};
+            for _ in 0..(seconds*240.)as usize {simulate(&mut initial_flight,&e,1./240.);}
+            if mode=="jbd-lowered" {
+                initial_flight.carrier.attached=false;
+                for _ in 0..2160{initial_flight.elapsed+=1./240.;carrier::deflector::advance(&mut initial_flight,1./240.);}
+                initial_flight.position=carrier::ship_world(&initial_flight,0,carrier::catapult::park_position()+DVec3::Y*2.,initial_flight.elapsed);
+                initial_flight.velocity=carrier::velocity(initial_flight.elapsed);
+            }
+        } else {
+            initial_flight=Flight::runway();aircraft::select(&mut initial_flight,aircraft::Aircraft::Hornet);
+            initial_flight.position=surface_point(0.,1050.,RUNWAY_HEIGHT+2.1);
+            initial_flight.engine=false;initial_flight.assist=false;initial_flight.apu=true;
+            for _ in 0..720{simulate(&mut initial_flight,&e,1./240.);}
+            initial_flight.velocity=initial_flight.forward()*3.;initial_flight.hornet.nws_high=true;
+            initial_flight.controls.y=if mode=="taxi-right"{-1.}else{1.};
+            for _ in 0..1440{simulate(&mut initial_flight,&e,1./240.);}
+            println!("TAXI REVIEW speed={} steer={} bank={} status={}",aircraft::hornet::ground::speed(&initial_flight),initial_flight.hornet.nose_steering.to_degrees(),initial_flight.roll().to_degrees(),initial_flight.status);
+            assert!(!initial_flight.crashed);
+        }
+        println!("GROUND REVIEW {mode} deflector={}",initial_flight.carrier.deflector);
+        initial_flight.paused=true;
+    }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE"){combat::naval::prepare_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);if mode.starts_with("map-"){bvr_menu.reveal=mode=="map-reveal"||mode=="map-120km";}}
     if let Ok(mode)=std::env::var("NORD_RADAR_CAPTURE") {combat::bvr::prepare_hornet_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);}
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
@@ -1475,7 +1503,7 @@ fn main() {
                 )
                     .chain().in_set(FlightStage::Camera),
                 (
-                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,carrier::visual,carrier::escorts::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
+                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,(carrier::visual,carrier::deflector::update).chain(),carrier::escorts::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
                     (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
@@ -2171,6 +2199,7 @@ fn input(
     let hornet = f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet;
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     if hornet {
+        f.hornet.nws_high = keys.pressed(KeyCode::KeyS) && f.landed && aircraft::hornet::ground::speed(&f) < 8. && !v.map && !f.ejection.active;
         if keys.just_pressed(KeyCode::F7) {
             if alt {f.hornet.hud.reject=(f.hornet.hud.reject+1)%3;}
             else {f.hornet.hud.mode=f.hornet.hud.mode.next();}
@@ -2270,7 +2299,7 @@ fn input(
         f.thrust = 0.0;
     }
     f.brakes = keys.pressed(KeyCode::KeyB)&&!(keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight));
-    let pitch = (keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown)) as i32
+    let pitch = ((keys.pressed(KeyCode::KeyS) && !(hornet && f.hornet.nws_high)) || keys.pressed(KeyCode::ArrowDown)) as i32
         - (keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp)) as i32;
     let roll = (keys.pressed(KeyCode::KeyE) || keys.pressed(KeyCode::ArrowRight)) as i32
         - (keys.pressed(KeyCode::KeyQ) || keys.pressed(KeyCode::ArrowLeft)) as i32;
@@ -2650,6 +2679,13 @@ fn update_camera(
             let at=(carrier::catapult::START+carrier::catapult::END)*0.5;target=local(carrier::world(at,f.elapsed),&f);p=target+basis*Vec3::new(0.,155.,0.01);up_view=basis*Vec3::NEG_Z;
             if std::env::var("NORD_CARRIER_CAPTURE").is_ok_and(|m|m.ends_with("close")){target=local(f.position,&f);p=target+basis*Vec3::new(12.,6.,-13.);up_view=basis*Vec3::Y;}
         }
+    }
+    if let Ok(mode)=std::env::var("NORD_TAXI_CAPTURE") {
+        if mode.starts_with("jbd-") {
+            let basis=world::local_rot(carrier::ship_rotation(&f,0,f.elapsed),&f);
+            target=local(carrier::ship_world(&f,0,carrier::deflector::hinge()+DVec3::Y,f.elapsed),&f);
+            p=target+basis*Vec3::new(21.,12.,17.);up_view=basis*Vec3::Y;
+        } else { target=pos+rot*Vec3::new(0.,-1.,-3.6);p=target+rot*Vec3::new(5.,2.2,-6.);up_view=rot*Vec3::Y; }
     }
     if std::env::var("NORD_FLEET_CAPTURE").is_ok_and(|m|m.starts_with("rudder-")) {
         target=pos+rot*Vec3::new(0.,2.,6.4);p=target+rot*Vec3::new(3.2,1.8,7.5);up_view=rot*Vec3::Y;
@@ -3151,7 +3187,7 @@ fn update_hud(
                 } else if v.help && v.scenario == 4 {
                     "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
                 } else if v.help {
-                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "S hold NWS HI at taxi speed · Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing" } else { "" })
                 } else {
                     String::new()
                 }
@@ -3377,6 +3413,20 @@ fn capture_visual_check(
 #[cfg(test)]
 mod camera_input_tests {
     use super::*;
+    #[test]
+    fn s_selects_high_gain_only_at_taxi_speed_and_keeps_takeoff_rotation() {
+        let mut app=scene(false);
+        {let mut f=app.world_mut().resource_mut::<Flight>();f.aircraft=aircraft::Aircraft::Hornet;f.landed=true;f.velocity=DVec3::ZERO;}
+        {let mut k=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();k.press(KeyCode::KeyS);k.press(KeyCode::KeyA);}
+        app.update();
+        {let f=app.world().resource::<Flight>();assert!(f.hornet.nws_high);assert_eq!(f.controls.x,0.);assert_eq!(f.controls.y,1.);}
+        {let mut f=app.world_mut().resource_mut::<Flight>();f.velocity=f.forward()*60.;}
+        app.update();
+        {let f=app.world().resource::<Flight>();assert!(!f.hornet.nws_high);assert_eq!(f.controls.x,1.);}
+        {let mut f=app.world_mut().resource_mut::<Flight>();f.landed=false;f.velocity=DVec3::ZERO;}
+        app.update();
+        let f=app.world().resource::<Flight>();assert!(!f.hornet.nws_high);assert_eq!(f.controls.x,1.);
+    }
     #[test]
     fn hornet_canopy_and_fold_require_a_parked_aircraft() {
         let mut app=scene(false);
@@ -3688,7 +3738,8 @@ mod camera_input_tests {
     }
     #[test]
     fn hornet_keyboard_pitch_and_direct_override_and_removed_ap() {
-        let mut app=scene(false);app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::Hornet;
+        let mut app=scene(false);
+        {let mut f=app.world_mut().resource_mut::<Flight>();f.aircraft=aircraft::Aircraft::Hornet;f.landed=false;}
         for (key,sign) in [(KeyCode::KeyS,1.),(KeyCode::KeyW,-1.)] {
             app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
             app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);app.update();

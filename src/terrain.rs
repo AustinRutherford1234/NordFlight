@@ -1178,13 +1178,16 @@ mod tests {
         f.brakes = true;
         let mut e = Environment::default();
         e.wind_enabled = false;
-        for _ in 0..2400 {
+        // Main-wheel braking and aerodynamic unloading give a longer physical
+        // stopping run than the former whole-aircraft deceleration shortcut.
+        for _ in 0..4800 {
             e.advance(1. / 120.);
             simulate(&mut f, &e, 1. / 120.);
             if f.crashed {
                 break;
             }
         }
+        println!("OFF FIELD STOP time={} speed={} compression={:?}",f.elapsed,f.velocity.length(),f.gear_compression);
         assert!(
             !f.crashed,
             "{} / altitude {} / speed {}",
@@ -1193,7 +1196,7 @@ mod tests {
             f.velocity.length()
         );
         assert!(f.landed);
-        assert!(f.velocity.length() < 1.);
+        assert!(f.velocity.length() < 1., "OFF FIELD speed={} pitch={} roll={} compression={:?} velocity={:?}", f.velocity.length(), f.pitch(), f.roll(), f.gear_compression,f.velocity);
         assert!(f.status.contains("OFF-FIELD"));
     }
     #[test]

@@ -451,6 +451,9 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
     if state.mode == MasterMode::Ground {
         ground(&mut c, f, combat);
     }
+    if f.landed && f.gear_compression[0] > 0. && crate::aircraft::hornet::ground::available(f) {
+        c.text(if crate::aircraft::hornet::ground::high_active(f) { "NWS HI" } else { "NWS" }, 220., 375., 1.3);
+    }
     c.text(state.mode.label(), 20., 333., 1.8);
     c.text(&format!("FUEL {:04.0}", (f.fuel+crate::aircraft::hornet::stores::fuel(f)) * 2.204623), 20., 353., 1.25);
     if state.caged {

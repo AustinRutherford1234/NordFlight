@@ -8,6 +8,7 @@ pub mod mass;
 pub mod stores;
 pub mod structure;
 pub mod trim;
+pub mod ground;
 use crate::physics::*;
 use bevy::math::{DMat3, DQuat, DVec3};
 #[derive(Clone, Copy, Debug, Default)]
@@ -38,6 +39,7 @@ pub struct Dynamics {
     pub hud:crate::cockpit::hornet_hud::State,
     pub tanks: stores::Tanks,
     pub nose_steering: f64,
+    pub nws_high: bool,
     pub skin_temperature: f64,
     pub structural_loads: structure::Channels,
     pub hydraulic_pressure: f64,
@@ -63,6 +65,7 @@ impl Default for Dynamics {
             hud:Default::default(),
             tanks: Default::default(),
             nose_steering: 0.,
+            nws_high: false,
             skin_temperature: 288.15,
             structural_loads: Default::default(),
             hydraulic_pressure: 1.,
@@ -95,7 +98,8 @@ pub fn wheel(i: usize) -> (DVec3, f64) {
 }
 fn contacts(f: &mut Flight, dt: f64) -> Loads {
     let mut l = Loads::default();
-    let (cg, _) = mass::properties(f);
+    let (cg, inertia) = mass::properties(f);
+    let inverse = inertia.inverse();
     f.gear_compression = [0.; 3];
     let mut contact = false;
     for i in 0..3 {
@@ -124,17 +128,7 @@ fn contacts(f: &mut Flight, dt: f64) -> Loads {
         let mut forward = (f.forward() - n * f.forward().dot(n)).normalize_or_zero();
         let mut right = forward.cross(n).normalize_or_zero();
         if i == 0 {
-            let speed = v.dot(forward).abs();
-            // A passive caster estimate when steering is released at speed.
-            // Steering acts by turning the tyre, never by an extra side force.
-            let target = if f.carrier.attached || f.carrier.launch.is_some() {
-                0.
-            }else if speed > 20. && f.controls.y.abs() < 0.05 {
-                v.dot(right).atan2(speed).clamp(-0.5, 0.5)
-            } else {
-                -f.controls.y * 0.35 / (1. + speed * 0.05)
-            };
-            f.hornet.nose_steering += (target - f.hornet.nose_steering).clamp(-2. * dt, 2. * dt);
+            ground::steer(f, v, forward, right, dt);
             forward = (forward * f.hornet.nose_steering.cos()
                 + right * f.hornet.nose_steering.sin())
             .normalize_or_zero();
@@ -142,18 +136,23 @@ fn contacts(f: &mut Flight, dt: f64) -> Loads {
         }
         let longitudinal = v.dot(forward);
         let lateral = v.dot(right);
-        let rolling = longitudinal.tanh() * load * (0.016 + if f.brakes { 0.55 } else { 0. });
-        let friction = if crate::carrier::deck(f, p).is_some() {
-            0.35
-        } else {
-            0.65
-        };
-        let lateral_force = (lateral * 14000.).clamp(-load * friction, load * friction);
-        let force = n * load - forward * rolling - right * lateral_force;
+        let paved = crate::carrier::deck(f, p).is_some() || crate::terrain::paved(p.x, p.z);
+        let friction = if crate::carrier::deck(f, p).is_some() { 0.35 } else if paved { 0.65 } else { 0.50 };
+        let body_forward = f.orientation.conjugate() * forward;
+        let body_right = f.orientation.conjugate() * right;
+        let effective = |axis: DVec3| 1. / (1. / f.mass()
+            + (inverse * arm.cross(axis)).cross(arm).dot(axis)).max(1e-9);
+        let tyre = ground::tyre(longitudinal, lateral, load, friction,
+            if paved { 0.016 } else { 0.038 },
+            i != 0 && f.brakes, effective(body_forward), effective(body_right), dt);
+        let force = n * load + forward * tyre.x + right * tyre.y;
         l.add(f.orientation.conjugate() * force, arm);
         if load > 700000. {
             f.gear_health[i] = (f.gear_health[i] - dt * (load - 700000.) / 150000.).max(0.);
         }
+    }
+    if f.gear_compression[0] == 0. {
+        f.hornet.nose_steering += (-f.hornet.nose_steering).clamp(-dt, dt);
     }
     if contact && !f.landed {
         f.touchdown_sink = (-f.velocity.dot(f.up())).max(0.);
