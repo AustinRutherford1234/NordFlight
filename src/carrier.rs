@@ -59,7 +59,23 @@ pub fn scenario(deck_start:bool)->Flight {
 }
 fn place_locked(f:&mut Flight) {let clearance=crate::collision::wheel_clearance(f);let mut p=f.carrier.deck_position;p.y=DECK+clearance-0.12;f.position=ship_world(f,0,p,f.elapsed);f.orientation=ship_rotation(&f,0,f.elapsed);f.velocity=ship_velocity(&f,0,f.position,f.elapsed);f.rates=DVec3::ZERO;f.landed=true;f.airspeed=SPEED;f.alpha=0.;f.beta=0.;}
 pub fn launch(f:&mut Flight) {if f.carrier.active&&f.carrier.operational&&f.carrier.attached&&f.throttle>0.85&&f.fuel+crate::aircraft::hornet::stores::fuel(f)>0.&&f.engine&&f.gear_extension>0.98 {f.carrier.launch=Some(0.);f.carrier.launch_stroke=catapult::stroke(f).max(0.);f.carrier.attached=false;f.systems.hook_down=false;f.status="CATAPULT FIRING".into();}else if f.carrier.active {f.status="LAUNCH: ATTACH ON DECK / ENGINE RUNNING / FULL THROTTLE / GEAR DOWN".into();}}
-pub fn attach(f:&mut Flight) {if f.carrier.active&&f.carrier.operational&&f.landed&&(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
+pub fn attach(f:&mut Flight) {if f.carrier.active&&f.carrier.operational&&f.carrier.launch.is_none()&&f.landed&&(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length()<3. {f.carrier.arrested=false;f.carrier.attached=true;f.carrier.launch=None;f.carrier.deck_position=catapult::park_position();f.carrier.launch_stroke=0.;place_locked(f);f.status="MOVED TO CATAPULT / SHIFT FULL POWER THEN ENTER".into();}}
+/// Unhook the holdback without imposing any aircraft movement.
+pub fn release(f:&mut Flight)->bool {
+ if !f.carrier.active || !f.carrier.attached || f.carrier.launch.is_some() {return false;}
+ let speed=(f.velocity-ship_velocity(f,0,f.position,f.elapsed)).length();
+ if !f.landed || speed>1. || f.throttle>0.1 {
+  f.status="CATAPULT RELEASE: IDLE THROTTLE AND STOP ON DECK".into();return false;
+ }
+ f.carrier.attached=false;
+ f.carrier.deflector_hold=f.elapsed;
+ f.status="CATAPULT RELEASED / S + A/D TAXI / B BRAKES".into();
+ true
+}
+pub fn toggle_attachment(f:&mut Flight) {
+ if f.carrier.launch.is_some(){f.status="CATAPULT FIRING / RELEASE UNAVAILABLE".into();return;}
+ if f.carrier.attached {release(f);}else{attach(f);}
+}
 /// Airframe attachment of the articulated hook (body coordinates).
 pub const HOOK_PIVOT:DVec3=DVec3::new(0.,0.15,5.16);
 /// Deployed tip used for wire crossing, payout geometry and wire rendering.
@@ -116,7 +132,7 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
  for mut t in &mut text {
   if !f.carrier.active || f.carrier.defense {t.0.clear();continue;}
   let p=relative(f.position,f.elapsed);let speed=(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length();
-  t.0=format!("CARRIER / 25 KT / H HOOK / ENTER LAUNCH / ALT+SHIFT+C CATAPULT / ALT+G GUIDANCE\n{}",f.status);
+  t.0=format!("CARRIER / 25 KT / H HOOK / ENTER LAUNCH / ALT+SHIFT+C ATTACH/RELEASE / ALT+G GUIDANCE\n{}",f.status);
   if f.carrier.guidance&&!f.landed {let glide=DECK+(p.z-75.)*0.061+3.;t.0+=&format!("\nLINEUP {:+.1} m / GLIDE {:+.1} m / DECK SPEED {:.0} kt",p.x-lane(p.z),p.y-glide,speed*1.94384);}
  }
  if f.carrier.active {
@@ -135,6 +151,23 @@ pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With
 
 #[cfg(test)]mod tests {
  use super::*;
+ #[test]fn catapult_release_preserves_motion_and_rejects_power_or_active_shot(){
+  let mut f=scenario(true);let original=(f.position,f.velocity,f.orientation,f.rates);
+  f.throttle=0.5;assert!(!release(&mut f));assert!(f.carrier.attached);
+  f.throttle=0.;f.velocity+=f.forward()*2.;assert!(!release(&mut f));f.velocity=original.1;
+  assert!(release(&mut f));assert!(!f.carrier.attached);assert_eq!((f.position,f.velocity,f.orientation,f.rates),original);
+  f.carrier.launch=Some(0.);toggle_attachment(&mut f);assert_eq!(f.carrier.launch,Some(0.));assert!(!f.carrier.attached);
+ }
+ #[test]fn catapult_release_removes_loads_and_allows_physical_taxi(){
+  let mut f=scenario(true);let e=Environment{wind_enabled:false,..default()};
+  for _ in 0..960{simulate(&mut f,&e,1./240.);}
+  let angle=f.carrier.deflector;assert!(release(&mut f));let at=ship_relative(&f,0,f.position,f.elapsed);
+  f.throttle=0.22;f.hornet.nws_high=true;f.controls.y=1.;
+  for _ in 0..1200{simulate(&mut f,&e,1./240.);assert!(f.hornet.diagnostic.attachment.force.length()<1e-6);}
+  assert!(!f.crashed&&f.landed&&!f.carrier.attached);
+  assert!(ship_relative(&f,0,f.position,f.elapsed).distance(at)>1.);
+  assert!(f.hornet.nose_steering.abs()>0.5);assert!(f.carrier.deflector<angle);
+ }
  #[test]fn outline_and_moving_frame_roundtrip(){assert!(inside(DVec3::ZERO));assert!(!inside(DVec3::new(60.,0.,0.)));for t in [0.,100.,3600.] {let p=DVec3::new(10.,DECK,100.);assert!((relative(world(p,t),t)-p).length()<1e-7);assert!(sea(origin(t).x,origin(t).z));}}
  #[test]fn parked_ship_carries_aircraft_and_catapult_releases(){let mut f=scenario(true);let e=Environment::default();let p=f.position;for _ in 0..600 {simulate(&mut f,&e,1./120.);}assert!((f.position-p).length()>60.);assert!(!f.crashed&&f.landed);f.throttle=1.;launch(&mut f);for _ in 0..720 {simulate(&mut f,&e,1./120.);}assert!(f.carrier.launch.is_none(),"status={} pos={:?} rates={:?} speed={} launch={:?}",f.status,relative(f.position,f.elapsed),f.rates,(f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length(),f.carrier.launch);assert!(!f.carrier.attached&&!f.landed&&!f.crashed);assert!((f.velocity-ship_velocity(&f,0,f.position,f.elapsed)).length()>75.);}
  #[test]fn hook_crossing_uses_tip_and_requires_extension(){for extended in [false,true] {let mut f=scenario(false);f.hornet.hook_angle=if extended{0.65}else{0.};f.orientation=rotation(0.);let tip=hook_point(&f);f.position=world(DVec3::new(lane(112.),DECK-tip.y,111.-tip.z),0.);f.velocity=velocity(0.)+rotation(0.)*DVec3::NEG_Z*70.;let before=f.position+rotation(0.)*DVec3::Z*2.;after_step(&mut f,before,1./120.);assert_eq!(f.carrier.arrested,extended);}}

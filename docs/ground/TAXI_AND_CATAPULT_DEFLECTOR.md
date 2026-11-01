@@ -7,7 +7,7 @@
 - High gain is available below 8 m/s ship-relative ground speed (15.6 kt), with full travel below 5 m/s (9.7 kt) and a smooth transition back to normal between those speeds.
 - At taxi speed S is reserved for NWS HI. At takeoff speed and airborne it commands pitch-up as before. Down arrow remains available for pitch-up at any speed.
 - B applies both main-wheel brakes. Throttle controls are unchanged. NWS / NWS HI appears on the existing Hornet HUD when steering is available.
-- Existing catapult attachment (Option+Shift+C) and launch (Enter) controls are unchanged. The blast deflector raises automatically while attached/preparing and stays raised through the shot, holding for four simulation seconds afterward before lowering.
+- **Option+Shift+C** toggles catapult attachment: when attached, press it again with throttle at idle and deck-relative speed below 1 m/s to release the holdback and taxi away. Release preserves position, velocity, attitude and angular rates. Active shots cannot be released or reattached with this control. The blast deflector starts lowering on idle release. **Enter** launches when attached at full throttle; after a launch the deflector retains its four-second hold before lowering.
 
 ## Physical changes
 
@@ -50,3 +50,9 @@ The moving-carrier, 30-second idle/brakes test finished at 0.00327 m/s relative 
 Native review: six initial in-app screenshots covered closed/half-raised/raised/lowered deflector states and left/right high-gain taxi poses. After the hinge fit repair, the final closed and raised states were captured and visually inspected again. Aggregate native diagnostic time was **165.6 seconds**, within the approved 240-second window; the existing running flight was suspended and resumed through each capture batch. These are scripted frozen snapshots of physical taxi states and staged animation poses, separate from the player's flight review. Captures remain locally in `tests/ground-review/`; `jbd-flat.png` and `jbd-raised.png` show the final recessed hinge, while the half/lowered captures precede that small fit adjustment.
 
 The existing Mac app was rebuilt and its ad-hoc signature verified with `codesign --verify --deep --strict`. Raw numeric samples, test commands, native timing and the delivered executable hash are in [validation.json](validation.json). No FPS or memory gain is claimed.
+
+### Catapult release control follow-up
+
+Option+Shift+C now uses the same binding to attach or release. Release requires an attached, landed aircraft, throttle <=0.1, and speed <=1 m/s relative to the moving ship. The release removes the holdback only; it does not reposition the aircraft or alter velocity, attitude or angular rates. The blast deflector begins lowering. A running catapult shot rejects the toggle, and the underlying attach function also rejects reattachment during a shot.
+
+All 761 game tests passed (89.16 s). New regressions verify release/rejection conditions, exact motion preservation, zero catapult loads after release, subsequent physical taxi/NWS response, deflector lowering, and the keyboard toggle without an ejection or full-throttle side effect. These checks are headless; no running player session was interrupted for this follow-up.
