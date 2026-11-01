@@ -2746,6 +2746,12 @@ fn update_camera(
         up_view=q*Vec3::Y;
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
+    if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("sam-")) {
+        if let Some(m)=combat.naval.as_ref().and_then(|n|n.rounds.first()) {
+            target=local(m.position,&f);let direction=m.velocity.normalize_or(f.forward());let up=m.position.normalize();let right=direction.cross(up).normalize_or(bevy::math::DVec3::X);
+            p=local(m.position-direction*85.+right*60.+up*35.,&f);up_view=world::local_rot(bevy::math::DQuat::IDENTITY,&f)*up.as_vec3();
+        }
+    }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {if mode.starts_with("bomber-"){if let Some(t)=combat.targets.get(2){let q=world::local_rot(t.orientation,&f);let center=local(t.position,&f);target=center;let offset=if mode.contains("belly"){Vec3::new(3.,-48.,5.)}else if mode.contains("top"){Vec3::new(0.,65.,0.01)}else if mode.contains("rear"){Vec3::new(14.,10.,55.)}else{Vec3::new(40.,18.,-45.)};p=center+q*offset;up_view=q*if mode.contains("belly")||mode.contains("top"){Vec3::NEG_Z}else{Vec3::Y};}}}
     let mut sun_pose = None;
     for (

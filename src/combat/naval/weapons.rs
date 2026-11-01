@@ -39,6 +39,7 @@ impl State {
         }
         let id = self.id();
         let round = Round {
+            sam: Default::default(),
             id,
             source,
             target,
@@ -428,10 +429,12 @@ impl State {
         }
     }
     pub fn weapons(&mut self, c: &mut Combat, f: &mut Flight, dt: f64) {
-        self.countermeasures(c, f);
-        self.hostile_launches(c, f);
-        self.engage(c, f);
-        self.ciws(c, f, dt);
+        if !self.ended {
+            self.countermeasures(c, f);
+            self.hostile_launches(c, f);
+            self.engage(c, f);
+            self.ciws(c, f, dt);
+        }
         // Snapshot avoids mutable target aliases and iteration-order dependent steering.
         let mut endpoints = [(0u64, DVec3::ZERO, DVec3::ZERO, false); WEAPON_LIMIT];
         for (i, m) in self.rounds.iter().enumerate() {
@@ -485,6 +488,9 @@ impl State {
             }
             let tracked=tracking::update(m,target_contact,support,
                 c.fight.as_ref().map_or(&[],|fight|fight.decoys.as_slice()),c.sun,dt);
+            if matches!(m.kind,Kind::Standard|Kind::Essm) {
+                sam::advance(m,tracked,dt);
+            } else {
             let (estimate,estimated_velocity)=tracked.unwrap_or((m.position+m.velocity,DVec3::ZERO));
             let delta = estimate - m.position;
             let intercept = (delta.length() / m.velocity.length().max(200.)).min(12.);
@@ -520,7 +526,8 @@ impl State {
             m.velocity +=
                 (direction * (thrust - drag) + guidance - m.position.normalize() * 9.81) * dt;
             m.position += m.velocity * dt;
-            if !m.position.is_finite()
+            }
+            if !m.alive || !m.position.is_finite()
                 || m.age > life
                 || m.position.length() < RADIUS + terrain_height(m.position.x, m.position.z).max(0.)
             {
@@ -557,8 +564,8 @@ impl State {
         // Rendering adapter shares the AIM-120 smoke path without running a second
         // weapon solver. Retained samples are bounded and cleared on slot reuse.
         for i in 0..self.rounds.len() {
-            let m=&mut self.rounds[i];let v=&mut m.visual;
-            v.gnc.exhaust_offset=super::ordnance::dimensions(m.kind).0 as f64*0.49;v.gnc.available_g=match m.kind{Kind::Standard=>30.,Kind::Essm=>40.,Kind::AntiShip=>6.,Kind::AirToAir=>25.};
+            let m=&mut self.rounds[i];let sam_g=if matches!(m.kind,Kind::Standard|Kind::Essm){sam::available_g(m)}else{0.};let v=&mut m.visual;
+            v.gnc.exhaust_offset=super::ordnance::dimensions(m.kind).0 as f64*0.49;v.gnc.available_g=if matches!(m.kind,Kind::Standard|Kind::Essm){sam_g}else{match m.kind{Kind::Standard=>30.,Kind::Essm=>40.,Kind::AntiShip=>6.,Kind::AirToAir=>25.}};
             v.position=m.position;v.velocity=m.velocity;v.age=m.age;v.alive=m.alive;v.gnc.body=m.velocity.normalize_or(DVec3::NEG_Z);v.gnc.attitude=facing(v.gnc.body,m.position.normalize());v.gnc.thrust=if m.age<m.kind.burn(){1.}else{0.};
             v.trail_clock+=dt;
             if v.trail_clock>=0.075 {v.trail_clock=v.trail_clock.rem_euclid(0.075);if v.gnc.thrust>0.{if v.trail.len()==64{v.trail.remove(0);}v.trail.push(m.position);}else if !v.trail.is_empty(){v.trail.remove(0);}}

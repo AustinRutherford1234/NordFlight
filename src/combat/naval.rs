@@ -6,6 +6,7 @@ mod radio;
 mod visual;
 mod weapons;
 mod tracking;
+mod sam;
 pub mod bomber;
 mod ordnance;
 pub(super) mod tactics;
@@ -36,6 +37,7 @@ pub enum Kind {
 impl Kind {pub fn label(self)->&'static str{match self{Self::Standard=>"STANDARD-CLASS SAM",Self::Essm=>"ESSM-CLASS SAM",Self::AntiShip=>"ANTI-SHIP CRUISE MISSILE",Self::AirToAir=>"AIR-TO-AIR MISSILE"}} pub fn burn(self)->f64 {match self{Self::Standard=>14.,Self::Essm=>9.,Self::AntiShip=>120.,Self::AirToAir=>7.}}}
 #[derive(Clone, Debug)]
 pub struct Round {
+    pub sam: sam::FlightState,
     pub id: u64,
     pub source: TargetId,
     pub target: TargetId,
@@ -416,9 +418,7 @@ impl State {
         self.scan(c, f);
         self.weapon_budget =
             WEAPON_LIMIT.saturating_sub(c.missiles.iter().filter(|m| m.alive).count());
-        if !self.ended {
-            self.weapons(c, f, dt);
-        }
+        if !self.ended {self.weapons(c, f, dt);}
         while self.clock >= self.next_damage {
             let step = 0.1;
             self.next_damage += step;
@@ -871,6 +871,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
     v.generation = 100;
     v.help = false;
     start(c, f, v.generation, 1);
+    if mode.starts_with("sam-") {sam::prepare_review(mode,f,c,v);return;}
     if mode.starts_with("flight-model-") {
         let bomber=mode.ends_with("bomber");let slot=if bomber {2}else{0};
         let t=&mut c.targets[slot];t.position=carrier::world(DVec3::new(30000.,11000.,-40000.),0.);
@@ -1081,7 +1082,7 @@ mod control_tests {
         assert_eq!(n.defeated, 1);
         n.advance(&mut c, &mut f, 0.01);
         assert_eq!(n.defeated, 1);
-        n.rounds.push(Round{id:99,source:TargetId::Ship(1),target:TargetId::Ship(0),kind:Kind::Standard,position:carrier::world(DVec3::Y*50.,0.),previous:carrier::world(DVec3::Y*50.,0.),velocity:DVec3::Z*100.,age:1.,alive:true,support_lost:0.,next_sensor:0.,visual:render_round(DVec3::ZERO,DVec3::Z)});
+        n.rounds.push(Round{sam:Default::default(),id:99,source:TargetId::Ship(1),target:TargetId::Ship(0),kind:Kind::Standard,position:carrier::world(DVec3::Y*50.,0.),previous:carrier::world(DVec3::Y*50.,0.),velocity:DVec3::Z*100.,age:1.,alive:true,support_lost:0.,next_sensor:0.,visual:render_round(DVec3::ZERO,DVec3::Z)});
         n.ended=true;n.advance(&mut c,&mut f,0.01);assert!(!n.rounds[0].alive);
         n.ships[0].hull = 0.;
         for _ in 0..200 {
@@ -1120,7 +1121,7 @@ pub(super) fn render_round(p:DVec3,v:DVec3)->Missile{Missile{gnc:guidance::Gnc::
 #[cfg(test)]mod upgrade_tests{use super::*;
  #[test]fn camera_cycles_player_and_fleet_and_hostile_weapons_and_returns_after_last_ends(){
   let f=flight(false);let mut c=Combat::default();start(&mut c,&f,1,1);
-  let p=f.position+f.forward()*100.;let mut n=c.naval.take().unwrap();n.rounds.push(Round{id:100,source:TargetId::Ship(1),target:TargetId::Aircraft(n.raiders[0].id),kind:Kind::Standard,position:p,previous:p,velocity:f.forward()*400.,age:1.,alive:true,support_lost:0.,next_sensor:0.,visual:render_round(p,f.forward()*400.)});
+  let p=f.position+f.forward()*100.;let mut n=c.naval.take().unwrap();n.rounds.push(Round{sam:Default::default(),id:100,source:TargetId::Ship(1),target:TargetId::Aircraft(n.raiders[0].id),kind:Kind::Standard,position:p,previous:p,velocity:f.forward()*400.,age:1.,alive:true,support_lost:0.,next_sensor:0.,visual:render_round(p,f.forward()*400.)});
   let mut hostile=n.rounds[0].clone();hostile.id=101;hostile.source=TargetId::Aircraft(n.raiders[2].id);hostile.kind=Kind::AntiShip;n.rounds.push(hostile);c.missiles.push(render_round(p,f.forward()*400.));c.naval=Some(n);
   let mut app=App::new();app.add_plugins(MinimalPlugins).init_resource::<ButtonInput<KeyCode>>().insert_resource(f).insert_resource(c).insert_resource(ViewState::default()).insert_resource(crate::warp::Warp::default()).add_systems(Update,super::super::camera_controls);
   for expected in [0,RENDER_MISSILES,RENDER_MISSILES+1,0]{let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::Digit6);app.update();assert_eq!(app.world().resource::<ViewState>().missile_follow.unwrap().missile,expected);}
