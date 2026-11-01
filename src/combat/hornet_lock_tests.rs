@@ -90,3 +90,36 @@ fn hornet_radar_range_power_and_envelope_are_independent() {
  let mut other=flight();other.aircraft=crate::aircraft::Aircraft::Gripen;
  assert_eq!(bvr::local_ranges(&other),&bvr::LOCAL_RANGES);
 }
+
+#[test]
+fn hornet_tws_supports_four_distinct_missiles_after_selection_changes() {
+ for bvr_mode in [false,true] {
+  let mut f=bvr::flight();crate::aircraft::select(&mut f,crate::aircraft::Aircraft::Hornet);f.paused=false;
+  let mut c=Combat::default();
+  if bvr_mode {let mut menu=bvr::Menu::default();menu.formation=3;bvr::start(&mut c,&f,1,&menu);}else{c.start_air(&f,1,5);}
+  while c.targets.len()<4 {c.targets.push(c.targets[0].clone());}
+  for (i,t) in c.targets.iter_mut().enumerate() {t.position=f.position+f.orientation*DVec3::new((i as f64-1.5)*1500.,0.,-50000.);t.velocity=-f.forward()*240.;t.alive=true;}
+  // Acquire all four through actual sensor scans before launching.
+  for _ in 0..60 {if bvr_mode {let mut b=c.bvr.take().unwrap();bvr::sense(&mut b,&c,&f,0.2);c.bvr=Some(b);}else{bvr::sense_local(&mut c,&f);}c.clock+=0.2;}
+  c.weapon=Weapon::Radar;
+  for target in 0..4 {
+   c.selected=target;
+   for _ in 0..6 {if bvr_mode {let mut b=c.bvr.take().unwrap();bvr::sense(&mut b,&c,&f,0.2);c.bvr=Some(b);}else{bvr::sense_local(&mut c,&f);}c.clock+=0.2;}
+   c.lock=Weapon::Radar.lock_time();assert!(c.fire(&f),"bvr={bvr_mode} target={target} {}",c.message);
+  }
+  // Freeze the targets' aircraft dynamics while the ordinary combat advance
+  // evaluates guidance. The test checks real missile modes, not just flags.
+  for m in c.missiles.iter_mut().take(4) {m.age=1.;}
+  c.selected=3;
+  for i in 0..4 {let r=if let Some(b)=&mut c.bvr {&mut b.radar}else{&mut c.radar};
+   r.tracks[i].seen=c.clock;r.tracks[i].confidence=1.;}
+  if bvr_mode {bvr::advance(&mut c,&mut f,1./120.);}else{c.advance(&f,1./120.);}
+  for m in c.missiles.iter().take(4) {assert_eq!(m.gnc.mode,guidance::Mode::Supported,"bvr={bvr_mode} target={} reason={}",m.target,m.gnc.reason);assert!(!m.gnc.active);}
+  let r=if let Some(b)=&mut c.bvr {&mut b.radar}else{&mut c.radar};
+  r.tracks[1].seen=c.clock-4.;
+  assert!(!r.supports(1,c.selected,c.clock));assert!(r.supports(0,c.selected,c.clock));
+  r.mode=bvr::RadarMode::Stt;assert!(!r.supports(0,3,c.clock));assert!(r.supports(3,3,c.clock));
+  r.mode=bvr::RadarMode::Search;assert!(!r.supports(3,3,c.clock));
+  r.mode=bvr::RadarMode::Tws;r.powered=false;assert!(!r.supports(0,3,c.clock));
+ }
+}

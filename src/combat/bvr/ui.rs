@@ -315,16 +315,7 @@ pub fn controls(
                         (b.radar.elevation + if a.0 == 6 { 5. } else { -5. }).clamp(-45., 45.);
                 }
             }
-            8 => {
-                if let Some(b) = &mut combat.bvr {
-                    b.radar.mode = match b.radar.mode {
-                        RadarMode::Search => RadarMode::Tws,
-                        RadarMode::Tws => RadarMode::Stt,
-                        RadarMode::Stt => RadarMode::Search,
-                    };
-                    combat.lock = 0.;
-                }
-            }
+            8 => super::cockpit_radar::command(&mut combat,super::cockpit_radar::Command::Mode),
             9 => menu.reveal = !menu.reveal,
             10 => {
                 menu.center = Vec2::new(f.position.x as f32, f.position.z as f32);

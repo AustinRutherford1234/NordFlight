@@ -46,6 +46,14 @@ pub struct Radar {
     pub tracks: Vec<Track>,
     next: f64,
 }
+impl Radar {
+    /// Selection is a cockpit designation, not a TWS guidance channel.
+    /// STT remains a dedicated beam; search does not supply weapon updates.
+    pub fn supports(&self,target:usize,selected:usize,now:f64)->bool {
+        self.powered && match self.mode {RadarMode::Tws=>true,RadarMode::Stt=>target==selected,RadarMode::Search=>false}
+            && self.tracks.get(target).is_some_and(|t|t.valid(now) && now-t.seen<=3.)
+    }
+}
 impl Default for Radar {
     fn default() -> Self {
         Self {
@@ -431,7 +439,7 @@ pub fn fire(c: &mut Combat, f: &Flight) -> bool {
     c.notify("MISSILE AWAY / SUPPORT UNTIL ACTIVE");
     true
 }
-fn sense(b: &mut Battle, c: &Combat, f: &Flight, dt: f64) {
+pub(super) fn sense(b: &mut Battle, c: &Combat, f: &Flight, dt: f64) {
     b.radar.scan = ((c.clock * 32.).rem_euclid(240.) - 120.).abs() - 60.;
     if c.clock < b.radar.next {
         return;
@@ -846,11 +854,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
                     && f.battery
                     && b.radar.powered
                     && f.damage.radar > 0.25
-                    && b.radar.mode != RadarMode::Search
-                    && shot.target.is_some_and(|i| {
-                        b.radar.tracks[i].valid(c.clock) && c.clock - b.radar.tracks[i].seen < 3.
-                    })
-                    && (b.radar.mode != RadarMode::Stt || shot.target == Some(c.selected)),
+                    && shot.target.is_some_and(|i|b.radar.supports(i,c.selected,c.clock)),
             ),
             |i| {
                 let t = &c.targets[i];

@@ -687,17 +687,11 @@ impl Combat {
                 .decoy
                 .and_then(|id| self.fight.as_ref()?.decoys.iter().find(|d| d.id == id))
                 .map_or(contact, dogfight::decoy_contact);
-            let support = guidance::Support {
-                position: f.position,
-                forward: f.forward(),
-                available: !f.crashed
-                    && f.battery
-                    && f.damage.radar >= 0.25
-                    && self.selected == missile.target
-                    && self.radar.powered
-                    && (f.aircraft != crate::aircraft::Aircraft::Hornet || self.radar.tracks.get(missile.target)
-                        .is_some_and(|t| t.valid(self.clock) && self.clock-t.seen <= 3.)),
-            };
+            let radar_support = if f.aircraft==crate::aircraft::Aircraft::Hornet {
+                self.radar.supports(missile.target,self.selected,self.clock)
+            } else {self.radar.powered && self.selected==missile.target};
+            let support=guidance::Support{position:f.position,forward:f.forward(),
+                available:!f.crashed && f.battery && f.damage.radar>=0.25 && radar_support};
             missile.gnc.wind = self.environment.wind(missile.position);
             guidance::fly(missile, tracked, support, self.sun, dt);
             if let Some(hit)=crate::carrier::collider::sweep(f,old,missile.position,dt,0.12) {
