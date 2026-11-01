@@ -2623,6 +2623,7 @@ fn update_camera(
         if mode.starts_with("gear-cycle-") {target=pos+rot*Vec3::new(0.,-0.65,-1.5);p=target+rot*Vec3::new(8.,-4.,9.);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") && mode.contains("nose") {target=pos+rot*Vec3::new(0.,-0.65,-4.4);p=target+rot*Vec3::new(2.8,-2.2,3.5);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") && mode.contains("main") {target=pos+rot*Vec3::new(1.0,-0.5,1.8);p=target+rot*Vec3::new(3.3,-2.1,3.5);up_view=rot*Vec3::Y;}
+        if mode.starts_with("gear-cycle-") && mode.contains("-stores") {let side=if mode.ends_with("right"){1.}else{-1.};target=pos+rot*Vec3::new(side*1.22,-0.3,-0.55);p=target+rot*Vec3::new(side*3.3,-1.4,-2.5);up_view=rot*Vec3::Y;}
         if mode.starts_with("gear-cycle-") && mode.ends_with("-bay") {target=pos+rot*Vec3::new(1.15,-0.1,0.5);p=target+rot*Vec3::new(0.10,-3.0,0.4);up_view=rot*Vec3::Z;}
         if matches!(mode.as_str(),"nozzle-top"|"nozzle-up-top"|"nozzle-down-top") {target=pos+rot*Vec3::new(0.,0.,7.6);p=target+rot*Vec3::new(2.4,4.0,4.0);up_view=rot*Vec3::Y;}
         if mode=="nozzle-side" {target=pos+rot*Vec3::new(0.,0.,6.7);p=target+rot*Vec3::new(5.0,2.2,3.0);up_view=rot*Vec3::Y;}

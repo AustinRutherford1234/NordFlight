@@ -5,6 +5,57 @@ use crate::aircraft::hornet::stores as tanks;
 pub(crate) struct HornetRail(pub(crate) usize);
 #[derive(Component)]
 pub(crate) struct TankVisual(usize, bool);
+// Fitted to the imported inlet underside at the two fuselage stations.
+// The short swept adapter joins the rail to the skin without moving the store.
+const SHOULDER_PROFILE:[(f32,f32);5]=[(-0.30,0.18),(-0.19,0.12),(-0.09,0.065),(0.01,0.015),(0.12,-0.035)];
+fn shoulder_adapter(station:Vec3)->Mesh {
+    let mut p=Vec::<[f32;3]>::new();let mut n=Vec::<[f32;3]>::new();
+    let mut face=|a:Vec3,b:Vec3,c:Vec3|{let normal=(c-a).cross(b-a).normalize_or_zero().to_array();p.extend([a.to_array(),c.to_array(),b.to_array()]);n.extend([normal;3]);};
+    let point=|z:f32,y:f32,x:f32|Vec3::new(x,y-station.y,z-station.z);
+    for pair in SHOULDER_PROFILE.windows(2) {
+        let (z0,y0)=pair[0];let(z1,y1)=pair[1];
+        let a=point(z0,-0.34,-0.045);let b=point(z0,-0.34,0.045);let c=point(z0,y0,0.045);let d=point(z0,y0,-0.045);
+        let e=point(z1,-0.34,-0.045);let f=point(z1,-0.34,0.045);let g=point(z1,y1,0.045);let h=point(z1,y1,-0.045);
+        for q in [[a,e,f,b],[d,c,g,h],[a,d,h,e],[b,f,g,c]] {face(q[0],q[1],q[2]);face(q[0],q[2],q[3]);}
+        if z0==SHOULDER_PROFILE[0].0 {face(a,b,c);face(a,c,d);}
+        if z1==SHOULDER_PROFILE[4].0 {face(e,h,g);face(e,g,f);}
+    }
+    // Extend the existing short launcher aft beneath the adapter foot.
+    let a=point(-0.35,-0.44,-0.05);let b=point(-0.35,-0.44,0.05);let c=point(-0.35,-0.32,0.05);let d=point(-0.35,-0.32,-0.05);
+    let e=point(0.25,-0.44,-0.05);let f=point(0.25,-0.44,0.05);let g=point(0.25,-0.32,0.05);let h=point(0.25,-0.32,-0.05);
+    for q in [[a,e,f,b],[d,c,g,h],[a,d,h,e],[b,f,g,c],[a,b,c,d],[e,h,g,f]] {face(q[0],q[1],q[2]);face(q[0],q[2],q[3]);}
+    let mut mesh=Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION,p);mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL,n);mesh
+}
+pub(super) fn shoulder_mounts(c:&mut Commands,meshes:&mut Assets<Mesh>,mats:&mut Assets<StandardMaterial>,root:Entity) {
+    let paint=material(mats,Color::srgb(0.42,0.45,0.46),0.3);
+    let hardware=material(mats,Color::srgb(0.20,0.23,0.24),0.6);
+    for i in [6,7] {
+        let at=crate::aircraft::station(Aircraft::Hornet,i).as_vec3();
+        let e=part(c,meshes,root,shoulder_adapter(at),paint.clone(),Transform::from_translation(at));
+        c.entity(e).insert(Name::new(format!("HornetShoulderAdapter{i}")));
+        box_part(c,meshes,root,paint.clone(),Vec3::new(at.x,-0.325,-0.1),Vec3::new(0.13,0.045,0.55));
+        for z in [-0.22,0.02] { for side in [-1.,1.] {
+            part(c,meshes,root,Cylinder::new(0.018,0.012).mesh().resolution(8).build(),hardware.clone(),Transform::from_xyz(at.x+side*0.05,-0.20,z).with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)));
+        }}
+    }
+}
+#[cfg(test)]mod shoulder_tests {
+    use super::*;
+    #[test]fn shoulder_mount_and_actual_missile_mesh_export_for_sweep_validation() {
+        let missile=crate::combat::radar_visual::body(false,true);
+        let mut result=Vec::new();
+        for i in [6,7] {let at=crate::aircraft::station(Aircraft::Hornet,i).as_vec3();
+            let adapter=shoulder_adapter(at);
+            let geometry=|mesh:&Mesh| {let bevy::mesh::VertexAttributeValues::Float32x3(v)=mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()else{panic!()};let ix:Vec<usize>=mesh.indices().map(|i|i.iter().collect()).unwrap_or_else(||(0..v.len()).collect());serde_json::json!({"vertices":v,"indices":ix})};
+            result.push(serde_json::json!({"station":at.to_array(),"missile":geometry(&missile),"adapter":geometry(&adapter)}));
+            assert!((at.z+0.85).abs()<1e-6);
+            assert!(SHOULDER_PROFILE.iter().all(|(_,y)|*y> -0.32));
+        }
+        std::fs::create_dir_all("tests/shoulder-mount-review").unwrap();
+        std::fs::write("tests/shoulder-mount-review/geometry.json",serde_json::to_vec(&result).unwrap()).unwrap();
+    }
+}
 pub(super) fn tank_mesh() -> Mesh {
     let profile: [(f32, f32); 13] = PROFILE;
     let radial_scale = tanks::TANK_RADIUS as f32 / 0.375;

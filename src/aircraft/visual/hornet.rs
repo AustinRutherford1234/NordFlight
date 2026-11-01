@@ -57,6 +57,7 @@ pub(super) fn setup(c: &mut Commands, meshes: &mut Assets<Mesh>, mats: &mut Asse
         c.entity(rail).insert((Name::new(format!("HornetLaunchRail{i}")),super::hornet_stores::HornetRail(i)));
 
     }
+    super::hornet_stores::shoulder_mounts(c,meshes,mats,root);
     super::hornet_stores::setup(c,meshes,mats,root);
     let beacon=c.spawn((PointLight{color:Color::srgb(1.,0.03,0.02),intensity:0.,range:5.,shadows_enabled:false,..default()},
         Transform::from_xyz(0.,0.8,0.),Lamp(Aircraft::Hornet,1))).id();
