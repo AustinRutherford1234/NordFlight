@@ -29,6 +29,29 @@ struct Skin {
 fn overlaps(a: DVec3, b: DVec3, c: DVec3, d: DVec3) -> bool {
     !b.cmplt(c).any() && !a.cmpgt(d).any()
 }
+/// Conservative slab test for the swept sphere's centre against an expanded
+/// box. Unlike the path's enclosing AABB, this rejects triangles far off a long
+/// diagonal sensor ray. The triangle narrow phase remains unchanged.
+fn segment_box(a: DVec3, b: DVec3, lo: DVec3, hi: DVec3, radius: f64) -> bool {
+    let pad = DVec3::splat(radius + 1e-8);
+    let lo = lo - pad;
+    let hi = hi + pad;
+    let direction = b - a;
+    let mut enter = 0_f64;
+    let mut leave = 1_f64;
+    for axis in 0..3 {
+        if direction[axis] == 0. {
+            if a[axis] < lo[axis] || a[axis] > hi[axis] { return false; }
+        } else {
+            let t0 = (lo[axis] - a[axis]) / direction[axis];
+            let t1 = (hi[axis] - a[axis]) / direction[axis];
+            enter = enter.max(t0.min(t1));
+            leave = leave.min(t0.max(t1));
+            if enter > leave { return false; }
+        }
+    }
+    true
+}
 impl Skin {
     fn load(data: &[u8]) -> Self {
         assert_eq!(data.len() % 36, 0);
@@ -85,6 +108,24 @@ impl Skin {
             self.nodes[index].children = Some((a, b));
         }
         index
+    }
+    fn query_segment(&self, a: DVec3, b: DVec3, radius: f64, mut visit: impl FnMut(&Triangle)) {
+        let mut stack = [0usize; 64];
+        let mut count = 1;
+        while count > 0 {
+            count -= 1;
+            let node = &self.nodes[stack[count]];
+            if !segment_box(a, b, node.lo, node.hi, radius) { continue; }
+            if let Some((left, right)) = node.children {
+                stack[count] = left;
+                stack[count + 1] = right;
+                count += 2;
+            } else {
+                for tri in &self.tri[node.start..node.end] {
+                    if segment_box(a, b, tri.lo, tri.hi, radius) { visit(tri); }
+                }
+            }
+        }
     }
     fn query(&self, lo: DVec3, hi: DVec3, mut visit: impl FnMut(&Triangle)) {
         let mut stack = [0usize; 64];
@@ -302,17 +343,20 @@ fn sweep_ship(f:Option<&State>,end_time: f64, a: DVec3, b: DVec3, dt: f64, radiu
         return None;
     }
     let mut first: Option<(f64, DVec3)> = None;
-    query_skin(f,ship,
-        start.min(end) - DVec3::splat(radius),
-        start.max(end) + DVec3::splat(radius),
-        |tri| {
-            if let Some(h) = sphere_triangle(start, end, radius, tri.p) {
-                if first.is_none_or(|p| h.0 < p.0) {
-                    first = Some(h);
-                }
+    let mut visit = |tri: &Triangle| {
+        if let Some(h) = sphere_triangle(start, end, radius, tri.p) {
+            if first.is_none_or(|p| h.0 < p.0) { first = Some(h); }
+        }
+    };
+    ship_skin(ship).query_segment(start, end, radius, &mut visit);
+    if ship == 0 {
+        if let Some(state) = f.filter(|s| s.deflector > 0.01) {
+            for p in super::deflector::triangles(state.deflector) {
+                let tri=Triangle { p, lo:p[0].min(p[1]).min(p[2]), hi:p[0].max(p[1]).max(p[2]) };
+                if segment_box(start,end,tri.lo,tri.hi,radius) { visit(&tri); }
             }
-        },
-    );
+        }
+    }
     first.map(|h| result(f,end_time, h, a, b, dt, ship))
 }
 fn sphere_triangle(a: DVec3, b: DVec3, r: f64, p: [DVec3; 3]) -> Option<(f64, DVec3)> {
@@ -595,5 +639,56 @@ mod tests {
         let mut f = flight(1.);
         f.carrier.active = false;
         assert!(sweep(&f, origin(0.), origin(2.), 2., 10.).is_none());
+    }
+}
+
+#[cfg(test)]
+mod segment_query_tests {
+    use super::*;
+    #[test]
+    fn slabs_include_parallel_tangent_and_stationary_sweeps() {
+        let lo=DVec3::splat(-1.);let hi=DVec3::ONE;
+        assert!(segment_box(DVec3::new(-5.,1.,0.),DVec3::new(5.,1.,0.),lo,hi,0.));
+        assert!(!segment_box(DVec3::new(-5.,2.,0.),DVec3::new(5.,2.,0.),lo,hi,0.1));
+        assert!(segment_box(DVec3::new(-5.,2.,0.),DVec3::new(5.,2.,0.),lo,hi,1.));
+        assert!(segment_box(DVec3::ZERO,DVec3::ZERO,lo,hi,0.));
+        assert!(!segment_box(DVec3::splat(4.),DVec3::splat(4.),lo,hi,0.));
+        assert!(!segment_box(DVec3::splat(4.),DVec3::splat(5.),lo,hi,0.));
+    }
+    #[test]
+    fn segment_bvh_matches_original_triangle_sweeps_on_both_ship_models() {
+        let mut hits=0;
+        let mut old_candidates=0;let mut new_candidates=0;
+        for skin in [skin(),burke_skin()] {
+            for radius in [0.,0.1,2.] {
+                for k in 0..24 {
+                    let z=(k%8)as f64*40.-140.;
+                    let (a,b)=match k/8 {
+                        0=>(DVec3::new(-70.,10.,z),DVec3::new(70.,10.,z)),
+                        1=>(DVec3::new(0.,100.,z),DVec3::new(0.,-20.,z)),
+                        _=>(DVec3::new(-30.,30.,z),DVec3::new(9000.,500.,-25000.)),
+                    };
+                    let mut reference:Option<f64>=None;
+                    skin.query(a.min(b)-DVec3::splat(radius),a.max(b)+DVec3::splat(radius),|tri| {
+                        old_candidates+=1;
+                        if let Some((t,_))=sphere_triangle(a,b,radius,tri.p) {
+                            reference=Some(reference.map_or(t,|old|old.min(t)));
+                        }
+                    });
+                    let mut actual:Option<f64>=None;
+                    skin.query_segment(a,b,radius,|tri| {
+                        new_candidates+=1;
+                        if let Some((t,_))=sphere_triangle(a,b,radius,tri.p) {
+                            actual=Some(actual.map_or(t,|old|old.min(t)));
+                        }
+                    });
+                    assert_eq!(actual.is_some(),reference.is_some(),"k={k} radius={radius}");
+                    if let (Some(a),Some(b))=(actual,reference) {assert!((a-b).abs()<1e-10);hits+=1;}
+                }
+            }
+        }
+        assert!(hits>20);
+        assert!(new_candidates<old_candidates);
+        println!("SHIP SWEEP candidates before={old_candidates} after={new_candidates} matched_hits={hits}");
     }
 }

@@ -135,6 +135,7 @@ impl State {
         if self.clock < self.next_engage {
             return;
         }
+        let _measure = crate::performance::span(19);
         self.next_engage = self.clock + 0.25;
         // Fixed stack storage: missile threats sorted by time-to-fleet, then aircraft.
         let mut threats = [(TargetId::Player, f64::INFINITY); 108];
@@ -174,6 +175,8 @@ impl State {
             if self.ships[ship].power < 0.2
                 || self.ships[ship].launcher < 0.25
                 || self.ships[ship].sunk
+                || self.clock < self.ships[ship].next_launch
+                || (self.ships[ship].standard == 0 && self.ships[ship].essm == 0)
             {
                 continue;
             }
@@ -183,44 +186,26 @@ impl State {
                 };
                 let mount = carrier::ship_world(f, ship, launch_mount(ship), f.elapsed);
                 let range = p.distance(mount);
-                if range < 500.
-                    || !self.detect(
-                        f,
-                        ship,
-                        p,
-                        if matches!(target, TargetId::Missile(_)) {
-                            0.1
-                        } else {
-                            3.
-                        },
-                    )
-                    || self.obstructed(f, ship, mount, p)
-                {
+                if range < 500. {
                     continue;
                 }
-                let committed = self
-                    .rounds
-                    .iter()
-                    .filter(|m| {
-                        m.alive
-                            && m.target == target
-                            && !matches!(m.kind, Kind::AntiShip | Kind::AirToAir)
-                    })
-                    .count();
-                if committed >= 2 {
-                    continue;
-                }
-                if self.clock < self.ships[ship].next_launch {
-                    break;
-                }
+                let committed = self.rounds.iter().filter(|m| {
+                    m.alive && m.target == target
+                        && !matches!(m.kind, Kind::AntiShip | Kind::AirToAir)
+                }).count();
+                if committed >= 2 { continue; }
                 let s = &self.ships[ship];
                 let kind = if s.essm > 0 && envelope::sam_reachable(Kind::Essm,mount,p,velocity) {
                     Kind::Essm
                 } else if s.standard > 0 && envelope::sam_reachable(Kind::Standard,mount,p,velocity) {
                     Kind::Standard
-                } else {
+                } else { continue; };
+                // These geometry queries are pure eligibility checks. Run them
+                // only after cooldown, ammunition, commitments and reachability.
+                if !self.detect(f, ship, p, if matches!(target, TargetId::Missile(_)) {0.1}else{3.})
+                    || self.obstructed(f, ship, mount, p) {
                     continue;
-                };
+                }
                 if self.round(
                     TargetId::Ship(ship),
                     target,
@@ -301,6 +286,7 @@ impl State {
         }
     }
     fn ciws(&mut self, c: &mut Combat, f: &mut Flight, dt: f64) {
+        let _measure = crate::performance::span(20);
         for ship in 0..3 {
             let s = &self.ships[ship];
             if s.power < 0.2 || s.sunk || s.gun < 30 {
@@ -395,6 +381,7 @@ impl State {
     }
     fn countermeasures(&mut self, c:&mut Combat, f:&Flight) {
         if self.clock<self.next_countermeasures {return;}
+        let _measure = crate::performance::span(18);
         self.next_countermeasures=self.clock+0.2;
         let Some(fight)=c.fight.as_mut() else{return;};
         for r in &mut self.raiders {
@@ -428,6 +415,7 @@ impl State {
         }
     }
     pub fn weapons(&mut self, c: &mut Combat, f: &mut Flight, dt: f64) {
+        let _measure = crate::performance::span(21);
         if !self.ended {
             self.countermeasures(c, f);
             self.hostile_launches(c, f);
@@ -873,4 +861,43 @@ mod defense_tests {
   }
   n.spawn(&mut c,&f);assert_eq!(n.waves,2);
  }
+}
+
+#[cfg(test)]
+mod spike_profile {
+    use super::*;
+    #[test]
+    #[ignore = "opt-in short CPU diagnostic, excludes rendering"]
+    fn thirty_missile_periodic_work_profile() {
+        let mut f=flight(true); f.paused=false;
+        let mut c=Combat::default(); start(&mut c,&f,1,1);
+        super::super::prepare_missile_profile(&mut c,&f);
+        carrier::collider::preload();
+        let base=c.naval.take().unwrap();
+        let mut report=Vec::new();
+        for phase in ["countermeasures","engage","engage-ready","scan","weapons"] {
+            let mut samples=Vec::new();
+            for k in 0..48 {
+                let mut n=base.clone();
+                n.clock=1.+k as f64*0.27;f.elapsed=n.clock;
+                // All launchers cooling: no launch is possible, but the old
+                // engagement loop still traces every candidate against ships.
+                for s in &mut n.ships {s.next_launch=if phase=="engage-ready" {0.}else{1e9};}
+                let at=std::time::Instant::now();
+                match phase {
+                    "countermeasures"=>n.countermeasures(&mut c,&f),
+                    "engage"|"engage-ready"=>n.engage(&c,&f),
+                    "scan"=>n.scan(&c,&f),
+                    _=>n.weapons(&mut c,&mut f,1./120.),
+                }
+                samples.push(at.elapsed().as_secs_f64()*1000.);
+            }
+            samples.sort_by(f64::total_cmp);
+            report.push(serde_json::json!({"phase":phase,"samples":samples.len(),"mean_ms":samples.iter().sum::<f64>()/samples.len()as f64,"p95_ms":samples[samples.len()*95/100],"max_ms":samples.last()}));
+        }
+        let path=std::env::var("NORD_MISSILE_PROFILE_REPORT").unwrap_or("tests/missile-spikes/headless.json".into());
+        std::fs::create_dir_all("tests/missile-spikes").unwrap();
+        std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+        println!("MISSILE PERIODIC PROFILE {}",serde_json::to_string(&report).unwrap());
+    }
 }

@@ -309,6 +309,7 @@ pub fn draw(
     mut gizmos: Gizmos,
     camera: Query<&GlobalTransform, With<crate::FlightCamera>>,
 ) {
+    let _measure = crate::performance::span(23);
     let naval = c.naval.as_ref();
     if time.elapsed_secs_f64() - *last_text >= 0.1 || *last_text == 0. {
         *last_text = time.elapsed_secs_f64();

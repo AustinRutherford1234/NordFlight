@@ -10,7 +10,7 @@ use std::time::Instant;
 static ADAPTER: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
-const NAMES: [&str; 17] = [
+const NAMES: [&str; 24] = [
     "simulation",
     "aircraft_physics",
     "combat",
@@ -28,9 +28,12 @@ const NAMES: [&str; 17] = [
     "terrain_build",
     "orbital_coast",
     "asset_prepare_wall",
+    "naval_scan", "naval_countermeasures", "naval_engage", "naval_ciws",
+    "naval_weapons", "missile_smoke", "naval_visual",
 ];
-static NANOS: [AtomicU64; 17] = [const { AtomicU64::new(0) }; 17];
-static CALLS: [AtomicU64; 17] = [const { AtomicU64::new(0) }; 17];
+static NANOS: [AtomicU64; 24] = [const { AtomicU64::new(0) }; 24];
+static MAX_NANOS: [AtomicU64; 24] = [const { AtomicU64::new(0) }; 24];
+static CALLS: [AtomicU64; 24] = [const { AtomicU64::new(0) }; 24];
 pub static UPLOAD_BYTES: AtomicU64 = AtomicU64::new(0);
 pub static UPLOAD_CALLS: AtomicU64 = AtomicU64::new(0);
 pub static MESH_CHANGES: AtomicU64 = AtomicU64::new(0);
@@ -158,14 +161,16 @@ pub fn span(index: usize) -> Span {
 impl Drop for Span {
     fn drop(&mut self) {
         if let Some(start) = self.start {
-            NANOS[self.index].fetch_add(start.elapsed().as_nanos() as u64, Relaxed);
+            let nanos = start.elapsed().as_nanos() as u64;
+            NANOS[self.index].fetch_add(nanos, Relaxed);
+            MAX_NANOS[self.index].fetch_max(nanos, Relaxed);
             CALLS[self.index].fetch_add(1, Relaxed);
         }
     }
 }
 pub fn reset() {
     bevy::pbr::generate::reset_environment_filter_cache_counts();
-    for a in NANOS.iter().chain(CALLS.iter()).chain([
+    for a in NANOS.iter().chain(CALLS.iter()).chain(MAX_NANOS.iter()).chain([
         &UPLOAD_BYTES,
         &UPLOAD_CALLS,
         &MESH_CHANGES,
@@ -190,7 +195,7 @@ pub fn report(diagnostics: &DiagnosticsStore) -> serde_json::Value {
             let ms = NANOS[i].load(Relaxed) as f64 / 1e6;
             (
                 (*name).into(),
-                serde_json::json!({"calls":calls,"total_ms":ms,"mean_ms":ms / calls.max(1) as f64}),
+                serde_json::json!({"calls":calls,"total_ms":ms,"mean_ms":ms / calls.max(1) as f64,"max_ms":MAX_NANOS[i].load(Relaxed) as f64 / 1e6}),
             )
         })
         .collect();

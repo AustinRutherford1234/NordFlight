@@ -289,6 +289,7 @@ impl State {
         if self.clock < self.next_scan {
             return;
         }
+        let _measure = crate::performance::span(17);
         self.next_scan = self.clock + 1.;
         for r in &self.raiders {
             let Some(t) = c.targets.get(r.slot).filter(|t| t.alive) else {
@@ -876,6 +877,11 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
     v.generation = 100;
     v.help = false;
     start(c, f, v.generation, 1);
+    if mode == "missile-profile" {
+        prepare_missile_profile(c, f);
+        v.restore_camera(); v.index=3; v.yaw=0.; v.pitch=-0.13; v.zoom=1.;
+        return;
+    }
     if mode.starts_with("sam-") {sam::prepare_review(mode,f,c,v);return;}
     if mode.starts_with("fighter-inspect-") {
         let t=&mut c.targets[0];
@@ -1167,4 +1173,22 @@ pub(super) fn render_round(p:DVec3,v:DVec3)->Missile{Missile{gnc:guidance::Gnc::
    if shift {assert!(app.world().resource::<Flight>().fuel>123.);}else{assert_eq!(app.world().resource::<Flight>().fuel,123.);}
   }
  }
+}
+
+/// Diagnostic fixture: bounded 30-round salvo with normal live simulation.
+fn prepare_missile_profile(c: &mut Combat, f: &Flight) {
+    let mut n = c.naval.take().unwrap();
+    n.rounds.clear();
+    for r in &mut n.raiders { r.next_shot=1e9; }
+    for i in 0..30 {
+        let p=carrier::world(DVec3::new((i%5) as f64*300.-600.,500.,-25000.-(i/5) as f64*500.),f.elapsed);
+        let goal=carrier::ship_world(f,0,DVec3::Y*15.,f.elapsed);
+        let velocity=(goal-p).normalize()*290.;
+        n.round(TargetId::Aircraft(n.raiders[2].id),TargetId::Ship(0),Kind::AntiShip,p,velocity);
+        let m=n.rounds.last_mut().unwrap();m.age=2.;m.visual.age=2.;
+        tracking::seed(m,goal,carrier::velocity(f.elapsed));
+        m.visual.gnc.body=velocity.normalize();m.visual.gnc.thrust=23000.;
+        m.visual.trail=(0..48).map(|k|p-velocity.normalize()*(48-k)as f64*22.).collect();
+    }
+    c.naval=Some(n);
 }

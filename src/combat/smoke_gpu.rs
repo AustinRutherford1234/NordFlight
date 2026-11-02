@@ -105,6 +105,7 @@ fn update(
         &mut Aabb,
     )>,
 ) {
+    let _measure = crate::performance::span(22);
     for (mut trail, handle, material, mut transform, mut visibility, mut bounds) in &mut trails {
         let missile = combat.render_missile(trail.slot).filter(|m| {
             combat.active
