@@ -6,7 +6,8 @@ pub const MAX_FRAME_WALL_SECONDS: f64 = 0.1;
 pub const MAX_STEPS_PER_FRAME: usize = 256;
 pub const MAX_PHYSICS_STEP: f64 = 1. / 120.;
 pub const GROUND_PRIORITY_WALL_SECONDS: f64 = 0.25;
-pub const GROUND_PRIORITY_STEPS: usize = 2560;
+// 0.25 wall seconds at 50x and the minimum 1 ms tick needs 12,500 steps.
+pub const GROUND_PRIORITY_STEPS: usize = 12800;
 
 #[derive(Resource, Default)]
 pub struct SimClock {
@@ -88,18 +89,18 @@ impl SimClock {
 mod tests {
     use super::*;
     #[test]
-    fn ground_priority_tracks_ten_x_at_low_display_rates_without_enlarging_ticks() {
+    fn ground_priority_tracks_fifty_x_at_low_display_rates_without_enlarging_ticks() {
         for fps in [5,10,15,30,60] {
             for interval in [0.001,1./240.,1./60.] {
                 let mut c=SimClock::default();c.prioritize_ground(true);
                 let mut elapsed=0.;
                 for _ in 0..fps*2 {
                     let wall=c.wall_duration(1./fps as f64,elapsed,false,Some(0));
-                    let (n,h)=c.steps(wall,10.,interval);
+                    let (n,h)=c.steps(wall,50.,interval);
                     assert!(n<=GROUND_PRIORITY_STEPS&&h<=MAX_PHYSICS_STEP);
                     elapsed+=n as f64*h;
                 }
-                assert!((elapsed-20.).abs()<0.0011,"{fps} Hz, {interval}: {elapsed}");
+                assert!((elapsed-100.).abs()<0.0011,"{fps} Hz, {interval}: {elapsed}");
                 assert_eq!(c.dropped_wall_seconds,0.);assert_eq!(c.dropped_simulated_seconds,0.);
             }
         }

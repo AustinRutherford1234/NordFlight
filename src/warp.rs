@@ -117,7 +117,7 @@ impl Warp {
         let requested = self.rates[self.selected.min(self.rates.len() - 1)];
         if f.vehicle == Vehicle::Gripen && f.landed && !f.crashed && !f.ejection.active
             && f.carrier.launch.is_none() {
-            return requested.min(10.0);
+            return requested.min(50.0);
         }
         if f.crashed || f.landed || f.agl() < 100.0 {
             return requested.min(1.0);
@@ -471,12 +471,12 @@ mod tests {
         use bevy::winit::{WinitSettings,UpdateMode};
         let original=WinitSettings::continuous();
         let mut app=App::new();
-        let mut w=Warp::default();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();
+        let mut w=Warp::default();w.selected=w.rates.iter().position(|r|*r==50.).unwrap();
         app.insert_resource(crate::carrier::scenario(true)).insert_resource(w)
             .insert_resource(original.clone()).add_systems(Update,ground_pacing);
         for exit in 0..3 {
             {let mut f=app.world_mut().resource_mut::<Flight>();f.paused=false;f.landed=true;}
-            {let mut w=app.world_mut().resource_mut::<Warp>();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();}
+            {let mut w=app.world_mut().resource_mut::<Warp>();w.selected=w.rates.iter().position(|r|*r==50.).unwrap();}
             app.update();app.update();
             assert!(matches!(app.world().resource::<WinitSettings>().focused_mode,UpdateMode::Reactive{..}));
             match exit {
@@ -519,7 +519,7 @@ mod tests {
         assert_eq!(w.allowed(&f), 1000.0);
         f.throttle = 0.2;
         assert_eq!(w.allowed(&f), 4.0);
-        assert_eq!(w.allowed(&Flight::runway()), 10.0);
+        assert_eq!(w.allowed(&Flight::runway()), 50.0);
     }
     #[test]
     fn ground_warp_preserves_slow_motion_and_excludes_launch_crash_and_low_flight() {
@@ -529,8 +529,10 @@ mod tests {
         assert_eq!(w.allowed(&f),0.5);
         assert!(GroundHold::capture(&f,0.5).is_none());
         w.selected=w.rates.iter().position(|r|*r==50.).unwrap();
-        assert_eq!(w.allowed(&f),10.);
-        assert!(GroundHold::capture(&f,10.).is_some());
+        assert_eq!(w.allowed(&f),50.);
+        assert!(GroundHold::capture(&f,50.).is_some());
+        w.selected=w.rates.iter().position(|r|*r==100.).unwrap();
+        assert_eq!(w.allowed(&f),50.);
         f.carrier.launch=Some(0.);
         assert_eq!(w.allowed(&f),1.);
         assert!(GroundHold::capture(&f,10.).is_none());
@@ -547,7 +549,7 @@ mod tests {
         f.carrier.attached=false;
         f.velocity+=crate::carrier::ship_rotation(&f,0,0.)*DVec3::X*0.4;
         let p=crate::carrier::ship_relative(&f,0,f.position,0.);
-        let hold=GroundHold::capture(&f,10.).unwrap();
+        let hold=GroundHold::capture(&f,50.).unwrap();
         f.elapsed=10.;hold.apply(&mut f);
         assert!(crate::carrier::ship_relative(&f,0,f.position,10.).distance(p)<1e-7);
         assert!(f.velocity.distance(crate::carrier::ground_velocity(&f,f.position))<1e-9);

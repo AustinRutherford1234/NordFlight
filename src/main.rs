@@ -3964,6 +3964,7 @@ mod realtime_flight_regressions {
     use std::time::Duration;
     #[test]
     fn accelerated_ground_time_runs_simulation_and_holds_runway_or_moving_deck() {
+        for rate in [10.,50.] {
         for (deck,fps) in [(false,15),(true,15),(false,60),(true,60)] {
             let mut app=scene();
             let mut f=if deck {carrier::scenario(true)}else{Flight::runway()};
@@ -3972,17 +3973,18 @@ mod realtime_flight_regressions {
             let p=f.position;let q=f.orientation;
             let local=if deck {carrier::ship_relative(&f,0,p,0.)}else{p};
             app.insert_resource(f);
-            {let mut w=app.world_mut().resource_mut::<warp::Warp>();w.selected=w.rates.iter().position(|r|*r==10.).unwrap();if fps==15 {w.timestep=0.001;}}
+            {let mut w=app.world_mut().resource_mut::<warp::Warp>();w.selected=w.rates.iter().position(|r|*r==rate).unwrap();if fps==15 {w.timestep=0.001;}}
             for _ in 0..fps {frame(&mut app,Duration::from_secs_f64(1./fps as f64));}
             let f=app.world().resource::<Flight>();
-            assert!((f.elapsed-10.).abs()<1e-8);
-            assert!((app.world().resource::<Environment>().time-10.).abs()<1e-8);
+            assert!((f.elapsed-rate).abs()<1e-8);
+            assert!((app.world().resource::<Environment>().time-rate).abs()<1e-8);
             assert!(!f.crashed&&f.landed,"{}",f.status);
             assert!((f.velocity-carrier::ground_velocity(f,f.position)).length()<1e-9);
             if deck {
                 assert!(carrier::ship_relative(f,0,f.position,f.elapsed).distance(local)<1e-6);
                 assert!(f.position.distance(p)>120.);
             } else {assert_eq!(f.position,p);assert_eq!(f.orientation,q);}
+        }
         }
     }
     fn scene() -> App {

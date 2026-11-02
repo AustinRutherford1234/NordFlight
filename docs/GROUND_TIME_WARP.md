@@ -1,7 +1,7 @@
 # Ground and carrier time warp
 
-Aircraft can use up to 10x time while landed. The existing period/comma controls
-raise/lower the selected rate; slash returns to 1x. Rates above 10x remain capped
+Aircraft can use up to 50x time while landed. The existing period/comma controls
+raise/lower the selected rate; slash returns to 1x. Rates above 50x remain capped
 on the ground. Slow motion is unchanged. Low-altitude airborne flight, crashes,
 ejection and active catapult shots retain their existing limits.
 
@@ -31,9 +31,9 @@ The 10x application-loop fixture advances 10 simulated seconds over 60 frames
 at 60 Hz; both environment and aircraft clocks agree. On deck, the held aircraft
 travels more than 120 m in world coordinates without shifting in ship coordinates.
 
-## Physics priority at 10x
+## Physics priority at 10x and above
 
-At the full 10x ground rate, window updates become event-responsive with an
+At ground rates of 10x through 50x, window updates become event-responsive with an
 approximately 15 Hz idle display cadence. This is a maximum idle refresh cadence,
 not a rendering deadline: normal physics/combat work finishes before the next
 image, and input/window events can wake the application earlier. The saved
@@ -41,7 +41,7 @@ focused and unfocused update policies return when warp is reduced, flight leaves
 the ground, the player pauses, or the aircraft crashes/ejects. Visual quality and
 physics step sizes are unchanged.
 
-The clock allows up to 0.25 wall seconds and 2,560 bounded physics ticks per
+The clock allows up to 0.25 wall seconds and 12,800 bounded physics ticks per
 frame in this mode, so fewer rendered frames do not force the former 256-tick
 limit to throw away requested simulation time. At ordinary rates it retains the
 original 0.1-second/256-tick bounds. Host stalls beyond the bound are discarded;
@@ -67,3 +67,16 @@ gain. The scene is limited by carrier-contact collision work, not a rendering
 deadline. Metrics are local at `tests/ground-warp-priority/profile.json`.
 The short diagnostic restored the prior running flight and took 16.74 wall seconds
 including startup and warm-up. No soak was run.
+
+
+## 50x extension — November 2, 2026
+
+The landed-aircraft cap is now 50x, using the existing period/comma rate controls and slash for normal time. The existing near-zero-speed parking hold remains active below 0.5 m/s relative to the runway or carrier; active launches, crashes, ejection and low airborne flight retain their existing exclusions. Higher selected ground rates are capped at 50x.
+
+Physics-priority pacing already applies at 10x and above. Its finite per-frame step budget is raised to 12,800: 50x over the existing 0.25-second maximum accepted wall interval requires 12,500 ticks at the minimum 1 ms configured interval. Physics tick duration and the wall-time cap are unchanged. The larger budget permits the requested rate without a scheduler-imposed 10x-era limit, but does not guarantee this Mac can sustain 50x in a busy battle. Existing host-stall discarding and pause/reset handling remain active.
+
+Validation extends the clock-only low-display-rate fixture to 50x at 5/10/15/30/60 Hz with 1 ms, 1/240 s and 1/60 s configured intervals; the real application-loop fixture covers runway and carrier starts at both 10x and 50x, 15/60 Hz, including 1 ms ticks at 15 Hz. Pacing restoration and the moving-deck hold are checked at 50x as well. No live flight or throughput benchmark is part of this change.
+
+Final validation for the 50x extension: `cargo test --locked` passed **808 tests**, with zero failures and one opt-in timing diagnostic ignored (27.26 seconds). The 50x scheduler, runway/deck application-loop, pacing-restoration, slow-motion and excluded-state checks all passed. These are deterministic timing/physics checks, not measured real-time throughput on this Mac.
+
+The existing `Nord Flight.app` was rebuilt with `./build-mac.sh dev` and passed `codesign --verify --deep --strict`. Executable SHA-256: `e80e322da921de5a0e631d9a5a6c91810f67f26549021a7051f4791c20ed81d1`. Relaunch the app to load this version; the running user flight was left untouched.
