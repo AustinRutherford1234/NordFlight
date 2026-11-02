@@ -4,7 +4,7 @@ use bevy::{
     math::{DQuat, DVec3},
     prelude::*,
 };
-/// Three distinct Option+C presses in one short real-time window.
+/// Three distinct presses in one short real-time window, reset by scenario generation.
 #[derive(Default)]
 pub struct Gesture { count:u8, first:f64, generation:u64 }
 impl Gesture {

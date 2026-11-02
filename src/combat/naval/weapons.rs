@@ -4,6 +4,32 @@ fn closest(a: DVec3, b: DVec3) -> f64 {
     (a + d * (-a.dot(d) / d.length_squared().max(1e-12)).clamp(0., 1.)).length()
 }
 impl State {
+    /// Sweep a bullet against each moving cruise body's representative ellipsoid.
+    /// Naval weapons advance after player bullets, so predict their endpoint for
+    /// this same interval rather than reusing the previous interval's sweep.
+    pub(crate) fn cannon_intercept(&mut self,from:DVec3,to:DVec3,dt:f64)->Option<DVec3> {
+        let (length,diameter)=ordnance::dimensions(Kind::AntiShip);
+        let half=length as f64*0.5;let radius=diameter as f64*0.5+0.01;
+        let mut best=None;
+        for (i,m) in self.rounds.iter().enumerate().filter(|(_,m)|m.alive&&m.kind==Kind::AntiShip) {
+            let relative_start=from-m.position;
+            let relative_end=to-(m.position+m.velocity*dt);
+            let extent=DVec3::splat(half);
+            if relative_start.min(relative_end).cmpgt(extent).any()
+                || relative_start.max(relative_end).cmplt(-extent).any() {continue;}
+            let axis=m.velocity.normalize_or(DVec3::Z);
+            let scale=|v:DVec3| {let axial=axis*v.dot(axis);(v-axial)/radius+axial/half};
+            let start=scale(relative_start);
+            let end=scale(relative_end);
+            let (near,t)=super::super::damage::closest_relative(start,end);
+            if near.length_squared()<=1. && best.is_none_or(|(_,old_t)|t<old_t) {best=Some((i,t));}
+        }
+        let (i,t)=best?;let point=from.lerp(to,t);let id=self.rounds[i].id;
+        self.rounds[i].alive=false;self.rounds[i].visual.alive=false;
+        self.missile_tracks.retain(|track|track.id!=id);
+        self.interceptions+=1;self.flash(point,false);
+        Some(point)
+    }
     fn contact(&self, id: TargetId, c: &Combat, f: &Flight) -> Option<(DVec3, DVec3)> {
         match id {
             TargetId::Aircraft(id) => {
@@ -1049,4 +1075,40 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
   v.restore_camera();v.ship_follow=Some(ship);v.zoom=0.75;
  }
  c.naval=Some(n);f.paused=true;
+}
+
+#[cfg(test)] mod player_cannon_tests {
+    use super::*;
+    fn shot(hz:usize,offset:f64,hostile:bool)->Combat {
+        let mut f=flight(true);f.position=crate::terrain::point(20000.,-60000.,500.);
+        f.velocity=DVec3::ZERO;f.paused=false;
+        let mut c=Combat::default();c.active=true;c.install_naval_weapons(&f);
+        let mut n=State::new(1,2,false);n.next_wave=f64::INFINITY;
+        for ship in &mut n.ships {ship.standard=0;ship.essm=0;ship.gun=0;ship.radar=0.;}
+        let p=f.position+DVec3::X*1000.;let velocity=DVec3::Z*290.;
+        assert!(n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,velocity));
+        let position=p-DVec3::X*(crate::combat::CANNON_MUZZLE_SPEED*0.5/hz as f64)+f.up()*offset;
+        c.fight.as_mut().unwrap().rounds.push(dogfight::Round {position,previous:position,
+            velocity:velocity+DVec3::X*crate::combat::CANNON_MUZZLE_SPEED,hostile,age:0.,damage:0.075,alive:true});
+        c.naval=Some(n);c.tick(&mut f,1./hz as f64);c
+    }
+    #[test] fn swept_player_cannon_hits_moving_cruise_missiles_at_all_rates() {
+        for hz in [60,120,240] {
+            let mut c=shot(hz,0.,false);let n=c.naval.as_ref().unwrap();
+            assert!(!n.rounds[0].alive);assert!(!n.rounds[0].visual.alive);
+            assert_eq!(n.interceptions,1);assert_eq!(c.strikes,1);
+            assert!(c.fight.as_ref().unwrap().rounds.is_empty());
+            let interceptions=n.interceptions;
+            assert!(c.naval.as_mut().unwrap().cannon_intercept(DVec3::ZERO,DVec3::ONE,1.).is_none());
+            assert_eq!(c.naval.as_ref().unwrap().interceptions,interceptions);
+        }
+    }
+    #[test] fn near_misses_and_hostile_bullets_do_not_destroy_cruise_weapons() {
+        for (offset,hostile) in [(1.,false),(0.,true)] {
+            let c=shot(120,offset,hostile);
+            assert!(c.naval.as_ref().unwrap().rounds[0].alive);
+            assert_eq!(c.naval.as_ref().unwrap().interceptions,0);
+            assert_eq!(c.strikes,0);
+        }
+    }
 }

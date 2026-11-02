@@ -10,6 +10,7 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 pub mod ai;
+pub mod jettison;
 pub mod aim9x;
 pub mod radar_visual;
 pub mod smoke_gpu;

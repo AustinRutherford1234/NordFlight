@@ -751,6 +751,12 @@ impl Combat {
                     );
                 }
             } else if !round.hostile {
+                if let Some(point)=self.naval.as_mut().and_then(|n|n.cannon_intercept(old,round.position,dt)) {
+                    round.alive=false;self.strikes+=1;
+                    self.impacts.push(Impact {position:point,age:0.,hit:true});
+                    crate::sound::emit(&mut self.audio_events,crate::sound::Kind::Blast,point,DVec3::ZERO,false);
+                    continue;
+                }
                 for (index, target) in self.targets.iter_mut().enumerate() {
                     if target.alive
                         && let Some(body) = target_bullet_hit(target, old, round.position, dt)

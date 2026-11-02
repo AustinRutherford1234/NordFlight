@@ -1508,6 +1508,7 @@ fn main() {
                         .chain().run_if(start_screen::flight_controls),
 
                     combat::controls.run_if(start_screen::flight_controls),
+                    combat::jettison::controls,
                     hangar::systems.run_if(start_screen::flight_controls),
                     combat::dogfight::buttons.run_if(start_screen::flight_controls),
                     sound::ui.run_if(start_screen::flight_controls),
@@ -2342,7 +2343,7 @@ fn input(
     }
     f.brakes = keys.pressed(KeyCode::KeyB)&&!(keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight));
     let pitch = ((keys.pressed(KeyCode::KeyS) && !(hornet && f.hornet.nws_high)) || keys.pressed(KeyCode::ArrowDown)) as i32
-        - (keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp)) as i32;
+        - ((keys.pressed(KeyCode::KeyW) && !option) || keys.pressed(KeyCode::ArrowUp)) as i32;
     let roll = (keys.pressed(KeyCode::KeyE) || keys.pressed(KeyCode::ArrowRight)) as i32
         - (keys.pressed(KeyCode::KeyQ) || keys.pressed(KeyCode::ArrowLeft)) as i32;
     let yaw = keys.pressed(KeyCode::KeyA) as i32 - keys.pressed(KeyCode::KeyD) as i32;
@@ -3255,15 +3256,15 @@ fn update_hud(
             }
             9 => {
                 if v.help && f.carrier.active {
-                    "CARRIER / F/A-18F\nH hook · G gear · Z/X throttle · Shift full\nOption+Shift+C attach / release catapult (idle, stopped on deck)\nShift full throttle · Enter launch when attached\nOption+C three times to eject\nAlt+G approach guidance · Shift+H close help".into()
+                    "CARRIER / F/A-18F\nH hook · G gear · Z/X throttle · Shift full\nOption+Shift+C attach / release catapult (idle, stopped on deck)\nShift full throttle · Enter launch when attached\nOption+C three times to eject · Option+W three times to dump weapons\nAlt+G approach guidance · Shift+H close help".into()
                 } else if v.help && f.vehicle == Vehicle::Spacecraft {
                     "SPACEFLIGHT  W/S pitch · Q/E roll · A/D yaw\nPOWER  Shift full · Ctrl cut · Z/X adjust\nSTAGING  Space (throttle off) · G landing legs\nGUIDANCE  F7 SAS mode · T assist · M map\nREENTRY  K arm parachutes · N infinite fuel\nWARP  , / . rate · / normal time\nVIEW  C camera · Home recenter · R restart\nPAUSE  P · H help · 9 audio · 0 mute".into()
                 } else if v.help && v.scenario >= 5 {
-                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nCANNON   U fire · {}\nDEFENSE   V flare + chaff · Backspace chaff\nVIEW   C camera · 2 aircraft · 6 missile / 7 return · R restart\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute", if v.index == 3 { "aim large circle at target" } else { "align cross with gun pipper" })
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nCANNON   U fire · {}\nDEFENSE   V flare + chaff · Backspace chaff\nVIEW   C camera · 2 aircraft · 6 missile / 7 return · R restart\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison · Option+W ×3 weapons dump\nAUDIO   9 volume · 0 mute", if v.index == 3 { "aim large circle at target" } else { "align cross with gun pipper" })
                 } else if v.help && v.scenario == 4 {
-                    "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
+                    "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison · Option+W ×3 weapons dump\nAUDIO   9 volume · 0 mute".into()
                 } else if v.help {
-                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Y surface speedbrake · S hold NWS HI at taxi speed · Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing\nCARRIER  Option+Shift+C attach / release (idle, stopped on deck) · Enter launch at full throttle" } else { "" })
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison · Option+W ×3 weapons dump\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Y surface speedbrake · S hold NWS HI at taxi speed · Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject · Option+W ×3 weapons dump" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing\nCARRIER  Option+Shift+C attach / release (idle, stopped on deck) · Enter launch at full throttle" } else { "" })
                 } else {
                     String::new()
                 }
@@ -3558,6 +3559,15 @@ mod camera_input_tests {
         let f=app.world().resource::<Flight>();
         assert!(!f.systems.hornet_strobe_lights && !f.systems.hornet_nav_lights);
         assert!(f.throttle < 1.);
+    }
+    #[test]
+    fn option_w_dump_gesture_does_not_pitch_the_aircraft() {
+        let mut app=scene(false);
+        {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.press(KeyCode::AltLeft);keys.press(KeyCode::KeyW);}
+        app.update();assert_eq!(app.world().resource::<Flight>().controls.x,0.);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyW);
+        app.update();assert_eq!(app.world().resource::<Flight>().controls.x,-1.);
     }
     #[test]
     fn hornet_escape_shortcut_and_reset_work(){

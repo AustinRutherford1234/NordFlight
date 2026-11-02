@@ -355,7 +355,7 @@ pub fn controls(
         (keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight)) as i32 as f32
             - (keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft)) as i32 as f32,
         (keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown)) as i32 as f32
-            - (keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp)) as i32 as f32,
+            - ((keys.pressed(KeyCode::KeyW) && !(keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight))) || keys.pressed(KeyCode::ArrowUp)) as i32 as f32,
     ).normalize_or_zero();
     if axis != Vec2::ZERO {
         let distance = menu.span * 0.4 * time.delta_secs().min(0.1);
