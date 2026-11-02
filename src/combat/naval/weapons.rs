@@ -321,17 +321,20 @@ impl State {
     }
     fn ciws(&mut self, c: &mut Combat, f: &mut Flight, dt: f64) {
         let _measure = crate::performance::span(20);
-        for ship in 0..3 {
+        for &(ship,slot,local_mount) in &CIWS_MOUNTS {
             let s = &self.ships[ship];
-            if s.power < 0.2 || s.sunk || s.gun < 3 {
+            if s.power < 0.2 || s.sunk || s.gun < 3 || s.ciws_ammo[slot]<3 {
                 continue;
             }
-            let mount = carrier::ship_world(f, ship, gun_mount(ship), f.elapsed);
+            let mount = carrier::ship_world(f, ship, local_mount, f.elapsed);
+            let ship_inverse=carrier::ship_rotation(f,ship,f.elapsed).conjugate();
+            let in_arc=|p:DVec3|ship!=0 || (ship_inverse*(p-mount)).x*local_mount.x>=0.;
             let candidate = self
                 .rounds
                 .iter()
                 .filter(|m| {
-                    m.alive && m.kind == Kind::AntiShip && m.position.distance(mount) < 2500.
+                    m.alive && m.kind == Kind::AntiShip && m.position.distance_squared(mount) < 2500f64.powi(2)
+                        && in_arc(m.position) && !ciws_excluded(f,m.position,f.elapsed)
                 })
                 .min_by(|a, b| {
                     a.position
@@ -346,6 +349,7 @@ impl State {
                             c.targets[r.slot].alive
                                 && self.track_for(r.slot).is_some()
                                 && c.targets[r.slot].position.distance(mount) < 1800.
+                                && in_arc(c.targets[r.slot].position) && !ciws_excluded(f,c.targets[r.slot].position,f.elapsed)
                         })
                         .map(|r| TargetId::Aircraft(r.id))
                         .next()
@@ -369,28 +373,32 @@ impl State {
             } else {
                 r.length() / 1100.
             };
+            if ciws_excluded(f,p+v*flight,f.elapsed+flight) {continue;}
             let local = carrier::ship_rotation(f, ship, f.elapsed).conjugate()
                 * (r + relative_v * flight + mount.normalize() * (4.905 * flight * flight));
+            // Carrier edge mounts cover their outboard hemisphere. Hull/island
+            // obstruction checks remain active in addition to these arcs.
+            if ship==0 && local.x*local_mount.x<0. {continue;}
             let yaw = local.x.atan2(-local.z);
             let pitch = local.y.atan2(local.x.hypot(local.z));
             if !(-0.15..1.45).contains(&pitch) {
                 continue;
             }
             let s = &mut self.ships[ship];
-            let dy = (yaw - s.gun_yaw + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+            let dy = (yaw - s.gun_yaw[slot] + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
                 - std::f64::consts::PI;
             let rate = 2.0 * dt;
-            s.gun_yaw += dy.clamp(-rate, rate);
-            s.gun_pitch += (pitch - s.gun_pitch).clamp(-rate, rate);
-            if dy.abs() > 0.025 || (pitch - s.gun_pitch).abs() > 0.025 || self.clock < s.next_burst
+            s.gun_yaw[slot] += dy.clamp(-rate, rate);
+            s.gun_pitch[slot] += (pitch - s.gun_pitch[slot]).clamp(-rate, rate);
+            if dy.abs() > 0.025 || (pitch - s.gun_pitch[slot]).abs() > 0.025 || self.clock < s.next_burst[slot]
             {
                 continue;
             }
             let direction = carrier::ship_rotation(f, ship, f.elapsed)
                 * (DVec3::new(
-                    s.gun_yaw.sin() * s.gun_pitch.cos(),
-                    s.gun_pitch.sin(),
-                    -s.gun_yaw.cos() * s.gun_pitch.cos(),
+                    s.gun_yaw[slot].sin() * s.gun_pitch[slot].cos(),
+                    s.gun_pitch[slot].sin(),
+                    -s.gun_yaw[slot].cos() * s.gun_pitch[slot].cos(),
                 ));
             let burst = Burst {
                 ship,
@@ -404,15 +412,16 @@ impl State {
             };
             if let Some(b) = self.bursts.iter_mut().find(|b| !b.alive) {
                 *b = burst;
-            } else if self.bursts.len() < 256 {
+            } else if self.bursts.len() < 512 {
                 self.bursts.push(burst);
             } else {
                 continue;
             }
             s.gun -= 3;
+            s.ciws_ammo[slot]-=3;
             // Three-round ballistic packets at 25 Hz = 75 rounds/s (4,500 rpm).
             // Advance from the schedule rather than frame time to avoid drift.
-            s.next_burst = s.next_burst.max(self.clock-dt)+0.04;
+            s.next_burst[slot] = s.next_burst[slot].max(self.clock-dt)+0.04;
         }
     }
     fn countermeasures(&mut self, c:&mut Combat, f:&Flight) {
@@ -655,12 +664,29 @@ pub fn launch_mount(ship: usize) -> DVec3 {
         DVec3::new(0., 7.8, -40.)
     }
 }
+// Ship-local attachment estimates fitted to the installed mesh. Four carrier
+// edge stations plus one existing simulated mount per escort. Slot identity is
+// shared by tracking, animation, ammunition and muzzle presentation.
+pub const CIWS_MOUNTS:[(usize,usize,DVec3);6]=[
+    (0,0,DVec3::new(-20.,24.15,-80.)),
+    (0,1,DVec3::new(22.,24.15,-80.)),
+    (0,2,DVec3::new(-32.,24.15,110.)),
+    (0,3,DVec3::new(32.,24.15,110.)),
+    (1,0,DVec3::new(0.,18.,15.)),
+    (2,0,DVec3::new(0.,18.,15.)),
+];
 pub fn gun_mount(ship: usize) -> DVec3 {
-    if ship == 0 {
-        DVec3::new(-35., 23.2, 30.)
-    } else {
-        DVec3::new(0., 18., 15.)
-    }
+    CIWS_MOUNTS.iter().find(|(s,_,_)|*s==ship).unwrap().2
+}
+/// A simple 25 m padded box around each actual imported friendly ship mesh.
+/// Query at predicted impact time as well as now so near-hull intercepts are
+/// inhibited before firing; no invisible infinite-radius sphere around the fleet.
+fn ciws_excluded(f:&Flight,point:DVec3,time:f64)->bool {
+    (0..3).any(|ship|{
+        let (lo,hi)=carrier::collider::bounds(ship);let pad=DVec3::splat(25.);
+        let p=carrier::ship_relative(f,ship,point,time);
+        !p.cmplt(lo-pad).any() && !p.cmpgt(hi+pad).any()
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -1029,7 +1055,7 @@ mod fleet_repair_tests {
    let mount=carrier::ship_world(&f,1,gun_mount(1),0.);
    let target=mount+carrier::rotation(0.)*DVec3::new(-1400.,0.,0.);
    n.round(TargetId::Aircraft(1),TargetId::Ship(1),Kind::AntiShip,target,DVec3::ZERO);
-   n.ships[1].gun_yaw= -std::f64::consts::FRAC_PI_2;
+   n.ships[1].gun_yaw[0]= -std::f64::consts::FRAC_PI_2;
    let initial=n.ships[1].gun;
    for k in 0..hz*2 {f.elapsed=k as f64/hz as f64;n.clock=f.elapsed;n.ciws(&mut c,&mut f,1./hz as f64);}
    let used=initial-n.ships[1].gun;
@@ -1059,7 +1085,7 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
   let mount=carrier::ship_world(f,1,gun_mount(1),0.);
   let p=mount+carrier::rotation(0.)*DVec3::new(-1600.,0.,0.);
   n.round(TargetId::Aircraft(n.raiders[2].id),TargetId::Ship(1),Kind::AntiShip,p,carrier::rotation(0.)*DVec3::X*290.);
-  n.ships[1].gun_yaw= -std::f64::consts::FRAC_PI_2;
+  n.ships[1].gun_yaw[0]= -std::f64::consts::FRAC_PI_2;
   for k in 0..44 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.weapons(c,f,1./120.);}
   println!("NAVAL CIWS ammo={} packets={}",n.ships[1].gun,n.bursts.len());assert!(!n.bursts.is_empty());
   v.restore_camera();v.ship_follow=Some(1);v.zoom=0.4;
@@ -1109,6 +1135,61 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
             assert!(c.naval.as_ref().unwrap().rounds[0].alive);
             assert_eq!(c.naval.as_ref().unwrap().interceptions,0);
             assert_eq!(c.strikes,0);
+        }
+    }
+}
+
+#[cfg(test)] mod ciws_boundary_and_mount_tests {
+    use super::*;
+    #[test] fn padded_boundaries_follow_each_moving_damaged_ship() {
+        for ship in 0..3 {
+            let mut f=flight(true);f.elapsed=123.;
+            f.carrier.motion[ship].offset=DVec3::new(35.,-3.,14.);
+            f.carrier.motion[ship].rotation=DQuat::from_rotation_z(0.13)*DQuat::from_rotation_x(-0.07);
+            let (lo,hi)=carrier::collider::bounds(ship);let center=(lo+hi)*0.5;
+            for local in [center,DVec3::new(hi.x+24.,center.y,center.z)] {
+                assert!(ciws_excluded(&f,carrier::ship_world(&f,ship,local,f.elapsed),f.elapsed));
+            }
+            let outside=DVec3::new(hi.x+26.,center.y,center.z);
+            assert!(!ciws_excluded(&f,carrier::ship_world(&f,ship,outside,f.elapsed),f.elapsed));
+        }
+    }
+    #[test] fn in_hull_target_is_rejected_without_masking_a_valid_target() {
+        let mut f=flight(true);let mut c=Combat::default();let mut n=State::new(1,2,false);
+        n.ships[1].gun=0;n.ships[2].gun=0;
+        let inside=carrier::ship_world(&f,0,DVec3::new(0.,24.,0.),0.);
+        let outside=carrier::ship_world(&f,0,DVec3::new(-1400.,24.15,-80.),0.);
+        n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,inside,DVec3::ZERO);
+        for k in 0..120 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.ciws(&mut c,&mut f,1./120.);}
+        assert!(n.bursts.is_empty());assert_eq!(n.ships[0].gun,12400);
+        n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,outside,DVec3::ZERO);
+        let valid=n.rounds[1].id;
+        for k in 120..360 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.ciws(&mut c,&mut f,1./120.);}
+        assert!(!n.bursts.is_empty());
+        assert!(n.bursts.iter().all(|b|b.target==TargetId::Missile(valid)));
+    }
+    #[test] fn all_four_carrier_mounts_fire_with_independent_magazines_and_aim() {
+        let mut f=flight(true);let mut c=Combat::default();let mut n=State::new(1,2,false);
+        n.ships[1].gun=0;n.ships[2].gun=0;
+        for x in [-1300.,1300.] {
+            let p=carrier::ship_world(&f,0,DVec3::new(x,24.15,0.),0.);
+            n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,DVec3::ZERO);
+        }
+        for k in 0..360 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.ciws(&mut c,&mut f,1./120.);}
+        assert!(n.ships[0].ciws_ammo.iter().all(|a|*a<3100),"inactive mount: {:?}",n.ships[0].ciws_ammo);
+        assert_eq!(n.ships[0].ciws_ammo.iter().sum::<u32>(),n.ships[0].gun);
+        assert_ne!(n.ships[0].gun_yaw[0],n.ships[0].gun_yaw[1]);
+        assert!(n.bursts.len()<=512);
+    }
+    #[test] fn carrier_ciws_pedestals_are_supported_by_the_imported_deck() {
+        let f=flight(true);
+        assert_eq!(CIWS_MOUNTS.iter().filter(|(s,_,_)|*s==0).count(),4);
+        for &(ship,_,mount) in CIWS_MOUNTS.iter().filter(|(s,_,_)|*s==0) {
+            let start=carrier::ship_world(&f,ship,mount+DVec3::Y*4.,0.);
+            let end=carrier::ship_world(&f,ship,mount-DVec3::Y*4.,0.);
+            let hit=carrier::collider::sweep(&f,start,end,0.,0.).expect("mount has no supporting deck");
+            let point=carrier::ship_relative(&f,ship,hit.point,0.);
+            assert!((point.y-(mount.y-0.9)).abs()<0.1,"floating pedestal {mount:?} deck={point:?}");
         }
     }
 }

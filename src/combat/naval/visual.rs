@@ -219,7 +219,7 @@ pub fn setup(
     let cube = meshes.add(Cuboid::new(1., 1., 1.));
     let barrel = meshes.add(Cylinder::new(0.065, 1.8).mesh().resolution(8));
     let pedestal = meshes.add(Cylinder::new(0.9, 1.2).mesh().resolution(16));
-    for index in 0..3 {
+    for index in 0..super::weapons::CIWS_MOUNTS.len() {
         commands
             .spawn((
                 NavalVisual { kind: 6, index },
@@ -273,7 +273,7 @@ pub fn setup(
         base_color:Color::srgba(1.,0.65,0.15,0.75),emissive:LinearRgba::new(18.,6.,0.8,1.),
         unlit:true,alpha_mode:AlphaMode::Add,cull_mode:None,..default()
     });
-    for index in 0..3 {
+    for index in 0..super::weapons::CIWS_MOUNTS.len() {
         commands.spawn((NavalVisual{kind:9,index},Mesh3d(muzzle.clone()),MeshMaterial3d(flash_material.clone()),
             Transform::default(),Visibility::Hidden,bevy::light::NotShadowCaster));
     }
@@ -452,21 +452,22 @@ pub fn draw(
                     }
                 }
                 9 => {
-                    let s=&n.ships[tag.index];
-                    if !s.sunk && n.clock<s.next_burst && s.next_burst-n.clock<=0.041 {
-                        let q=carrier::ship_rotation(&f,tag.index,f.elapsed)
-                            *DQuat::from_rotation_y(-s.gun_yaw)*DQuat::from_rotation_x(s.gun_pitch);
-                        let muzzle=carrier::ship_world(&f,tag.index,super::weapons::gun_mount(tag.index),f.elapsed)
+                    let (ship,slot,at)=super::weapons::CIWS_MOUNTS[tag.index];
+                    let s=&n.ships[ship];
+                    if !s.sunk && n.clock<s.next_burst[slot] && s.next_burst[slot]-n.clock<=0.041 {
+                        let q=carrier::ship_rotation(&f,ship,f.elapsed)
+                            *DQuat::from_rotation_y(-s.gun_yaw[slot])*DQuat::from_rotation_x(s.gun_pitch[slot]);
+                        let muzzle=carrier::ship_world(&f,ship,at,f.elapsed)
                             +q*DVec3::new(0.,0.1,-2.65);
                         let pulse=0.7+0.3*(n.clock*std::f64::consts::TAU*75.).sin().abs() as f32;
                         pose=Some((muzzle,q*DQuat::from_rotation_x(-std::f64::consts::FRAC_PI_2),Vec3::new(pulse,1.5*pulse,pulse)));
                     }
                 }
                 6 | 7 => {
-                    let ship = tag.index;
+                    let (ship,slot,mount) = super::weapons::CIWS_MOUNTS[tag.index];
                     let s = &n.ships[ship];
                     if !s.sunk || s.sink < 30. {
-                        let at = super::weapons::gun_mount(ship)
+                        let at = mount
                             - if tag.kind == 7 {
                                 DVec3::Y * 0.9
                             } else {
@@ -474,8 +475,8 @@ pub fn draw(
                             };
                         let q = carrier::ship_rotation(&f, ship, f.elapsed)
                             * if tag.kind == 6 {
-                                DQuat::from_rotation_y(-s.gun_yaw)
-                                    * DQuat::from_rotation_x(s.gun_pitch)
+                                DQuat::from_rotation_y(-s.gun_yaw[slot])
+                                    * DQuat::from_rotation_x(s.gun_pitch[slot])
                             } else {
                                 DQuat::IDENTITY
                             };
@@ -484,6 +485,11 @@ pub fn draw(
                 }
                 _ => {}
             }
+        }
+        if naval.is_none() && f.carrier.active && matches!(tag.kind,6|7) {
+            let (ship,_,mount)=super::weapons::CIWS_MOUNTS[tag.index];
+            let at=mount-if tag.kind==7 {DVec3::Y*0.9}else{DVec3::ZERO};
+            pose=Some((carrier::ship_world(&f,ship,at,f.elapsed),carrier::ship_rotation(&f,ship,f.elapsed),Vec3::ONE));
         }
         let desired = if pose.is_some() {
             Visibility::Inherited
@@ -506,9 +512,10 @@ pub fn draw(
     }
     if let Some(n)=naval {
         for (tag,mut transform) in &mut rotors {
-            let s=&n.ships[tag.0];
+            let (ship,slot,_)=super::weapons::CIWS_MOUNTS[tag.0];
+            let s=&n.ships[ship];
             // Six barrels: 75 shots/s corresponds to 12.5 rotor revolutions/s.
-            if n.clock<s.next_burst && s.next_burst-n.clock<=0.041 {
+            if n.clock<s.next_burst[slot] && s.next_burst[slot]-n.clock<=0.041 {
                 transform.rotation=Quat::from_rotation_z((n.clock*std::f64::consts::TAU*12.5)as f32);
             }
         }

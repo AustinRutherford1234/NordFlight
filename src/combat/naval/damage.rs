@@ -26,9 +26,10 @@ pub struct Ship {
     pub essm: u16,
     pub gun: u32,
     pub next_launch: f64,
-    pub next_burst: f64,
-    pub gun_yaw: f64,
-    pub gun_pitch: f64,
+    pub next_burst: [f64;4],
+    pub ciws_ammo: [u32;4],
+    pub gun_yaw: [f64;4],
+    pub gun_pitch: [f64;4],
     pub index: usize,
 }
 impl Ship {
@@ -50,11 +51,12 @@ impl Ship {
             sunk: false,
             standard: if index == 0 { 0 } else { 24 },
             essm: if index == 0 { 32 } else { 32 },
-            gun: 3100,
+            gun: if index==0 {12400}else{3100},
+            ciws_ammo: if index==0 {[3100;4]}else{[3100,0,0,0]},
             next_launch: 0.,
-            next_burst: 0.,
-            gun_yaw: 0.,
-            gun_pitch: 0.,
+            next_burst: [0.;4],
+            gun_yaw: [0.;4],
+            gun_pitch: [0.;4],
             index,
         }
     }

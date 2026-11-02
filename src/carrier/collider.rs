@@ -176,6 +176,10 @@ fn burke_skin() -> &'static Skin {
 fn ship_skin(ship: usize) -> &'static Skin {
     if ship == 0 { skin() } else { burke_skin() }
 }
+/// Bounds of the installed collision mesh in that ship's local frame.
+pub fn bounds(ship:usize)->(DVec3,DVec3) {
+    let root=&ship_skin(ship).nodes[0];(root.lo,root.hi)
+}
 fn ship_offset(ship: usize) -> DVec3 {
     if ship == 0 {
         DVec3::ZERO

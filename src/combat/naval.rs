@@ -145,7 +145,7 @@ impl State {
             tracks: Vec::with_capacity(12),
             missile_tracks: Vec::with_capacity(96),
             rounds: Vec::with_capacity(WEAPON_LIMIT),
-            bursts: Vec::with_capacity(256),
+            bursts: Vec::with_capacity(512),
             flashes: Vec::with_capacity(32),
             clock: 0.,
             next_wave: 0.,
