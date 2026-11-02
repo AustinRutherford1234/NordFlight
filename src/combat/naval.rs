@@ -8,6 +8,7 @@ mod weapons;
 mod tracking;
 mod sam;
 mod envelope;
+mod cruise;
 pub mod bomber;
 mod ordnance;
 pub(super) mod tactics;
@@ -144,7 +145,7 @@ impl State {
             tracks: Vec::with_capacity(12),
             missile_tracks: Vec::with_capacity(96),
             rounds: Vec::with_capacity(WEAPON_LIMIT),
-            bursts: Vec::with_capacity(96),
+            bursts: Vec::with_capacity(256),
             flashes: Vec::with_capacity(32),
             clock: 0.,
             next_wave: 0.,
@@ -882,6 +883,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
         v.restore_camera(); v.index=if std::env::var("NORD_MISSILE_PROFILE_VIEW").as_deref()==Ok("external"){0}else{3}; v.yaw=0.; v.pitch=-0.13; v.zoom=1.;
         return;
     }
+    if mode.starts_with("defense-") {weapons::prepare_defense_review(mode,f,c,v);return;}
     if mode.starts_with("sam-") {sam::prepare_review(mode,f,c,v);return;}
     if mode.starts_with("fighter-inspect-") {
         let t=&mut c.targets[0];
@@ -1192,3 +1194,5 @@ fn prepare_missile_profile(c: &mut Combat, f: &Flight) {
     }
     c.naval=Some(n);
 }
+
+pub(crate) fn ciws_review_mount()->DVec3 {weapons::gun_mount(1)}

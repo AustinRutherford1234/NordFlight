@@ -131,6 +131,14 @@ impl State {
         carrier::collider::sweep(f, from + direction * 4., to, 0., 0.2)
             .is_some_and(|h| h.fraction < 0.99)
     }
+    fn launch_clear(&self, f:&Flight, ship:usize, mount:DVec3, target:DVec3)->bool {
+        let up=carrier::ship_rotation(f,ship,f.elapsed)*DVec3::Y;
+        let exit=mount+up*60.;
+        // VLS exits vertically before pitching toward the track. A direct ray
+        // from the hatch to the target incorrectly intersects its own deckhouse.
+        carrier::collider::sweep(f,mount+up*0.4,exit,0.,0.25).is_none()
+            && carrier::collider::sweep(f,exit,target,0.,0.2).is_none_or(|h|h.fraction>=0.99)
+    }
     fn engage(&mut self, c: &Combat, f: &Flight) {
         if self.clock < self.next_engage {
             return;
@@ -190,7 +198,7 @@ impl State {
                     continue;
                 }
                 let committed = self.rounds.iter().filter(|m| {
-                    m.alive && m.target == target
+                    m.alive && !m.sam.ballistic && m.target == target
                         && !matches!(m.kind, Kind::AntiShip | Kind::AirToAir)
                 }).count();
                 if committed >= 2 { continue; }
@@ -203,7 +211,7 @@ impl State {
                 // These geometry queries are pure eligibility checks. Run them
                 // only after cooldown, ammunition, commitments and reachability.
                 if !self.detect(f, ship, p, if matches!(target, TargetId::Missile(_)) {0.1}else{3.})
-                    || self.obstructed(f, ship, mount, p) {
+                    || !self.launch_clear(f, ship, mount, p) {
                     continue;
                 }
                 if self.round(
@@ -289,7 +297,7 @@ impl State {
         let _measure = crate::performance::span(20);
         for ship in 0..3 {
             let s = &self.ships[ship];
-            if s.power < 0.2 || s.sunk || s.gun < 30 {
+            if s.power < 0.2 || s.sunk || s.gun < 3 {
                 continue;
             }
             let mount = carrier::ship_world(f, ship, gun_mount(ship), f.elapsed);
@@ -361,22 +369,24 @@ impl State {
             let burst = Burst {
                 ship,
                 target,
-                position: mount,
-                previous: mount,
+                position: mount+direction*2.4,
+                previous: mount+direction*2.4,
                 velocity: direction * 1100. + carrier::ship_velocity(f, ship, mount, f.elapsed),
                 age: 0.,
-                rounds: 30,
+                rounds: 3,
                 alive: true,
             };
             if let Some(b) = self.bursts.iter_mut().find(|b| !b.alive) {
                 *b = burst;
-            } else if self.bursts.len() < 96 {
+            } else if self.bursts.len() < 256 {
                 self.bursts.push(burst);
             } else {
                 continue;
             }
-            s.gun -= 30;
-            s.next_burst = self.clock + 0.5;
+            s.gun -= 3;
+            // Three-round ballistic packets at 25 Hz = 75 rounds/s (4,500 rpm).
+            // Advance from the schedule rather than frame time to avoid drift.
+            s.next_burst = s.next_burst.max(self.clock-dt)+0.04;
         }
     }
     fn countermeasures(&mut self, c:&mut Combat, f:&Flight) {
@@ -482,11 +492,6 @@ impl State {
             let delta = estimate - m.position;
             let intercept = (delta.length() / m.velocity.length().max(200.)).min(12.);
             let mut goal = estimate + estimated_velocity * intercept;
-            if m.kind == Kind::AntiShip {
-                let height = if delta.length() > 5000. { 18. } else { 5. };
-                let terrain = terrain_height(goal.x, goal.z).max(0.);
-                goal = goal.normalize() * (RADIUS + height + terrain);
-            }
             if matches!(m.source, TargetId::Ship(_)) && m.age < 0.6 {
                 goal = m.position + m.position.normalize() * 500.;
             }
@@ -499,6 +504,8 @@ impl State {
             let compensation = gravity - direction * gravity.dot(direction);
             let guidance = if tracked.is_none() {
                 DVec3::ZERO
+            } else if m.kind == Kind::AntiShip {
+                super::cruise::acceleration(m.position,m.velocity,estimate+estimated_velocity*intercept,f.elapsed)
             } else {
                 (lateral + compensation).clamp_length_max(turn * 9.81)
             };
@@ -566,7 +573,7 @@ impl State {
                 false,
             );
         }
-        for b in self.bursts.iter().filter(|b| b.age == 0.) {
+        for b in self.bursts.iter().filter(|b| b.age == 0. && ((self.clock/0.04).round() as u64)%3==0) {
             crate::sound::emit(
                 &mut c.audio_events,
                 crate::sound::Kind::Cannon,
@@ -900,4 +907,99 @@ mod spike_profile {
         std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
         println!("MISSILE PERIODIC PROFILE {}",serde_json::to_string(&report).unwrap());
     }
+}
+
+#[cfg(test)]
+mod fleet_repair_tests {
+ use super::*;
+ #[test] fn both_burkes_launch_vertically_and_intercept_without_carrier_help() {
+  for ship in [1,2] {
+   let mut f=flight(true);let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();
+   let id=n.raiders[0].id;n.raiders.truncate(1);n.raiders[0].next_shot=1e9;n.raiders[0].stores=0;
+   for t in &mut c.targets {t.alive=false;}c.targets[0].alive=true;
+   for other in 0..3 {n.ships[other].gun=0;if other!=ship {n.ships[other].standard=0;n.ships[other].essm=0;}}
+   let mut launched=false;
+   for k in 0..120*75 {
+    f.elapsed=k as f64/120.;n.clock=f.elapsed;
+    let p=carrier::world(DVec3::new(0.,500.,-14000.+200.*n.clock),n.clock);
+    c.targets[0].position=p;c.targets[0].velocity=carrier::rotation(n.clock)*DVec3::Z*200.;
+    n.tracks=vec![Track{id,position:p,velocity:c.targets[0].velocity,seen:n.clock,hits:5,role:Some(Role::Fighter)}];
+    let mount=carrier::ship_world(&f,ship,launch_mount(ship),f.elapsed);
+    if k==0 {assert!(n.detect(&f,ship,p,3.));assert!(n.obstructed(&f,ship,mount,p));assert!(n.launch_clear(&f,ship,mount,p));}
+    n.weapons(&mut c,&mut f,1./120.);
+    launched|=n.rounds.iter().any(|m|m.source==TargetId::Ship(ship));
+    if !c.targets[0].alive {break;}
+   }
+   assert!(launched,"Burke {ship} did not launch");
+   assert_eq!(n.ship_kills,1,"Burke {ship} did not intercept");
+  }
+ }
+ #[test] fn spent_ballistic_sams_do_not_block_a_fresh_engagement() {
+  let f=flight(true);let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();
+  let id=n.raiders[0].id;let target=TargetId::Aircraft(id);
+  let p=carrier::world(DVec3::new(0.,500.,-14000.),0.);
+  c.targets[0].position=p;c.targets[0].velocity=carrier::rotation(0.)*DVec3::Z*200.;
+  n.tracks=vec![Track{id,position:p,velocity:c.targets[0].velocity,seen:0.,hits:5,role:Some(Role::Fighter)}];
+  for ship in [0,2] {n.ships[ship].essm=0;n.ships[ship].standard=0;}
+  for _ in 0..2 {
+   n.round(TargetId::Ship(1),target,Kind::Essm,p+DVec3::Y*100.,DVec3::Z*100.);
+   n.rounds.last_mut().unwrap().sam.ballistic=true;
+  }
+  n.engage(&c,&f);
+  assert_eq!(n.rounds.len(),3,"spent rounds incorrectly reserved target commitments");
+  assert!(n.rounds[..2].iter().all(|m|m.alive&&m.sam.ballistic));
+ }
+ #[test] fn ciws_uses_75_rounds_per_second_with_bounded_packets() {
+  for hz in [60,120,240] {
+   let mut f=flight(true);let mut c=Combat::default();let mut n=State::new(1,2,false);
+   for ship in 0..3 {if ship!=1 {n.ships[ship].gun=0;}}
+   let mount=carrier::ship_world(&f,1,gun_mount(1),0.);
+   let target=mount+carrier::rotation(0.)*DVec3::new(-1400.,0.,0.);
+   n.round(TargetId::Aircraft(1),TargetId::Ship(1),Kind::AntiShip,target,DVec3::ZERO);
+   n.ships[1].gun_yaw= -std::f64::consts::FRAC_PI_2;
+   let initial=n.ships[1].gun;
+   for k in 0..hz*2 {f.elapsed=k as f64/hz as f64;n.clock=f.elapsed;n.ciws(&mut c,&mut f,1./hz as f64);}
+   let used=initial-n.ships[1].gun;
+   println!("CIWS hz={hz} fired={used} packets={}",n.bursts.len());
+   assert!((147..=153).contains(&used),"cadence drift {used}");
+   assert!(n.bursts.iter().all(|b|b.rounds==3));
+  }
+ }
+}
+
+/// Opt-in scripted native snapshots use the ordinary weapon solver.
+pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mut ViewState) {
+ let mut n=c.naval.take().unwrap();n.rounds.clear();
+ for r in &mut n.raiders {r.next_shot=1e9;r.stores=0;}
+ if mode=="defense-skim" {
+  n.ended=true;
+  let p=carrier::world(DVec3::new(0.,500.,-20000.),0.);
+  let goal=carrier::ship_world(f,0,DVec3::Y*5.,0.);
+  n.round(TargetId::Aircraft(n.raiders[2].id),TargetId::Ship(0),Kind::AntiShip,p,(goal-p).normalize()*290.);
+  tracking::seed(&mut n.rounds[0],goal,carrier::velocity(0.));
+  for k in 0..120*30 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.weapons(c,f,1./120.);}
+  let m=&n.rounds[0];println!("NAVAL SKIM age={} height={} speed={} alive={}",m.age,m.position.length()-RADIUS,m.velocity.length(),m.alive);
+  assert!(m.alive&&(3. ..25.).contains(&(m.position.length()-RADIUS)));
+  v.restore_camera();v.follow_missile(RENDER_MISSILES);v.zoom=3.;v.yaw=1.2;v.pitch=-0.1;
+ } else if mode=="defense-ciws" {
+  for s in &mut n.ships {s.standard=0;s.essm=0;}
+  let mount=carrier::ship_world(f,1,gun_mount(1),0.);
+  let p=mount+carrier::rotation(0.)*DVec3::new(-1600.,0.,0.);
+  n.round(TargetId::Aircraft(n.raiders[2].id),TargetId::Ship(1),Kind::AntiShip,p,carrier::rotation(0.)*DVec3::X*290.);
+  n.ships[1].gun_yaw= -std::f64::consts::FRAC_PI_2;
+  for k in 0..44 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.weapons(c,f,1./120.);}
+  println!("NAVAL CIWS ammo={} packets={}",n.ships[1].gun,n.bursts.len());assert!(!n.bursts.is_empty());
+  v.restore_camera();v.ship_follow=Some(1);v.zoom=0.4;
+ } else {
+  let ship=if mode.ends_with("port"){1}else{2};
+  for s in 0..3 {n.ships[s].gun=0;if s!=ship{n.ships[s].essm=0;n.ships[s].standard=0;}}
+  let id=n.raiders[0].id;let p=carrier::world(DVec3::new(0.,500.,-14000.),0.);
+  c.targets[0].position=p;c.targets[0].velocity=carrier::rotation(0.)*DVec3::Z*200.;
+  n.tracks=vec![Track{id,position:p,velocity:c.targets[0].velocity,seen:0.,hits:5,role:Some(Role::Fighter)}];
+  for k in 0..48 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.weapons(c,f,1./120.);}
+  assert!(n.rounds.iter().any(|m|m.alive&&m.source==TargetId::Ship(ship)));
+  println!("NAVAL BURKE ship={ship} rounds={} ammo={}",n.rounds.len(),n.ships[ship].essm+n.ships[ship].standard);
+  v.restore_camera();v.ship_follow=Some(ship);v.zoom=0.75;
+ }
+ c.naval=Some(n);f.paused=true;
 }

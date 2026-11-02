@@ -7,6 +7,8 @@ pub struct NavalVisual {
     kind: u8,
     index: usize,
 }
+#[derive(Component)]
+pub struct CiwsRotor(pub usize);
 #[derive(Resource)]
 pub struct Models {
     weapons:[Handle<Mesh>;4],
@@ -235,14 +237,27 @@ pub fn setup(
                     MeshMaterial3d(skin.clone()),
                     Transform::from_xyz(0., 1.7, 0.45).with_scale(Vec3::new(0.75, 1.0, 0.8)),
                 ));
-                for i in 0..6 {
-                    let a = i as f32 * std::f32::consts::TAU / 6.;
-                    p.spawn((
-                        Mesh3d(barrel.clone()),
-                        MeshMaterial3d(dark.clone()),
-                        Transform::from_xyz(a.cos() * 0.16, 0.1 + a.sin() * 0.16, -1.5)
-                            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-                    ));
+                p.spawn((CiwsRotor(index),Transform::from_xyz(0.,0.1,-0.6),Visibility::Inherited))
+                    .with_children(|rotor| {
+                        for i in 0..6 {
+                            let a=i as f32*std::f32::consts::TAU/6.;
+                            rotor.spawn((Mesh3d(barrel.clone()),MeshMaterial3d(dark.clone()),
+                                Transform::from_xyz(a.cos()*0.16,a.sin()*0.16,-0.9)
+                                    .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))));
+                        }
+                        for z in [-0.15,-1.5] {
+                            rotor.spawn((Mesh3d(pedestal.clone()),MeshMaterial3d(dark.clone()),
+                                Transform::from_xyz(0.,0.,z).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                                    .with_scale(Vec3::new(0.25,0.08,0.25))));
+                        }
+                    });
+                for side in [-1.,1.] {
+                    p.spawn((Mesh3d(cube.clone()),MeshMaterial3d(dark.clone()),
+                        Transform::from_xyz(side*0.73,0.25,0.05).with_scale(Vec3::new(0.12,0.8,0.95))));
+                    for y in [0.05,0.25,0.45] {
+                        p.spawn((Mesh3d(cube.clone()),MeshMaterial3d(skin.clone()),
+                            Transform::from_xyz(side*0.8,y,0.2).with_scale(Vec3::new(0.035,0.045,0.7))));
+                    }
                 }
             });
         commands.spawn((
@@ -252,6 +267,15 @@ pub fn setup(
             Transform::default(),
             Visibility::Hidden,
         ));
+    }
+    let muzzle=meshes.add(Cone::new(0.38,1.8).mesh().resolution(10));
+    let flash_material=materials.add(StandardMaterial {
+        base_color:Color::srgba(1.,0.65,0.15,0.75),emissive:LinearRgba::new(18.,6.,0.8,1.),
+        unlit:true,alpha_mode:AlphaMode::Add,cull_mode:None,..default()
+    });
+    for index in 0..3 {
+        commands.spawn((NavalVisual{kind:9,index},Mesh3d(muzzle.clone()),MeshMaterial3d(flash_material.clone()),
+            Transform::default(),Visibility::Hidden,bevy::light::NotShadowCaster));
     }
     let smoke_quad = meshes.add(Rectangle::new(2., 2.));
     for index in 0..72 {
@@ -305,9 +329,10 @@ pub fn draw(
         &mut Transform,
         &mut Visibility,
         Option<&mut Mesh3d>,
-    )>,
+    ),Without<CiwsRotor>>,
     mut gizmos: Gizmos,
     camera: Query<&GlobalTransform, With<crate::FlightCamera>>,
+    mut rotors:Query<(&CiwsRotor,&mut Transform),Without<NavalVisual>>,
 ) {
     let _measure = crate::performance::span(23);
     let naval = c.naval.as_ref();
@@ -426,6 +451,17 @@ pub fn draw(
                         ));
                     }
                 }
+                9 => {
+                    let s=&n.ships[tag.index];
+                    if !s.sunk && n.clock<s.next_burst && s.next_burst-n.clock<=0.041 {
+                        let q=carrier::ship_rotation(&f,tag.index,f.elapsed)
+                            *DQuat::from_rotation_y(-s.gun_yaw)*DQuat::from_rotation_x(s.gun_pitch);
+                        let muzzle=carrier::ship_world(&f,tag.index,super::weapons::gun_mount(tag.index),f.elapsed)
+                            +q*DVec3::new(0.,0.1,-2.65);
+                        let pulse=0.7+0.3*(n.clock*std::f64::consts::TAU*75.).sin().abs() as f32;
+                        pose=Some((muzzle,q*DQuat::from_rotation_x(-std::f64::consts::FRAC_PI_2),Vec3::new(pulse,1.5*pulse,pulse)));
+                    }
+                }
                 6 | 7 => {
                     let ship = tag.index;
                     let s = &n.ships[ship];
@@ -468,12 +504,23 @@ pub fn draw(
             transform.scale = s;
         }
     }
-    if let Some(n) = naval {
-        for b in n.bursts.iter().filter(|b| b.alive) {
-            let a = crate::world::local(b.position, &f);
-            let d =
-                (crate::world::frame(&f).conjugate() * b.velocity.normalize_or(DVec3::Y)).as_vec3();
-            gizmos.line(a, a - d * 30., Color::srgb(1., 0.85, 0.3));
+    if let Some(n)=naval {
+        for (tag,mut transform) in &mut rotors {
+            let s=&n.ships[tag.0];
+            // Six barrels: 75 shots/s corresponds to 12.5 rotor revolutions/s.
+            if n.clock<s.next_burst && s.next_burst-n.clock<=0.041 {
+                transform.rotation=Quat::from_rotation_z((n.clock*std::f64::consts::TAU*12.5)as f32);
+            }
+        }
+        for b in n.bursts.iter().filter(|b|b.alive) {
+            let d=b.velocity.normalize_or(DVec3::Y);
+            for j in 0..b.rounds {
+                let p=b.position-d*(j as f64*1100./75.);
+                let a=crate::world::local(p,&f);
+                let tail=crate::world::local(p-d*8.,&f);
+                gizmos.line(a,tail,Color::srgb(4.,1.1,0.12));
+                gizmos.line(a,crate::world::local(p-d*2.5,&f),Color::srgb(8.,6.,2.));
+            }
         }
     }
 }

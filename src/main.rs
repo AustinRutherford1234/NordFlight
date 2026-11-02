@@ -2799,6 +2799,11 @@ fn update_camera(
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {
+        if mode=="defense-ciws" {
+            let q=world::local_rot(carrier::ship_rotation(&f,1,f.elapsed),&f);
+            target=local(carrier::ship_world(&f,1,combat::naval::ciws_review_mount(),f.elapsed),&f);
+            p=target+q*Vec3::new(-32.,15.,35.);up_view=q*Vec3::Y;
+        }
         if mode.starts_with("fighter-inspect-") {
             if let Some(t)=combat.targets.first() {
                 let q=world::local_rot(t.orientation,&f);let center=local(t.position,&f);
