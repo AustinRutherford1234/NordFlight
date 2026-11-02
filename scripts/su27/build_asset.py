@@ -1,59 +1,83 @@
-"""Bake user-supplied CC BY Su-27P to metre-scale shared static exterior LODs."""
+"""Bake the CC BY Su-27P maintenance-pose source to closed, airborne LODs.
+
+Keep cockpit glazing and the fitted original radome separate from hull decimation.
+The source lid and radome are open around their own object origins, not a shared
+invented hinge. All transforms below are baked before glTF export.
+"""
 from pathlib import Path
-import bpy,json,hashlib,math
+import bpy,bmesh,json,hashlib,math
 from mathutils import Matrix
 ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/'assets/aircraft/su27';SOURCE=OUT/'source/original.glb'
 bpy.ops.wm.read_factory_settings(use_empty=True);bpy.ops.import_scene.gltf(filepath=str(SOURCE));bpy.context.view_layer.update()
-# Blender source nose is -Y, up +Z. glTF export maps Blender +Y to body -Z.
-scale=21.9/(14.967+8.0);center=(14.967-8.0)/2
+scale=21.9/22.967;center=(14.967-8.0)/2
 conversion=Matrix(((-scale,0,0,0),(0,-scale,0,center*scale),(0,0,scale,1.0*scale),(0,0,0,1)))
-meshes=[];removed=[]
+parts=[];removed=[]
 for o in list(bpy.data.objects):
  if o.type!='MESH':continue
  name=o.name.lower()
  if any(k in name for k in ['gear','damper','bomb','ecm','fijo','sop','aam_wings']):removed.append(o.name);continue
- if name.startswith('nose_'):
-  removed.append(o.name);continue
- matrix=o.matrix_world
- if name.startswith(('canopy_','glass_')):
-  hinge=__import__('mathutils').Vector((0.,-0.17,-0.5))
-  matrix=Matrix.Translation(hinge)@Matrix.Rotation(math.radians(45),4,'X')@Matrix.Translation(-hinge)@matrix
+ matrix=o.matrix_world.copy();group='hull'
+ if name.startswith(('canopy_','glass_','nose_material')):
+  # Close each opened part around the actual authored pivot, in source world.
+  hinge=matrix.translation.copy();angle=125 if name.startswith('nose_material') else 40
+  matrix=Matrix.Translation(hinge)@Matrix.Rotation(math.radians(angle),4,'X')@Matrix.Translation(-hinge)@matrix
+ if name.startswith('nose_material'):group='radome'
+ elif name.startswith('canopy_'):group='canopy_frame'
+ elif name.startswith(('glass_','windshield_')):group='glazing'
+ elif name.startswith('seats_'):group='seat'
  mesh=o.data.copy();mesh.transform(conversion@matrix)
- obj=bpy.data.objects.new('Su27_'+o.name,mesh);bpy.context.collection.objects.link(obj);meshes.append(obj)
-# The supplied radome is modeled in its raised maintenance pose. Replace it
-# with an original closed ogive fitted to the imported forward fuselage.
-def radome(rings,segments):
- verts=[];faces=[]
- for j in range(rings+1):
-  t=j/rings;radius=0.49*math.sin(t*math.pi/2)
-  for k in range(segments):
-   a=k*math.tau/segments;verts.append(conversion@__import__('mathutils').Vector((-0.015+radius*math.cos(a),-8.+2.9*t,-1.35+radius*0.65*math.sin(a))))
- for j in range(rings):
-  for k in range(segments):a=j*segments+k;b=j*segments+(k+1)%segments;faces.append((a,a+segments,b+segments,b))
- faces.append(tuple(reversed(range(rings*segments,(rings+1)*segments))))
- mesh=bpy.data.meshes.new('ClosedRadome');mesh.from_pydata(verts,[],faces);mesh.update()
- obj=bpy.data.objects.new('Su27ClosedRadome',mesh);bpy.context.collection.objects.link(obj)
- mat=bpy.data.materials.new('RadomeGray');mat.diffuse_color=(0.20,0.27,0.29,1);mat.use_nodes=True
- mat.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=mat.diffuse_color;mesh.materials.append(mat)
- for poly in mesh.polygons:poly.use_smooth=True
- return obj
+ if group=='seat':mesh.transform(Matrix.Translation((0.,0.,-.20)))
+ # Preserve UVs and winding after baking; avoid relying on negative-scale nodes.
+ mesh.update()
+ obj=bpy.data.objects.new('Su27_'+group+'_'+o.name,mesh);bpy.context.collection.objects.link(obj);parts.append((obj,group))
+ for mat in mesh.materials:
+  if mat.use_nodes:
+   bs=mat.node_tree.nodes.get('Principled BSDF')
+   if bs:bs.inputs['Roughness'].default_value=.52
+  if group=='glazing':
+   # A visible blue-gray coated surface, not almost-invisible 0.157-alpha glass.
+   mat.name='Su27Glazing';mat.diffuse_color=(.12,.24,.30,.64);mat.use_backface_culling=False;mat.surface_render_method='BLENDED'
+   bs=mat.node_tree.nodes.get('Principled BSDF')
+   for key in ['Base Color','Alpha','Roughness','Metallic','Transmission Weight']:
+    for link in list(bs.inputs[key].links):mat.node_tree.links.remove(link)
+   bs.inputs['Base Color'].default_value=(.12,.24,.30,1);bs.inputs['Alpha'].default_value=.64;bs.inputs['Roughness'].default_value=.19;bs.inputs['Metallic'].default_value=.22;bs.inputs['Transmission Weight'].default_value=0.
 for o in list(bpy.data.objects):
- if o not in meshes:bpy.data.objects.remove(o,do_unlink=True)
-for m in bpy.data.materials:
- if m.use_nodes:
-  bs=m.node_tree.nodes.get('Principled BSDF')
-  if bs:bs.inputs['Roughness'].default_value=.52
-# Material-batch meshes while retaining UVs and canopy materials.
-bpy.ops.object.select_all(action='SELECT');bpy.context.view_layer.objects.active=meshes[0];bpy.ops.object.join();hull=bpy.context.object;hull.name='Su27AirborneExterior';base=hull.data.copy()
-meta={'author':'Rhine_Lab_Muelsyse','license':'CC BY 4.0','source':'https://sketchfab.com/3d-models/sukhoi-su-27p-flanker-b-4b73e72471b440be949b5cbc3ca36184','source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'length_m':21.9,'nose_body':[0,0,-1],'removed':removed,'lods':[]}
-for i,ratio in enumerate([.26,.09,.027]):
- hull.data=base.copy()
- if ratio<1:
-  mod=hull.modifiers.new('Distance LOD','DECIMATE');mod.ratio=ratio;bpy.ops.object.modifier_apply(modifier=mod.name)
- nose=radome(*[(12,24),(8,16),(5,8)][i])
- hull.data.calc_loop_triangles()
+ if o not in [p[0]for p in parts]:bpy.data.objects.remove(o,do_unlink=True)
+# Batch the opaque hull independently; critical silhouettes have their own budget.
+hulls=[o for o,g in parts if g=='hull'];bpy.ops.object.select_all(action='DESELECT')
+for o in hulls:o.select_set(True)
+bpy.context.view_layer.objects.active=hulls[0];bpy.ops.object.join();hull=bpy.context.object;hull.name='Su27AirborneExterior'
+parts=[(hull,'hull')]+[(o,g)for o,g in parts if g!='hull'];bases=[(o,g,o.data.copy())for o,g in parts]
+ratios={'hull':[.225,.075,.027],'radome':[1.,.5,.1],'canopy_frame':[1.,.35,.05],'glazing':[1.,.5,.1],'seat':[.16,.04,.003]}
+meta={'author':'Rhine_Lab_Muelsyse','license':'CC BY 4.0','source':'https://sketchfab.com/3d-models/sukhoi-su-27p-flanker-b-4b73e72471b440be949b5cbc3ca36184','source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'length_m':21.9,'nose_body':[0,0,-1],'removed':removed,'repair':'Original fitted radome closed 125 degrees; canopy closed 40 degrees about authored origins; separate glazing/frame LOD budgets.','lods':[]}
+close_hull=None
+def forward_skin(level):
+ # Reuse the known-good close mesh around the cockpit and radome join.
+ mesh=close_hull.copy();bm=bmesh.new();bm.from_mesh(mesh)
+ bmesh.ops.bisect_plane(bm,geom=list(bm.verts)+list(bm.edges)+list(bm.faces),dist=.00001,plane_co=(0,3.4,0),plane_no=(0,1,0),clear_inner=True)
+ bm.to_mesh(mesh);bm.free();mesh.update()
+ o=bpy.data.objects.new('Su27DistanceForwardSkin',mesh);bpy.context.collection.objects.link(o)
+ if level==2:
+  bpy.context.view_layer.objects.active=o;mod=o.modifiers.new('Forward silhouette LOD','DECIMATE');mod.ratio=.45;bpy.ops.object.modifier_apply(modifier=mod.name)
+ return o
+for i in range(3):
+ counts={}
+ for o,g,base in bases:
+  o.data=base.copy();bpy.context.view_layer.objects.active=o
+  ratio=ratios[g][i]
+  if ratio<1:
+   mod=o.modifiers.new('Distance LOD','DECIMATE');mod.ratio=ratio;bpy.ops.object.modifier_apply(modifier=mod.name)
+  if i and g=='hull':
+   # Replace the aggressively simplified forward skin as a complete region,
+   # rather than leaving stretched source triangles over the backing surface.
+   bm=bmesh.new();bm.from_mesh(o.data)
+   bmesh.ops.bisect_plane(bm,geom=list(bm.verts)+list(bm.edges)+list(bm.faces),dist=.00001,plane_co=(0,3.4,0),plane_no=(0,1,0),clear_outer=True)
+   bm.to_mesh(o.data);bm.free();o.data.update()
+  o.data.calc_loop_triangles();counts[g]=counts.get(g,0)+len(o.data.loop_triangles)
+ if i==0:close_hull=hull.data.copy()
+ skin=forward_skin(i)if i else None
+ if skin:skin.data.calc_loop_triangles();counts['forward_skin']=len(skin.data.loop_triangles)
  bpy.ops.export_scene.gltf(filepath=str(OUT/f'lod{i}.glb'),export_format='GLB',export_animations=False,export_yup=True,export_apply=True)
- nose.data.calc_loop_triangles()
- meta['lods'].append({'triangles':len(hull.data.loop_triangles)+len(nose.data.loop_triangles),'bytes':(OUT/f'lod{i}.glb').stat().st_size})
- bpy.data.objects.remove(nose,do_unlink=True)
+ meta['lods'].append({'triangles':sum(counts.values()),'parts':counts,'bytes':(OUT/f'lod{i}.glb').stat().st_size})
+ if skin:bpy.data.objects.remove(skin,do_unlink=True)
 (OUT/'inspection.json').write_text(json.dumps(meta,indent=2)+'\n');print(json.dumps(meta))

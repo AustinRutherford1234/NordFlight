@@ -872,6 +872,12 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
     v.help = false;
     start(c, f, v.generation, 1);
     if mode.starts_with("sam-") {sam::prepare_review(mode,f,c,v);return;}
+    if mode.starts_with("fighter-inspect-") {
+        let t=&mut c.targets[0];
+        t.position=f.position+f.forward()*180.+f.up()*80.;
+        t.orientation=carrier::rotation(f.elapsed);t.velocity=t.orientation*DVec3::NEG_Z*250.;
+        v.restore_camera();v.follow_aircraft(0);f.paused=true;return;
+    }
     if mode.starts_with("flight-model-") {
         let bomber=mode.ends_with("bomber");let slot=if bomber {2}else{0};
         let t=&mut c.targets[slot];t.position=carrier::world(DVec3::new(30000.,11000.,-40000.),0.);

@@ -26,7 +26,6 @@
     "Left_Gear_Material #106_0",
     "nose_gear_hatch_Material #106_0",
     "nose_gear_Material #106_0",
-    "nose_Material #106_0",
     "Right_Damper_Material #106_0",
     "Right_Gear_Material #106_0",
     "SopDFR_Material #106_0",
@@ -35,18 +34,42 @@
     "SopIFCB_Material #106_0",
     "SopIFMI_Material #106_0"
   ],
+  "repair": "Original fitted radome closed 125 degrees; canopy closed 40 degrees about authored origins; separate glazing/frame LOD budgets.",
   "lods": [
     {
-      "triangles": 7708,
-      "bytes": 10468132
+      "triangles": 7894,
+      "parts": {
+        "hull": 5084,
+        "canopy_frame": 1014,
+        "glazing": 591,
+        "radome": 702,
+        "seat": 503
+      },
+      "bytes": 10460160
     },
     {
-      "triangles": 2731,
-      "bytes": 10221140
+      "triangles": 4122,
+      "parts": {
+        "hull": 1237,
+        "canopy_frame": 354,
+        "glazing": 294,
+        "radome": 351,
+        "seat": 125,
+        "forward_skin": 1761
+      },
+      "bytes": 10282860
     },
     {
-      "triangles": 824,
-      "bytes": 10113876
+      "triangles": 1484,
+      "parts": {
+        "hull": 486,
+        "canopy_frame": 49,
+        "glazing": 57,
+        "radome": 69,
+        "seat": 31,
+        "forward_skin": 792
+      },
+      "bytes": 10155140
     }
   ]
 }

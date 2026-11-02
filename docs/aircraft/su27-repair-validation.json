@@ -1,0 +1,43 @@
+{
+  "game_tests": {
+    "passed": 771,
+    "failed": 0,
+    "seconds": 65.17
+  },
+  "triangle_counts": [
+    7894,
+    4122,
+    1484
+  ],
+  "installed_assets": [
+    {
+      "lod": 0,
+      "sha256": "41426ca16a07d1f3fe87b9a4634de63e079aaa02fb69c8f341468ca00bea7c32"
+    },
+    {
+      "lod": 1,
+      "sha256": "83d1660141ef4a8b81c7e3f299d22bed7320e1663e78b4cf81b27fd2558266f4"
+    },
+    {
+      "lod": 2,
+      "sha256": "78f366052c306e5426ec89f5fe2b1d2012093eb65914756662040d71d61e3949"
+    }
+  ],
+  "native_review": {
+    "seconds": 61.99400954200246,
+    "captures": [
+      "right",
+      "left",
+      "nose",
+      "canopy"
+    ],
+    "restoration_handler_completed": true
+  },
+  "native_views_inspected": [
+    "right",
+    "left",
+    "nose",
+    "canopy"
+  ],
+  "limits": "Scripted static views; no FPS improvement or comprehensive aircraft accuracy claim."
+}

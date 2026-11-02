@@ -2752,6 +2752,18 @@ fn update_camera(
         up_view=q*Vec3::Y;
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
+    if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {
+        if mode.starts_with("fighter-inspect-") {
+            if let Some(t)=combat.targets.first() {
+                let q=world::local_rot(t.orientation,&f);let center=local(t.position,&f);
+                let (aim,offset)=if mode.ends_with("canopy") {(Vec3::new(0.,0.5,-5.3),Vec3::new(4.,2.8,-3.))}
+                    else if mode.ends_with("nose") {(Vec3::new(0.,-0.1,-8.4),Vec3::new(5.5,2.,-16.))}
+                    else if mode.ends_with("left") {(Vec3::new(0.,0.,-5.5),Vec3::new(-13.,1.,-5.5))}
+                    else {(Vec3::new(0.,0.,-5.5),Vec3::new(13.,1.,-5.5))};
+                target=center+q*aim;p=center+q*offset;up_view=q*Vec3::Y;
+            }
+        }
+    }
     if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("sam-")) {
         if let Some(m)=combat.naval.as_ref().and_then(|n|n.rounds.first()) {
             target=local(m.position,&f);let direction=m.velocity.normalize_or(f.forward());let up=m.position.normalize();let right=direction.cross(up).normalize_or(bevy::math::DVec3::X);

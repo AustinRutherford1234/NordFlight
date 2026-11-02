@@ -5,3 +5,7 @@ https://creativecommons.org/licenses/by/4.0/
 Changes for Nord Flight: scale and coordinate normalization, static airborne exterior,
 removed gear/bombs/ECM geometry, material batching, distance LOD simplification.
 Original user-downloaded GLB retained in source/original.glb.
+November 2026 repairs: restored original radome in its closed flight pose,
+closed canopy around authored pivot, lowered seat inside glazing, revised coated
+canopy material, separate cockpit/radome simplification and protected forward
+fuselage geometry in distance LODs. Source textures and UV mapping retained.
