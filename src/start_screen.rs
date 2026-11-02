@@ -368,6 +368,7 @@ pub fn controls(
             menu.open = true;
             menu.launched = true;
             menu.page = Page::Pause;
+            menu.back = Page::Pause;
             menu.dirty = true;
             combat.stop_gun();
             keys.clear_just_pressed(KeyCode::Escape);
@@ -450,6 +451,7 @@ pub fn controls(
             }
             901 => {
                 menu.page = Page::Setup;
+                menu.back = Page::Setup;
                 hangar.open = false;
                 bvr.open = false;
             }
@@ -462,19 +464,27 @@ pub fn controls(
                     leave = true;
                 }
             }
-            903 => {
-                menu.back = menu.page;
-                menu.page = Page::Settings;
+            903 | 904 => {
+                // Settings and Controls are siblings. Reopening either page or
+                // switching between them must retain the original return page.
+                if matches!(menu.page, Page::Setup | Page::Pause) {
+                    menu.back = menu.page;
+                }
+                menu.page = if id == 903 {Page::Settings} else {Page::Controls};
             }
-            904 => {
-                menu.back = menu.page;
-                menu.page = Page::Controls;
+            906 if menu.launched => {
+                menu.open = false;
+                f.paused = menu.saved_pause;
+                leave = true;
             }
             905 => {
                 quit.write(AppExit::Success);
             }
             _ => {}
         }
+        // Do not let a simultaneous Escape or stale button event navigate again
+        // after launch/resume has already closed the menu.
+        if leave {break;}
     }
     if menu.open {
         f.paused = true;
@@ -530,6 +540,12 @@ pub fn ui(
                 label(p,"ATMOSPHERE  •  ORBIT  •  BEYOND",11.,Color::srgb(0.48,0.75,0.78));
             });
         });
+        if matches!(menu.page,Page::Settings|Page::Controls) {
+            row(p,|p| {
+                button(p,902,"BACK",false);
+                if menu.launched {button(p,906,"RESUME FLIGHT",true);}
+            });
+        }
         if menu.page==Page::Pause {
             heading(p,"FLIGHT PAUSED");
             label(p,"Your current flight is held. Resume it, or configure a new mission from the main menu.",17.,Color::srgb(0.78,0.87,0.91));
@@ -539,7 +555,6 @@ pub fn ui(
             label(p,"W / S     Pitch\nQ / E     Roll\nA / D     Yaw\nShift     Full throttle\nCtrl       Cut throttle\nZ / X     Adjust throttle\nG          Landing gear\nB          Wheel brakes\nT          Flight-by-wire\nY          F-35B STOVL conversion\nC          Flight camera\nMouse drag   Look / orbit\nHome      Recenter cockpit\nM          Tactical / orbital map\nTab       Next target\nO          Missile type\nSpace    Launch missile\nU          Cannon\nV          Flares and chaff\n, / .      Decrease / increase warp\n/           Normal time\nP          Pause\nEsc        Pause menu",16.,Color::srgb(0.82,0.90,0.93));
             heading(p,"SPACECRAFT");
             label(p,"Use the in-flight SAS panel for attitude targets and the orbital map for maneuver planning. The warp panel edits rates and simulation timestep.",16.,Color::srgb(0.66,0.80,0.84));
-            button(p,902,"BACK",false);
         } else if menu.page==Page::Settings {
             heading(p,"PILOT G-LOC / F-22 CREW");
             button(p,234,if cockpit_g_effects{"COCKPIT G EFFECTS: ON"}else{"COCKPIT G EFFECTS: OFF"},cockpit_g_effects);
@@ -550,7 +565,6 @@ pub fn ui(
             heading(p,&format!("MASTER AUDIO  /  {}%",(audio.menu_level()*100.).round()));
             row(p,|p| {button(p,301,"− VOLUME",false);button(p,302,"+ VOLUME",false);button(p,303,if audio.menu_muted(){"UNMUTE"}else{"MUTE"},audio.menu_muted());});
             label(p,"Audio is saved locally. Graphics uses the existing two presets. In flight, Warp Settings configures timestep and warp rates without changing simulation fidelity here.",15.,Color::srgb(0.64,0.78,0.82));
-            button(p,902,"BACK",false);
         } else {
             heading(p,"01 / CHOOSE YOUR DOMAIN");
             row(p,|p| {button(p,1,"ATMOSPHERIC FLIGHT",!menu.space);button(p,2,"SPACEFLIGHT",menu.space);});
@@ -592,7 +606,7 @@ pub fn ui(
             label(p,"Enter to fly  /  launching starts a fresh scenario",12.,Color::srgb(0.48,0.68,0.73));
             if menu.launched {button(p,902,"RESUME PREVIOUS FLIGHT",false);}
         }
-        row(p,|p| {button(p,903,"SETTINGS",false);button(p,904,"CONTROLS",false);button(p,905,"QUIT",false);});
+        row(p,|p| {button(p,903,"SETTINGS",menu.page==Page::Settings);button(p,904,"CONTROLS",menu.page==Page::Controls);button(p,905,"QUIT",false);});
     });
 }
 
@@ -834,6 +848,73 @@ mod tests {
                 )
             );
         }
+    }
+    #[test]
+    fn settings_and_controls_always_return_to_the_flight_pause_menu() {
+        for paused in [false,true] {
+            for sequence in [&[903,903][..],&[904,904][..],&[903,904,903,904][..]] {
+                let mut app=app();
+                app.world_mut().resource_mut::<Flight>().paused=paused;
+                let before=app.world().resource::<Flight>().clone();
+                app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+                app.update();
+                for &id in sequence {click(&mut app,id);}
+                click(&mut app,902);
+                assert!(app.world().resource::<Menu>().page==Page::Pause,"Back got trapped in a submenu");
+                assert!(app.world().resource::<Menu>().open);
+                click(&mut app,902);
+                assert!(!app.world().resource::<Menu>().open);
+                let after=app.world().resource::<Flight>();
+                assert_eq!(after.paused,paused);
+                assert_eq!((after.position,after.velocity,after.orientation,after.elapsed,after.fuel),
+                    (before.position,before.velocity,before.orientation,before.elapsed,before.fuel));
+            }
+        }
+    }
+    #[test]
+    fn preflight_submenu_switching_returns_to_setup_without_starting_a_flight() {
+        let mut app=app();app.world_mut().resource_mut::<Menu>().open=true;
+        for id in [903,904,903,903,902] {click(&mut app,id);}
+        let menu=app.world().resource::<Menu>();
+        assert!(menu.open && !menu.launched && menu.page==Page::Setup);
+    }
+    #[test]
+    fn direct_resume_from_either_submenu_restores_pause_and_clears_inputs() {
+        for paused in [false,true] {
+            for submenu in [903,904] {
+                let mut app=app();
+                app.world_mut().resource_mut::<Flight>().paused=paused;
+                app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+                app.update();click(&mut app,submenu);
+                app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyW);
+                app.world_mut().resource_mut::<ButtonInput<MouseButton>>().press(MouseButton::Left);
+                click(&mut app,906);
+                assert!(!app.world().resource::<Menu>().open);
+                assert_eq!(app.world().resource::<Flight>().paused,paused);
+                assert!(!app.world().resource::<ButtonInput<KeyCode>>().pressed(KeyCode::KeyW));
+                assert!(!app.world().resource::<ButtonInput<MouseButton>>().pressed(MouseButton::Left));
+                // Reopening starts a fresh Pause -> submenu -> Back path.
+                app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+                app.update();click(&mut app,submenu);click(&mut app,902);
+                assert!(app.world().resource::<Menu>().page==Page::Pause);
+            }
+        }
+    }
+    #[test]
+    fn escape_backs_out_of_submenus_then_resumes_without_sticking() {
+        let mut app=app();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+        app.update();click(&mut app,903);click(&mut app,904);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+        app.update();
+        assert!(app.world().resource::<Menu>().page==Page::Pause);
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+        app.update();
+        assert!(!app.world().resource::<Menu>().open);
+        assert!(!app.world().resource::<Flight>().paused);
+        assert!(!app.world().resource::<ButtonInput<KeyCode>>().just_pressed(KeyCode::Escape));
     }
     #[test]
     fn launch_uses_selected_aircraft_bvr_and_space_configuration() {
