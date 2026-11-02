@@ -196,3 +196,10 @@ pub fn exhaust() -> Mesh {
     m.compute_normals();
     m
 }
+
+/// Exact representative render geometry, including main wings and tail fins.
+/// Cached once; the BVH rejects distant segments before triangle work.
+pub fn cruise_projectile_hit(start:DVec3,end:DVec3)->Option<f64> {
+    static SKIN:std::sync::OnceLock<crate::carrier::collider::ProjectileMesh>=std::sync::OnceLock::new();
+    SKIN.get_or_init(||crate::carrier::collider::ProjectileMesh::new(&mesh(Kind::AntiShip))).sweep(start,end,0.01)
+}

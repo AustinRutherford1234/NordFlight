@@ -4,25 +4,26 @@ fn closest(a: DVec3, b: DVec3) -> f64 {
     (a + d * (-a.dot(d) / d.length_squared().max(1e-12)).clamp(0., 1.)).length()
 }
 impl State {
-    /// Sweep a bullet against each moving cruise body's representative ellipsoid.
-    /// Naval weapons advance after player bullets, so predict their endpoint for
-    /// this same interval rather than reusing the previous interval's sweep.
+    /// Sweep the bullet against the rendered cruise body, wings and fins.
+    /// Naval weapons advance after bullets, so predict translation over this
+    /// same interval; the bullet's endpoints alone need never touch the mesh.
     pub(crate) fn cannon_intercept(&mut self,from:DVec3,to:DVec3,dt:f64)->Option<DVec3> {
-        let (length,diameter)=ordnance::dimensions(Kind::AntiShip);
-        let half=length as f64*0.5;let radius=diameter as f64*0.5+0.01;
+        self.cannon_intercept_before(from,to,dt,1.)
+    }
+    pub(crate) fn cannon_intercept_before(&mut self,from:DVec3,to:DVec3,dt:f64,limit:f64)->Option<DVec3> {
         let mut best=None;
         for (i,m) in self.rounds.iter().enumerate().filter(|(_,m)|m.alive&&m.kind==Kind::AntiShip) {
             let relative_start=from-m.position;
             let relative_end=to-(m.position+m.velocity*dt);
-            let extent=DVec3::splat(half);
+            // Conservative 3.2 m local sphere box avoids rotation/BVH work for
+            // most bullets. Full mesh narrow phase, not an inflated hit sphere.
+            let extent=DVec3::splat(3.2);
             if relative_start.min(relative_end).cmpgt(extent).any()
                 || relative_start.max(relative_end).cmplt(-extent).any() {continue;}
-            let axis=m.velocity.normalize_or(DVec3::Z);
-            let scale=|v:DVec3| {let axial=axis*v.dot(axis);(v-axial)/radius+axial/half};
-            let start=scale(relative_start);
-            let end=scale(relative_end);
-            let (near,t)=super::super::damage::closest_relative(start,end);
-            if near.length_squared()<=1. && best.is_none_or(|(_,old_t)|t<old_t) {best=Some((i,t));}
+            let inverse=facing(m.velocity.normalize_or(DVec3::NEG_Z),m.position.normalize()).conjugate();
+            if let Some(t)=ordnance::cruise_projectile_hit(inverse*relative_start,inverse*relative_end) {
+                if t<=limit && best.is_none_or(|(_,old_t)|t<old_t) {best=Some((i,t));}
+            }
         }
         let (i,t)=best?;let point=from.lerp(to,t);let id=self.rounds[i].id;
         self.rounds[i].alive=false;self.rounds[i].visual.alive=false;
@@ -1068,6 +1069,7 @@ mod fleet_repair_tests {
 
 /// Opt-in scripted native snapshots use the ordinary weapon solver.
 pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mut ViewState) {
+ if mode.starts_with("defense-cannon-") {prepare_cannon_review(mode,f,c,v);return;}
  let mut n=c.naval.take().unwrap();n.rounds.clear();
  for r in &mut n.raiders {r.next_shot=1e9;r.stores=0;}
  if mode.starts_with("defense-smoke-") {
@@ -1136,6 +1138,64 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
         c.fight.as_mut().unwrap().rounds.push(dogfight::Round {position,previous:position,
             velocity:velocity+DVec3::X*crate::combat::CANNON_MUZZLE_SPEED,hostile,age:0.,damage:0.075,alive:true});
         c.naval=Some(n);c.tick(&mut f,1./hz as f64);c
+    }
+    #[test] fn visible_cruise_body_and_wings_can_be_hit_between_tick_endpoints() {
+        for hz in [60,120,240] {
+        for (x,z) in [(0.,2.4),(0.9,0.65),(0.35,2.5)] {
+            let f=flight(true);let mut n=State::new(1,2,false);
+            let p=carrier::world(DVec3::new(0.,100.,-30000.),0.);
+            let velocity=carrier::rotation(0.)*DVec3::NEG_Z*290.;
+            n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,velocity);
+            let q=facing(velocity.normalize(),p.normalize());
+            let across=if x==0. {DVec3::X}else{DVec3::Y};
+            let offset=DVec3::new(x,if x==0.{0.23}else{0.},z);
+            let travel=crate::combat::CANNON_MUZZLE_SPEED/hz as f64;
+            let a=p+q*(offset-across*travel*0.5);
+            let b=p+velocity/hz as f64+q*(offset+across*travel*0.5);
+            assert!(n.cannon_intercept(a,b,1./hz as f64).is_some(),"visible mesh passed through at x={x} z={z}, {hz} Hz");
+        }
+        }
+        assert!(ordnance::cruise_projectile_hit(DVec3::new(0.9,-2.,-1.5),DVec3::new(0.9,2.,-1.5)).is_none(),"empty space ahead of the wing is not a hit");
+    }
+    #[test] fn missile_before_ship_is_hit_but_ship_blocks_a_missile_behind_it() {
+        for behind in [false,true] {
+            let mut f=flight(true);f.paused=false;
+            let mut c=Combat::default();c.active=true;c.install_naval_weapons(&f);
+            let a=carrier::ship_world(&f,0,DVec3::new(80.,8.,0.),0.);
+            let b=carrier::ship_world(&f,0,DVec3::new(-80.,8.,0.),0.);
+            let wall=carrier::collider::sweep(&f,a,b,0.01,0.02).unwrap();
+            let direction=(b-a).normalize();
+            let p=wall.point+direction*if behind {5.}else{-5.};
+            let mut n=State::new(1,2,false);n.ended=true;
+            n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,DVec3::ZERO);
+            c.naval=Some(n);
+            c.fight.as_mut().unwrap().rounds.push(dogfight::Round{position:a,previous:a,
+                velocity:(b-a)/0.01+a.normalize()*9.81*0.01,hostile:false,age:0.,damage:0.075,alive:true});
+            c.tick(&mut f,0.01);
+            assert_eq!(c.naval.as_ref().unwrap().interceptions,u32::from(!behind));
+        }
+    }
+    #[test] fn actual_u_key_cannon_destroys_a_body_aligned_cruise_missile_at_thirty_metres() {
+        for hz in [60,120,240] {
+            let mut f=flight(false);f.position=carrier::world(DVec3::new(0.,14.,30000.),0.);
+            f.orientation=carrier::rotation(0.);f.velocity=f.forward()*290.;f.paused=false;f.battery=true;
+            let mut c=Combat::default();c.active=true;c.install_naval_weapons(&f);
+            let mut n=State::new(1,2,false);n.next_wave=f64::INFINITY;
+            for s in &mut n.ships {s.standard=0;s.essm=0;s.gun=0;s.radar=0.;}
+            let p=f.position+f.orientation*crate::aircraft::gun_origin(f.aircraft)+f.forward()*30.;
+            n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,f.velocity);
+            c.naval=Some(n);
+            let initial=c.fight.as_ref().unwrap().gun;
+            let mut keys=ButtonInput::default();keys.press(KeyCode::KeyU);
+            c.defense_controls(&keys,&f);
+            for _ in 0..hz/2 {
+                f.elapsed+=1./hz as f64;f.position+=f.velocity/hz as f64;
+                c.tick(&mut f,1./hz as f64);
+                if c.naval.as_ref().unwrap().interceptions>0 {break;}
+            }
+            assert!(c.fight.as_ref().unwrap().gun<initial,"real cannon never fired");
+            assert_eq!(c.naval.as_ref().unwrap().interceptions,1,"real 30 m firing path failed at {hz} Hz");
+        }
     }
     #[test] fn swept_player_cannon_hits_moving_cruise_missiles_at_all_rates() {
         for hz in [60,120,240] {
@@ -1211,4 +1271,28 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
             assert!((point.y-(mount.y-0.9)).abs()<0.1,"floating pedestal {mount:?} deck={point:?}");
         }
     }
+}
+
+fn prepare_cannon_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mut ViewState) {
+    *f=flight(false);f.position=carrier::world(DVec3::new(0.,80.,30000.),0.);
+    f.orientation=carrier::rotation(0.);f.rates=DVec3::ZERO;f.velocity=f.forward()*290.;
+    f.airspeed=290.;f.paused=false;f.battery=true;
+    c.active=true;c.targets.clear();c.install_naval_weapons(f);
+    let mut n=State::new(1,2,false);n.next_wave=f64::INFINITY;
+    for ship in &mut n.ships {ship.standard=0;ship.essm=0;ship.gun=0;ship.radar=0.;}
+    let p=f.position+f.orientation*crate::aircraft::gun_origin(f.aircraft)+f.forward()*30.;
+    n.round(TargetId::Aircraft(999),TargetId::Ship(0),Kind::AntiShip,p,f.velocity);
+    tracking::seed(&mut n.rounds[0],carrier::ship_world(f,0,DVec3::Y*5.,0.),carrier::velocity(0.));
+    c.naval=Some(n);
+    if mode.ends_with("after") {
+        let mut keys=ButtonInput::default();keys.press(KeyCode::KeyU);c.defense_controls(&keys,f);
+        for _ in 0..30 {
+            f.elapsed+=1./120.;f.position+=f.velocity/120.;c.tick(f,1./120.);
+            if c.naval.as_ref().unwrap().interceptions>0 {break;}
+        }
+        assert_eq!(c.naval.as_ref().unwrap().interceptions,1,"native real firing path failed");
+    }
+    println!("CANNON REVIEW {mode} gun={} missile_alive={} interceptions={} strikes={}",
+        c.fight.as_ref().unwrap().gun,c.naval.as_ref().unwrap().rounds[0].alive,c.naval.as_ref().unwrap().interceptions,c.strikes);
+    f.paused=true;v.restore_camera();v.simple=true;
 }

@@ -89,12 +89,13 @@ pub fn closing(f: &Flight, target: &Target) -> f64 {
 
 /// LCOS-style virtual earlier shots, assuming the current body rates and
 /// body-relative velocity stayed constant over each round's flight time.
-/// Rail spacing is the selected procedural aircraft's 8.4 m wingspan.
+/// Rail spacing is the supplied reference wingspan; the origin follows the
+/// selected aircraft's real game muzzle. Includes a 30 m close-range anchor.
 pub fn funnel(f: &Flight, span: f64) -> Vec<[DVec3; 2]> {
     let body_velocity = f.orientation.conjugate() * f.velocity;
     (0..=28)
         .map(|i| {
-            let range = 180.0 + i as f64 * (900.0 - 180.0) / 28.0;
+            let range = 30.0 + i as f64 * (900.0 - 30.0) / 28.0;
             let t = range / CANNON_MUZZLE_SPEED;
             let old_rotation = f.orientation * DQuat::from_scaled_axis(-f.rates * t);
             let mut old_position = f.position;
@@ -106,7 +107,7 @@ pub fn funnel(f: &Flight, span: f64) -> Vec<[DVec3; 2]> {
                     * (t / 8.0);
             }
             let centre = old_position
-                + old_rotation * DVec3::new(0.4, -0.1, -6.0)
+                + old_rotation * crate::aircraft::gun_origin(f.aircraft)
                 + (old_rotation * body_velocity + old_rotation * -DVec3::Z * CANNON_MUZZLE_SPEED)
                     * t
                 - f.up() * (4.905 * t * t);
@@ -219,7 +220,7 @@ pub fn setup(mut c: Commands) {
             ZIndex(if i % 2 == 0 { 25 } else { 26 }),
         ));
     }
-    for i in 0..4 {
+    for i in 0..5 {
         c.spawn((
             Caption(i),
             Text::new(""),
@@ -284,7 +285,7 @@ pub fn draw(
     ),
 ) {
     ink.0.clear();
-    let mut labels: [Option<(Vec2, String, Color)>; 4] = [None, None, None, None];
+    let mut labels: [Option<(Vec2, String, Color)>; 5] = std::array::from_fn(|_|None);
     let mut threat_docked = false;
     let active = combat.active
         && v.ship_follow.is_none()
@@ -369,31 +370,6 @@ pub fn draw(
                 ));
             }
             if combat.fight.is_some() {
-                let mut previous: Option<[Vec2; 2]> = None;
-                for rails in if v.index != 3 {
-                    funnel(&f, 8.4)
-                } else {
-                    Vec::new()
-                } {
-                    let projected = [project(rails[0]), project(rails[1])];
-                    if let [Some(left), Some(right)] = projected {
-                        let pair = [left, right];
-                        if pair
-                            .iter()
-                            .all(|p| p.cmpge(min).all() && p.cmple(max).all())
-                        {
-                            if let Some(old) = previous {
-                                ink.line(old[0], left, DIM);
-                                ink.line(old[1], right, DIM);
-                            }
-                            previous = Some(pair);
-                        } else {
-                            previous = None;
-                        }
-                    } else {
-                        previous = None;
-                    }
-                }
                 if let Some(solution) = gun_solution(&f, target) {
                     let muzzle = f.position + f.orientation * crate::aircraft::gun_origin(f.aircraft);
                     if let Some(p) = project(muzzle + solution.direction * solution.range)
@@ -435,6 +411,32 @@ pub fn draw(
             }
         }
         if combat.fight.is_some() {
+            let rails=funnel(&f,8.4);let near=rails[0];
+            let mut previous: Option<[Vec2; 2]> = None;
+            for rails in rails {
+                let projected = [project(rails[0]), project(rails[1])];
+                if let [Some(left), Some(right)] = projected {
+                    let pair = [left, right];
+                    if pair
+                        .iter()
+                        .all(|p| p.cmpge(min).all() && p.cmple(max).all())
+                    {
+                        if let Some(old) = previous {
+                            ink.line(old[0], left, DIM);
+                            ink.line(old[1], right, DIM);
+                        }
+                        previous = Some(pair);
+                    } else {
+                        previous = None;
+                    }
+                } else {
+                    previous = None;
+                }
+            }
+            if let Some(p)=project((near[0]+near[1])*0.5).filter(|p|p.cmpge(min).all()&&p.cmple(max).all()) {
+                ink.ring(p,4.,1.,GREEN);
+                labels[4]=Some((p+Vec2::new(9.,9.),"GUN 30 M".into(),DIM));
+            }
             if let Some(p) = project(f.position + f.forward() * 2000.0)
                 .filter(|p| p.cmpge(min).all() && p.cmple(max).all())
             {
@@ -642,6 +644,15 @@ mod tests {
         assert!(gun_solution(&f, &target).is_none());
     }
     #[test]
+    fn hornet_close_gun_cue_uses_its_actual_muzzle() {
+        let mut f=super::super::flight();crate::aircraft::select(&mut f,crate::aircraft::Aircraft::Hornet);
+        f.rates=DVec3::ZERO;
+        let points=funnel(&f,2.5);let midpoint=(points[0][0]+points[0][1])*0.5;
+        let expected=f.position+f.orientation*crate::aircraft::gun_origin(f.aircraft)
+            +f.forward()*30.-f.up()*4.905*(30./CANNON_MUZZLE_SPEED).powi(2);
+        assert!(midpoint.distance(expected)<1e-6,"close funnel does not match Hornet muzzle: error {} m",midpoint.distance(expected));
+    }
+    #[test]
     fn funnel_uses_wingspan_gravity_and_turn_rate() {
         let mut f = super::super::flight();
         f.rates = DVec3::ZERO;
@@ -650,7 +661,7 @@ mod tests {
             assert!((rails[0].distance(rails[1]) - 8.4).abs() < 1e-6);
         }
         let centre = (straight[28][0] + straight[28][1]) * 0.5;
-        let expected = f.position + f.orientation * DVec3::new(0.4, -0.1, -906.0)
+        let expected = f.position + f.orientation * crate::aircraft::gun_origin(f.aircraft)+f.forward()*900.
             - f.up() * 4.905 * (900.0_f64 / CANNON_MUZZLE_SPEED).powi(2);
         assert!(centre.distance(expected) < 1e-6);
         f.rates.x = 0.2;

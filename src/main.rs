@@ -2802,6 +2802,11 @@ fn update_camera(
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {
+        if mode.starts_with("defense-cannon-") {
+            target=local(f.position+f.forward()*18.,&f);
+            p=local(f.position-f.forward()*28.+f.up()*13.+f.orientation*DVec3::X*10.,&f);
+            up_view=(world::frame(&f).conjugate()*f.up()).as_vec3();
+        }
         if mode.starts_with("defense-smoke-") {
             if let Some(n)=combat.naval.as_ref() {if let Some(m)=n.rounds.first() {
                 let q=carrier::ship_rotation(&f,1,f.elapsed);

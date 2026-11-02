@@ -150,6 +150,30 @@ impl Skin {
         }
     }
 }
+/// Reusable local-space projectile skin. BVH and swept-sphere triangle tests
+/// are shared with ship contacts; construction occurs once for immutable meshes.
+pub(crate) struct ProjectileMesh(Skin);
+impl ProjectileMesh {
+    pub fn new(mesh:&Mesh)->Self {
+        let bevy::mesh::VertexAttributeValues::Float32x3(vertices)=mesh.attribute(Mesh::ATTRIBUTE_POSITION).expect("projectile vertices") else {panic!("projectile positions")};
+        let indices:Vec<usize>=mesh.indices().map(|i|i.iter().collect()).unwrap_or_else(||(0..vertices.len()).collect());
+        let mut tri=Vec::with_capacity(indices.len()/3);
+        for indices in indices.chunks_exact(3) {
+            let p=std::array::from_fn(|i|DVec3::from_array(vertices[indices[i]].map(f64::from)));
+            if (p[1]-p[0]).cross(p[2]-p[0]).length_squared()<1e-16 {continue;}
+            tri.push(Triangle{p,lo:p[0].min(p[1]).min(p[2]),hi:p[0].max(p[1]).max(p[2])});
+        }
+        assert!(!tri.is_empty());let len=tri.len();let mut skin=Skin{tri,nodes:Vec::new()};skin.build(0,len);Self(skin)
+    }
+    pub fn sweep(&self,start:DVec3,end:DVec3,radius:f64)->Option<f64> {
+        let mut first:Option<f64>=None;
+        self.0.query_segment(start,end,radius,|tri| {
+            if let Some((t,_))=sphere_triangle(start,end,radius,tri.p) {
+                if first.is_none_or(|old|t<old) {first=Some(t);}
+            }
+        });first
+    }
+}
 /// Add the moving launch deflector without rebuilding the static ship BVH.
 fn query_skin(state: Option<&State>, ship:usize, lo:DVec3, hi:DVec3, mut visit:impl FnMut(&Triangle)) {
     ship_skin(ship).query(lo,hi,&mut visit);

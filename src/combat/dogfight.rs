@@ -730,9 +730,18 @@ impl Combat {
             round.age += dt;
             round.velocity -= round.position.normalize() * 9.81 * dt;
             round.position += round.velocity * dt;
-        if let Some(hit)=crate::carrier::collider::sweep(f,old,round.position,dt,0.02) {
-            round.position=hit.point;round.alive=false;continue;
-        }
+            let hull=crate::carrier::collider::sweep(f,old,round.position,dt,0.02);
+            if !round.hostile {
+                if let Some(point)=self.naval.as_mut().and_then(|n|n.cannon_intercept_before(old,round.position,dt,hull.map_or(1.,|h|h.fraction))) {
+                    round.alive=false;self.strikes+=1;
+                    self.impacts.push(Impact {position:point,age:0.,hit:true});
+                    crate::sound::emit(&mut self.audio_events,crate::sound::Kind::Blast,point,DVec3::ZERO,false);
+                    continue;
+                }
+            }
+            if let Some(hit)=hull {
+                round.position=hit.point;round.alive=false;continue;
+            }
             if round.hostile && !f.crashed {
                 let start = f.orientation.conjugate() * (old - fight.last_player);
                 let end = f.orientation.conjugate() * (round.position - f.position);
@@ -751,12 +760,6 @@ impl Combat {
                     );
                 }
             } else if !round.hostile {
-                if let Some(point)=self.naval.as_mut().and_then(|n|n.cannon_intercept(old,round.position,dt)) {
-                    round.alive=false;self.strikes+=1;
-                    self.impacts.push(Impact {position:point,age:0.,hit:true});
-                    crate::sound::emit(&mut self.audio_events,crate::sound::Kind::Blast,point,DVec3::ZERO,false);
-                    continue;
-                }
                 for (index, target) in self.targets.iter_mut().enumerate() {
                     if target.alive
                         && let Some(body) = target_bullet_hit(target, old, round.position, dt)
