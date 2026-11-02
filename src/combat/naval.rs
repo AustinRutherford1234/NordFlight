@@ -879,7 +879,7 @@ pub fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut ViewSt
     start(c, f, v.generation, 1);
     if mode == "missile-profile" {
         prepare_missile_profile(c, f);
-        v.restore_camera(); v.index=3; v.yaw=0.; v.pitch=-0.13; v.zoom=1.;
+        v.restore_camera(); v.index=if std::env::var("NORD_MISSILE_PROFILE_VIEW").as_deref()==Ok("external"){0}else{3}; v.yaw=0.; v.pitch=-0.13; v.zoom=1.;
         return;
     }
     if mode.starts_with("sam-") {sam::prepare_review(mode,f,c,v);return;}

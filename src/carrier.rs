@@ -20,10 +20,32 @@ impl Default for State {fn default()->Self {Self{deflector:0.,deflector_hold:0.,
 #[derive(Clone,Copy,Debug)]
 pub struct Motion {pub offset:DVec3,pub rotation:DQuat,pub linear:DVec3,pub angular:DVec3,pub at:f64}
 impl Default for Motion {fn default()->Self{Self{offset:DVec3::ZERO,rotation:DQuat::IDENTITY,linear:DVec3::ZERO,angular:DVec3::ZERO,at:0.}}}
-pub fn state_origin(s:&State,ship:usize,t:f64)->DVec3 {let m=s.motion[ship];world((if ship==0{DVec3::ZERO}else{escorts::offset(ship-1)})+m.offset+m.linear*(t-m.at),t)}
-pub fn state_rotation(s:&State,ship:usize,t:f64)->DQuat {let m=s.motion[ship];rotation(t)*m.rotation*DQuat::from_scaled_axis(m.angular*(t-m.at))}
-pub fn state_relative(s:&State,ship:usize,p:DVec3,t:f64)->DVec3 {state_rotation(s,ship,t).conjugate()*(p-state_origin(s,ship,t))}
-pub fn state_velocity(s:&State,ship:usize,p:DVec3,t:f64)->DVec3 {velocity(t)+rotation(t)*s.motion[ship].linear+(rotation(t)*s.motion[ship].angular).cross(p-state_origin(s,ship,t))}
+#[derive(Clone, Copy)]
+struct ShipFrame { origin:DVec3, rotation:DQuat, course:DQuat, velocity:DVec3 }
+fn ship_frame(s:&State,ship:usize,t:f64)->ShipFrame {
+    // Complete value key: cloned/reset flights or damage changes at the same
+    // time cannot inherit a previous ship pose. Bounded, per-thread storage.
+    thread_local! {static FRAMES:std::cell::RefCell<[Option<([u64;15],ShipFrame)>;3]>=const {std::cell::RefCell::new([None;3])};}
+    let m=s.motion[ship];
+    let values=[t,m.offset.x,m.offset.y,m.offset.z,m.rotation.x,m.rotation.y,m.rotation.z,m.rotation.w,
+        m.linear.x,m.linear.y,m.linear.z,m.angular.x,m.angular.y,m.angular.z,m.at];
+    let key=values.map(f64::to_bits);
+    FRAMES.with(|frames| {
+        let mut frames=frames.borrow_mut();
+        if let Some((old,frame))=frames[ship] {if old==key {return frame;}}
+        let course_origin=origin(t);
+        let course=DQuat::from_rotation_arc(DVec3::Y,course_origin.normalize());
+        let local=(if ship==0 {DVec3::ZERO}else{escorts::offset(ship-1)})+m.offset+m.linear*(t-m.at);
+        let frame=ShipFrame {origin:course_origin+course*local,
+            rotation:course*m.rotation*DQuat::from_scaled_axis(m.angular*(t-m.at)),
+            course,velocity:course*DVec3::NEG_Z*SPEED};
+        frames[ship]=Some((key,frame));frame
+    })
+}
+pub fn state_origin(s:&State,ship:usize,t:f64)->DVec3 {ship_frame(s,ship,t).origin}
+pub fn state_rotation(s:&State,ship:usize,t:f64)->DQuat {ship_frame(s,ship,t).rotation}
+pub fn state_relative(s:&State,ship:usize,p:DVec3,t:f64)->DVec3 {let frame=ship_frame(s,ship,t);frame.rotation.conjugate()*(p-frame.origin)}
+pub fn state_velocity(s:&State,ship:usize,p:DVec3,t:f64)->DVec3 {let frame=ship_frame(s,ship,t);frame.velocity+frame.course*s.motion[ship].linear+(frame.course*s.motion[ship].angular).cross(p-frame.origin)}
 pub fn ship_origin(f:&Flight,ship:usize,t:f64)->DVec3 {state_origin(&f.carrier,ship,t)}
 pub fn ship_rotation(f:&Flight,ship:usize,t:f64)->DQuat {state_rotation(&f.carrier,ship,t)}
 pub fn ship_world(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3{ship_origin(f,ship,t)+ship_rotation(f,ship,t)*p}
@@ -39,8 +61,9 @@ const HULL:&[(f64,f64)]=&[(-39.17,36.52),(-37.84,-60.21),(-12.52,-162.53),(-10.3
 pub fn inside(p:DVec3)->bool {(0..HULL.len()).all(|i| {let a=HULL[i];let b=HULL[(i+1)%HULL.len()];(b.0-a.0)*(p.z-a.1)-(b.1-a.1)*(p.x-a.0)>=0.})}
 pub fn deck(f:&Flight,p:DVec3)->Option<(f64,DVec3)> {
  if !f.carrier.active{return None;}
- let q=ship_relative(f,0,p,f.elapsed);
- (inside(q)&&q.y>DECK-4.).then(||((ship_world(f,0,DVec3::new(q.x,DECK,q.z),f.elapsed).length()-RADIUS),ship_rotation(&f,0,f.elapsed)*DVec3::Y))
+ let frame=ship_frame(&f.carrier,0,f.elapsed);
+ let q=frame.rotation.conjugate()*(p-frame.origin);
+ (inside(q)&&q.y>DECK-4.).then(||(((frame.origin+frame.rotation*DVec3::new(q.x,DECK,q.z)).length()-RADIUS),frame.rotation*DVec3::Y))
 }
 pub fn ground(f:&Flight,p:DVec3)->f64 {deck(f,p).map_or_else(||terrain_height(p.x,p.z).max(0.),|v|v.0)}
 pub fn normal(f:&Flight,p:DVec3)->DVec3 {deck(f,p).map_or_else(||crate::terrain::normal(p),|v|v.1)}
@@ -125,7 +148,7 @@ pub fn after_step(f:&mut Flight,previous:DVec3,dt:f64) {
 pub fn setup(mut c:Commands,server:Res<AssetServer>,mut meshes:ResMut<Assets<Mesh>>,mut materials:ResMut<Assets<StandardMaterial>>) {
  deflector::setup(&mut c,&mut meshes,&mut materials);
  escorts::setup(&mut c,&server);
- c.spawn((Ship,SceneRoot(server.load(GltfAssetLabel::Scene(0).from_asset("ships/nimitz/source.glb"))),Transform::default(),Visibility::Hidden));
+ c.spawn((Ship,SceneRoot(crate::model_assets::load(&server,GltfAssetLabel::Scene(0).from_asset("ships/nimitz/source.glb"))),Transform::default(),Visibility::Hidden));
  c.spawn((CarrierText,Text::new(""),TextFont{font_size:14.,..default()},TextColor(Color::srgb(1.,0.8,0.35)),Node{position_type:PositionType::Absolute,right:px(28),top:px(285),width:px(410),..default()}));
 }
 pub fn visual(f:Res<Flight>,mut ship:Query<(&mut Transform,&mut Visibility),With<Ship>>,mut text:Query<&mut Text,With<CarrierText>>,mut lines:Gizmos) {
@@ -304,4 +327,58 @@ pub fn physics_loads(f:&mut Flight,dt:f64)->crate::aircraft::hornet::Loads {
   println!("DEPART fuel={} alt={} vs={} speed={} pitch={} pos={:?} status={}",fuel,f.altitude(),f.vertical_speed(),f.airspeed,f.pitch(),relative(f.position,f.elapsed),f.status);
   assert!(!f.crashed&&!f.landed);assert!(minimum>DECK-5.);assert!(f.altitude()>DECK+3.&&f.vertical_speed()>0.);assert!(relative(f.position,f.elapsed).z< -165.);
  }}
+}
+
+#[cfg(test)]
+mod frame_cache_tests {
+    use super::*;
+    fn reference(s:&State,ship:usize,t:f64)->(DVec3,DQuat) {
+        let m=s.motion[ship];
+        (world((if ship==0{DVec3::ZERO}else{escorts::offset(ship-1)})+m.offset+m.linear*(t-m.at),t),
+         rotation(t)*m.rotation*DQuat::from_scaled_axis(m.angular*(t-m.at)))
+    }
+    #[test]
+    fn frame_cache_matches_uncached_damage_motion_and_same_time_resets() {
+        let mut s=State::default();
+        for k in 0..32 {
+            for ship in 0..3 {
+                s.motion[ship]=Motion {offset:DVec3::new(k as f64, -0.1*k as f64,3.),
+                    rotation:DQuat::from_rotation_z(k as f64*0.01),linear:DVec3::new(1.,2.,-3.),
+                    angular:DVec3::new(0.01,0.02,-0.01),at:2.};
+                for t in [0.,5.,5.,17.,0.] {
+                    let (origin,rotation)=reference(&s,ship,t);
+                    assert_eq!(state_origin(&s,ship,t),origin);
+                    assert_eq!(state_rotation(&s,ship,t),rotation);
+                    let p=origin+DVec3::new(2.,3.,4.);
+                    let expected=velocity(t)+super::rotation(t)*s.motion[ship].linear
+                        +(super::rotation(t)*s.motion[ship].angular).cross(p-origin);
+                    assert_eq!(state_velocity(&s,ship,p,t),expected);
+                }
+            }
+        }
+    }
+    #[test]
+    fn repeated_deck_queries_match_reference_and_report_cost() {
+        let mut f=scenario(true);
+        let mut timings=Vec::new();
+        let mut checksum=0.;
+        for cached in [false,true] {
+            let start=std::time::Instant::now();
+            for k in 0..12000 {
+                f.elapsed=(k/120) as f64/240.;
+                let (origin,rotation)=reference(&f.carrier,0,f.elapsed);
+                let p=origin+rotation*DVec3::new((k%11)as f64-5.,DECK+2.,(k%61)as f64-30.);
+                let q=rotation.conjugate()*(p-origin);
+                let expected=(world(DVec3::new(q.x,DECK,q.z),f.elapsed).length()-RADIUS,rotation*DVec3::Y);
+                let result=if cached {deck(&f,p).unwrap()}else {
+                    // Original deck path recomputed each transform independently.
+                    let q=reference(&f.carrier,0,f.elapsed).1.conjugate()*(p-reference(&f.carrier,0,f.elapsed).0);
+                    ((reference(&f.carrier,0,f.elapsed).0+reference(&f.carrier,0,f.elapsed).1*DVec3::new(q.x,DECK,q.z)).length()-RADIUS,reference(&f.carrier,0,f.elapsed).1*DVec3::Y)
+                };
+                assert_eq!(result,expected);checksum+=result.0;
+            }
+            timings.push(start.elapsed().as_secs_f64()*1000.);
+        }
+        println!("DECK CACHE reference_ms={} cached_ms={} checksum={checksum}",timings[0],timings[1]);
+    }
 }

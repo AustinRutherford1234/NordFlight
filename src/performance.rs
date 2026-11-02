@@ -88,7 +88,7 @@ pub fn frame_event(bit: u64) {
     FRAME_EVENTS.fetch_or(bit, Relaxed);
 }
 fn spike_log(time: Res<Time<Real>>, mut frame: Local<u64>, mut history: Local<Vec<(u64, u64)>>,
-    mut env: Local<([u64; 4], [u64; 4])>) {
+    mut env: Local<([u64; 4], [u64; 4])>, mut cpu: Local<[u64; 24]>) {
     *frame += 1;
     let (filter, slices) = (bevy::pbr::generate::environment_filter_cache_counts(),
         bevy::pbr::generate::environment_slice_counts());
@@ -98,11 +98,18 @@ fn spike_log(time: Res<Time<Real>>, mut frame: Local<u64>, mut history: Local<Ve
     let events = FRAME_EVENTS.swap(0, Relaxed);
     history.push((*frame, events));
     if history.len() > 4 { history.remove(0); }
+    let mut spans = Vec::new();
+    for i in 0..NAMES.len() {
+        let now = NANOS[i].load(Relaxed);
+        let delta = now.saturating_sub(cpu[i]);
+        cpu[i] = now;
+        if delta > 100000 { spans.push((NAMES[i],delta as f64/1e6)); }
+    }
     let ms = time.delta_secs_f64() * 1000.;
     if ms > 25. {
         // The slow frame's delta is measured at the start of the next frame,
         // so print the preceding frames' events as well.
-        eprintln!("SPIKE frame {} {:.1} ms events {:?}", *frame, ms, *history);
+        eprintln!("SPIKE wall={:.3} frame={} {:.1} ms cpu_ms={:?} events={:?}", time.elapsed_secs_f64(), *frame, ms, spans, *history);
     }
 }
 /// Terrain tiles build on the single async worker. Left at default QoS it
@@ -264,11 +271,14 @@ impl Plugin for PerformancePlugin {
             .add_systems(PostUpdate, capture_sequence);
         }
         if active {
-            app.add_plugins((
-                bevy::render::diagnostic::RenderDiagnosticsPlugin,
-                bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin,
-            ))
-            .add_systems(PostUpdate, (asset_changes, mesh_slab_peaks))
+            let cpu_only=std::env::var_os("NORD_PROFILE_CPU_ONLY").is_some();
+            if !cpu_only {
+                app.add_plugins((
+                    bevy::render::diagnostic::RenderDiagnosticsPlugin,
+                    bevy::render::diagnostic::MeshAllocatorDiagnosticPlugin,
+                ));
+            }
+            app.add_systems(PostUpdate, (asset_changes, mesh_slab_peaks))
             .add_systems(PostUpdate, forest_visibility
                 .after(bevy::camera::visibility::VisibilitySystems::CheckVisibility)
                 .after(bevy::light::SimulationLightSystems::CheckLightVisibility));
@@ -280,11 +290,13 @@ impl Plugin for PerformancePlugin {
                         end_prepare.after(bevy::render::RenderSystems::PrepareAssets),
                     ),
                 );
+                if !cpu_only {
                 let mut graph = render.world_mut().resource_mut::<RenderGraph>();
                 graph.add_node(GpuBegin, TimingNode(true));
                 graph.add_node(GpuEnd, TimingNode(false));
                 graph.add_node_edge(GpuBegin, bevy::render::graph::CameraDriverLabel);
                 graph.add_node_edge(bevy::render::graph::CameraDriverLabel, GpuEnd);
+                }
             }
         }
     }
@@ -380,7 +392,9 @@ fn start_prepare(mut clock: ResMut<PrepareClock>) {
 }
 fn end_prepare(mut clock: ResMut<PrepareClock>) {
     if let Some(start) = clock.0.take() {
-        NANOS[16].fetch_add(start.elapsed().as_nanos() as u64, Relaxed);
+        let nanos=start.elapsed().as_nanos() as u64;
+        NANOS[16].fetch_add(nanos, Relaxed);
+        MAX_NANOS[16].fetch_max(nanos, Relaxed);
         CALLS[16].fetch_add(1, Relaxed);
     }
 }
@@ -431,4 +445,23 @@ fn asset_changes(
             .count() as u64,
         Relaxed,
     );
+}
+
+/// Render-only meshes leave metadata stubs after extraction; their CPU buffers
+/// cannot be queried and do not contribute retained main-world asset bytes.
+pub fn retained_mesh_bytes(mesh:&Mesh)->usize {
+    if !mesh.asset_usage.contains(bevy::asset::RenderAssetUsages::MAIN_WORLD) {return 0;}
+    mesh.get_vertex_buffer_size()+mesh.get_index_buffer_bytes().map_or(0,|b|b.len())
+}
+#[cfg(test)]
+mod memory_report_tests {
+    use super::*;
+    #[test]
+    fn memory_report_skips_render_only_mesh_buffers() {
+        let render_only=Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList,bevy::asset::RenderAssetUsages::RENDER_WORLD)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION,vec![[0_f32,0.,0.];3]);
+        assert_eq!(retained_mesh_bytes(&render_only),0);
+        let mut retained=render_only.clone();retained.asset_usage=bevy::asset::RenderAssetUsages::default();
+        assert_eq!(retained_mesh_bytes(&retained),36);
+    }
 }

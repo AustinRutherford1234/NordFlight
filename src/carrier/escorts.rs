@@ -81,7 +81,7 @@ pub fn setup(c: &mut Commands, server: &AssetServer) {
         {
             if let Some(color) = light_color(name.as_str().unwrap_or_default()) {
                 handles.push((
-                    server.load(
+                    crate::model_assets::load(server,
                         GltfAssetLabel::Material {
                             index,
                             is_scale_inverted: false,
@@ -104,7 +104,7 @@ pub fn setup(c: &mut Commands, server: &AssetServer) {
             c.spawn((
                 Name::new(format!("DDG {} LOD {}", NUMBERS[ship], lod)),
                 Escort { ship, lod },
-                SceneRoot(server.load(
+                SceneRoot(crate::model_assets::load(server,
                     GltfAssetLabel::Scene(0).from_asset(format!("ships/burke/lod{lod}.gltf")),
                 )),
                 Transform::default(),
@@ -115,7 +115,7 @@ pub fn setup(c: &mut Commands, server: &AssetServer) {
             Name::new(format!("DDG {} hull identity", NUMBERS[ship])),
             Identity(ship),
             SceneRoot(
-                server.load(
+                crate::model_assets::load(server,
                     GltfAssetLabel::Scene(0)
                         .from_asset(format!("ships/burke/markings{}.gltf", NUMBERS[ship])),
                 ),

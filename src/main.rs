@@ -44,6 +44,7 @@ mod plume_motion;
 mod propulsion;
 mod render_batch;
 mod render_cache;
+mod model_assets;
 mod skin_damage;
 mod sim_clock;
 mod sound;
@@ -1606,7 +1607,7 @@ fn benchmark_ablation(
         }
     }
 }
-fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<ViewState>, warp: Res<warp::Warp>, windows: Query<&Window>, session: Res<benchmark::Session>, diagnostics: Res<DiagnosticsStore>, mut benchmark: ResMut<RenderBenchmark>, clock: Res<SimClock>) {
+fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<ViewState>, warp: Res<warp::Warp>, windows: Query<&Window>, session: Res<benchmark::Session>, diagnostics: Res<DiagnosticsStore>, mut benchmark: ResMut<RenderBenchmark>, clock: Res<SimClock>, images:Res<Assets<Image>>, meshes:Res<Assets<Mesh>>, server:Res<AssetServer>) {
     let Some(mode) = benchmark.mode.clone() else {
         return;
     };
@@ -1639,7 +1640,14 @@ fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<Vi
     // Read actual flight time even when GPU/CPU profiling is disabled. The
     // FPS-only path deliberately skips the performance counters on Metal.
     let simulated_seconds = f.elapsed - benchmark.start_sim.unwrap();
-    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
+    let mut cpu_images=images.iter().filter_map(|(id,image)| image.data.as_ref().map(|bytes|
+        (server.get_path(id).map(|p|p.to_string()).unwrap_or_else(||format!("{id:?}")),bytes.len())))
+        .collect::<Vec<_>>();
+    cpu_images.sort_unstable_by(|a,b|b.1.cmp(&a.1));
+    let image_bytes=cpu_images.iter().map(|p|p.1).sum::<usize>();
+    let mesh_bytes=meshes.iter().map(|(_,m)|performance::retained_mesh_bytes(m)).sum::<usize>();
+    let asset_memory=serde_json::json!({"cpu_image_bytes":image_bytes,"cpu_mesh_bytes":mesh_bytes,"largest_cpu_images":&cpu_images[..cpu_images.len().min(12)],"note":"Retained main-world asset bytes, not total process or GPU footprint"});
+    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"asset_memory":asset_memory,"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
         "simulated_seconds":simulated_seconds,"simulation_rate":simulated_seconds/(elapsed-warmup),"over_25_ms":frames.iter().filter(|&&t|t>25.).count(),"over_50_ms":frames.iter().filter(|&&t|t>50.).count(),"measurements":performance::report(&diagnostics),
         "workers":{"compute":bevy::tasks::ComputeTaskPool::get().thread_num(),"async_compute":bevy::tasks::AsyncComputeTaskPool::get().thread_num(),"io":bevy::tasks::IoTaskPool::get().thread_num()},
         "note":"Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed"});

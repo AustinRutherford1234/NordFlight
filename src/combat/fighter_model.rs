@@ -3,7 +3,7 @@ use super::*;
 #[derive(Component)]
 pub struct FighterModel {slot:usize,level:usize}
 pub fn setup(mut c:Commands,server:Res<AssetServer>) {
-    let scenes:[Handle<Scene>;3]=std::array::from_fn(|i|server.load(GltfAssetLabel::Scene(0).from_asset(format!("aircraft/su27/lod{i}.glb"))));
+    let scenes:[Handle<Scene>;3]=std::array::from_fn(|i|crate::model_assets::load(&server,GltfAssetLabel::Scene(0).from_asset(format!("aircraft/su27/lod{i}.glb"))));
     for slot in 0..MAX_AIRCRAFT {for (level,scene) in scenes.iter().enumerate(){
         c.spawn((FighterModel{slot,level},SceneRoot(scene.clone()),Transform::default(),Visibility::Hidden));
     }}

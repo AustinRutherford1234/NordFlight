@@ -19,7 +19,7 @@ pub(super) fn setup(c: &mut Commands, server: &AssetServer) {
         return;
     }
     let scenes: [Handle<Scene>; 3] = std::array::from_fn(|i| {
-        server.load(GltfAssetLabel::Scene(0).from_asset(format!("aircraft/tu160/lod{i}.glb")))
+        crate::model_assets::load(server,GltfAssetLabel::Scene(0).from_asset(format!("aircraft/tu160/lod{i}.glb")))
     });
     for slot in 0..12 {
         for (level, scene) in scenes.iter().enumerate() {
