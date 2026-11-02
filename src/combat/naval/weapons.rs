@@ -178,13 +178,12 @@ impl State {
                 continue;
             }
             for &(target, _) in &threats[..count] {
-                let Some((p, _)) = self.contact(target, c, f) else {
+                let Some((p, velocity)) = self.contact(target, c, f) else {
                     continue;
                 };
                 let mount = carrier::ship_world(f, ship, launch_mount(ship), f.elapsed);
                 let range = p.distance(mount);
-                if (matches!(target, TargetId::Aircraft(_)) && range > 22000.)
-                    || range < 500.
+                if range < 500.
                     || !self.detect(
                         f,
                         ship,
@@ -215,9 +214,9 @@ impl State {
                     break;
                 }
                 let s = &self.ships[ship];
-                let kind = if range < 18000. && s.essm > 0 {
+                let kind = if s.essm > 0 && envelope::sam_reachable(Kind::Essm,mount,p,velocity) {
                     Kind::Essm
-                } else if range < 55000. && s.standard > 0 {
+                } else if s.standard > 0 && envelope::sam_reachable(Kind::Standard,mount,p,velocity) {
                     Kind::Standard
                 } else {
                     continue;
@@ -269,7 +268,7 @@ impl State {
                         )
                 })
                 .unwrap_or(0)};
-            let attack = r.stores > 0 && !r.withdrew && range < 26000.
+            let attack = r.stores > 0 && !r.withdrew && range < if r.role==Role::Bomber {envelope::STRIKE_RANGE}else{26000.}
                 && (t.orientation*-DVec3::Z).dot((carrier::ship_origin(f,ship,f.elapsed)-t.position).normalize_or_zero())>0.5;
             let source = TargetId::Aircraft(r.id);
             if engage_player || attack {
@@ -477,7 +476,7 @@ impl State {
             let (max_speed, accel, turn, burn, life) = match m.kind {
                 Kind::Standard => (1050., 110., 30., 14., 100.),
                 Kind::Essm => (950., 160., 40., 9., 50.),
-                Kind::AntiShip => (290., 45., 6., 120., 180.),
+                Kind::AntiShip => (290., 45., 6., envelope::CRUISE_BURN, envelope::CRUISE_LIFE),
                 Kind::AirToAir => (850., 150., 25., 7., 45.),
             };
             if support.is_none() {m.support_lost+=dt;}else{m.support_lost=0.;}
@@ -755,6 +754,26 @@ mod engagement_tests {
 #[cfg(test)]
 mod defense_tests {
     use super::*;
+    #[test]
+    fn cruise_weapon_reaches_moving_carrier_from_outer_bomber_release_range() {
+        let mut f=flight(true);let mut c=Combat::default();
+        let mut n=State::new(1,2,false);n.ended=true;
+        let p=carrier::world(DVec3::new(0.,10000.,envelope::STRIKE_RANGE-1000.),0.);
+        let target=carrier::ship_world(&f,0,DVec3::Y*5.,0.);
+        let velocity=carrier::rotation(0.)*DVec3::NEG_Z*270.;
+        assert!(n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,velocity));
+        tracking::seed(&mut n.rounds[0],target,carrier::velocity(0.));
+        let initial=n.ships[0].hull;
+        for k in 0..120*730 {
+            f.elapsed=k as f64/120.;n.clock=f.elapsed;
+            n.weapons(&mut c,&mut f,1./120.);
+            if !n.rounds[0].alive {break;}
+        }
+        let m=&n.rounds[0];
+        println!("CRUISE outer launch age={} altitude={} remaining={} hull={} reason={}",m.age,m.position.length()-RADIUS,m.position.distance(carrier::ship_origin(&f,0,f.elapsed)),n.ships[0].hull,m.visual.gnc.reason);
+        assert!(!m.alive&&n.ships[0].hull<initial,"outer cruise weapon did not reach carrier");
+        assert!(m.age<envelope::CRUISE_BURN);
+    }
     #[test]
     fn ciws_intercepts_incoming_missile_using_ballistic_bursts() {
         let mut f = flight(true);

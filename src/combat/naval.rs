@@ -7,12 +7,14 @@ mod visual;
 mod weapons;
 mod tracking;
 mod sam;
+mod envelope;
 pub mod bomber;
 mod ordnance;
 pub(super) mod tactics;
 pub use radio::Speech;
 pub use visual::{draw, setup};
 pub const BOMBER_MISSILES: u8 = 24;
+pub const RAID_SPAWN_RANGE:f64=300000.;
 pub const AIRCRAFT_LIMIT: usize = 12;
 pub const WEAPON_LIMIT: usize = 96;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,7 +36,7 @@ pub enum Kind {
     AntiShip,
     AirToAir,
 }
-impl Kind {pub fn label(self)->&'static str{match self{Self::Standard=>"STANDARD-CLASS SAM",Self::Essm=>"ESSM-CLASS SAM",Self::AntiShip=>"ANTI-SHIP CRUISE MISSILE",Self::AirToAir=>"AIR-TO-AIR MISSILE"}} pub fn burn(self)->f64 {match self{Self::Standard=>14.,Self::Essm=>9.,Self::AntiShip=>120.,Self::AirToAir=>7.}}}
+impl Kind {pub fn label(self)->&'static str{match self{Self::Standard=>"STANDARD-CLASS SAM",Self::Essm=>"ESSM-CLASS SAM",Self::AntiShip=>"ANTI-SHIP CRUISE MISSILE",Self::AirToAir=>"AIR-TO-AIR MISSILE"}} pub fn burn(self)->f64 {match self{Self::Standard=>14.,Self::Essm=>9.,Self::AntiShip=>envelope::CRUISE_BURN,Self::AirToAir=>7.}}}
 #[derive(Clone, Debug)]
 pub struct Round {
     pub sam: sam::FlightState,
@@ -209,7 +211,7 @@ impl State {
             let p = carrier::ship_world(
                 f,
                 0,
-                radial * 120000.
+                radial * RAID_SPAWN_RANGE
                     + tangent * (k as f64 - 1.5) * 1200.
                     + DVec3::Y * height,
                 f.elapsed,
@@ -676,7 +678,7 @@ mod tests {
             n.raiders.iter().filter(|r| r.role == Role::Bomber).count(),
             2
         );
-        for t in &c.targets {assert!((t.position.distance(carrier::ship_origin(&f,0,f.elapsed))-120000.).abs()<1000.);}
+        for t in &c.targets {assert!((t.position.distance(carrier::ship_origin(&f,0,f.elapsed))-RAID_SPAWN_RANGE).abs()<1000.);}
         n.clock=10000.;n.spawn(&mut c,&f);assert_eq!(n.waves,1,"elapsed time cannot bypass armed bombers");
         let first=n.raiders.iter().find(|r|r.role==Role::Bomber).unwrap().slot;c.targets[first].alive=false;n.spawn(&mut c,&f);assert_eq!(n.waves,1,"one surviving armed bomber blocks spawning");
         for _ in 0..4 {for r in &mut n.raiders{if r.role==Role::Bomber{r.stores=0;}}n.spawn(&mut c,&f);}
@@ -698,6 +700,9 @@ mod tests {
             1.
         ));
         n.clock = 0.;
+        // The 300 km raid is initially beyond ship detection. Move this sensor
+        // fixture inside radar coverage without changing operational limits.
+        for t in &mut c.targets {t.position=carrier::ship_origin(&f,0,f.elapsed)+(t.position-carrier::ship_origin(&f,0,f.elapsed))*0.4;}
         n.scan(&c, &f);
         assert!(n.tracks.iter().all(|t| !t.valid(n.clock)));
         n.clock = 1.;
@@ -808,7 +813,7 @@ mod tests {
                 .all(|t| t.position.is_finite() && t.velocity.is_finite())
         );
         assert!(n.rounds.len() <= 96 && n.tracks.len() <= 12);
-        assert!(n.tracks.iter().any(|t| t.valid(n.clock)));
+        assert!(n.tracks.is_empty(),"300 km raiders must remain undetected at the start");
     }
 }
 /// Deterministic headless end-to-end exercise, separate from rendering benchmarks.

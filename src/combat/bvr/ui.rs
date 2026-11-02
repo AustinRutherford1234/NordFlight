@@ -347,6 +347,7 @@ pub fn controls(
     if menu.last_generation != v.generation {
         menu.center = Vec2::new(f.position.x as f32, f.position.z as f32 - if combat.bvr.is_some(){50000.}else{0.});
         if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("map-")){menu.span=if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.contains("120km")){300000.}else{40000.};}
+        if combat.naval.is_some() && std::env::var_os("NORD_NAVAL_CAPTURE").is_none(){menu.span=1000000.;}
         menu.last_generation = v.generation;
         menu.dirty = true;
     }
@@ -365,7 +366,7 @@ pub fn controls(
         p.x >= origin.x && p.y >= origin.y && p.x <= origin.x + size.x && p.y <= origin.y + size.y
     }) {
         if scroll.delta.y != 0. {
-            menu.span = (menu.span * (-scroll.delta.y * 0.12).exp()).clamp(20000., 600000.);
+            menu.span = (menu.span * (-scroll.delta.y * 0.12).exp()).clamp(20000., 1200000.);
             menu.dirty = true;
         }
         if mouse.pressed(MouseButton::Right) {
@@ -792,7 +793,7 @@ mod tests {
 }
 
 #[cfg(test)]mod shared_map_projection_tests{use super::*;
- #[test]fn carrier_raid_at_120km_fits_300km_map(){let f=crate::combat::naval::flight(true);let mut c=Combat::default();crate::combat::naval::start(&mut c,&f,100,1);let mut menu=Menu::default();menu.center=Vec2::new(f.position.x as f32,f.position.z as f32);menu.span=300000.;let origin=Vec2::new(310.,165.);let size=Vec2::new(1105.,700.);for m in crate::combat::tactical::contacts(&c,&f,true){let p=to_screen(m.position,&menu,origin,size);println!("{} {:?}",m.label,p);assert!((origin.x..origin.x+size.x).contains(&p.x)&&(origin.y..origin.y+size.y).contains(&p.y));}}
+ #[test]fn carrier_raid_at_300km_fits_wide_map(){let f=crate::combat::naval::flight(true);let mut c=Combat::default();crate::combat::naval::start(&mut c,&f,100,1);let mut menu=Menu::default();menu.center=Vec2::new(f.position.x as f32,f.position.z as f32);menu.span=1000000.;let origin=Vec2::new(310.,165.);let size=Vec2::new(1105.,700.);for m in crate::combat::tactical::contacts(&c,&f,true){let p=to_screen(m.position,&menu,origin,size);println!("{} {:?}",m.label,p);assert!((origin.x..origin.x+size.x).contains(&p.x)&&(origin.y..origin.y+size.y).contains(&p.y));}}
 }
 
 #[cfg(test)] mod keyboard_map_tests {

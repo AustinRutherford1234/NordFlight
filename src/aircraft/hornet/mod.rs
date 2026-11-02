@@ -9,6 +9,7 @@ pub mod stores;
 pub mod structure;
 pub mod trim;
 pub mod ground;
+pub mod speedbrake;
 use crate::physics::*;
 use bevy::math::{DMat3, DQuat, DVec3};
 #[derive(Clone, Copy, Debug, Default)]
@@ -38,6 +39,7 @@ pub struct Dynamics {
     pub fbw:fbw::State,
     pub hud:crate::cockpit::hornet_hud::State,
     pub tanks: stores::Tanks,
+    pub speedbrake: f64,
     pub nose_steering: f64,
     pub nws_high: bool,
     pub skin_temperature: f64,
@@ -64,6 +66,7 @@ impl Default for Dynamics {
             fbw:Default::default(),
             hud:Default::default(),
             tanks: Default::default(),
+            speedbrake: 0.,
             nose_steering: 0.,
             nws_high: false,
             skin_temperature: 288.15,
@@ -137,7 +140,11 @@ fn contacts(f: &mut Flight, dt: f64) -> Loads {
         let longitudinal = v.dot(forward);
         let lateral = v.dot(right);
         let paved = crate::carrier::deck(f, p).is_some() || crate::terrain::paved(p.x, p.z);
-        let friction = if crate::carrier::deck(f, p).is_some() { 0.35 } else if paved { 0.65 } else { 0.50 };
+        // Higher braking grip is confined to the braked main wheels. Preserve
+        // unbraked lateral tyre response during touchdown/arrest and steering.
+        let braking=i!=0&&f.brakes;
+        let friction = if crate::carrier::deck(f, p).is_some() { if braking {0.70}else{0.35} }
+            else if paved { if braking {0.85}else{0.65} } else { 0.50 };
         let body_forward = f.orientation.conjugate() * forward;
         let body_right = f.orientation.conjugate() * right;
         let effective = |axis: DVec3| 1. / (1. / f.mass()

@@ -33,7 +33,9 @@ pub(super) fn targets(f: &Flight, raw: DVec3) -> [f64; 16] {
     ]
 }
 pub fn advance_actuators(f: &mut Flight, q: f64, dt: f64) {
-    let commands = super::fbw::commands(f,q,dt);
+    if dt>0. {super::speedbrake::advance(f,dt);}
+    let requested=super::fbw::commands(f,q,dt);
+    let commands=super::speedbrake::mix(f,requested);
     for (i, target) in commands.into_iter().enumerate() {
         let health = f.damage.surfaces[i].clamp(0., 1.);
         let authority = f.damage.hydraulics.clamp(0., 1.) * f.hornet.hydraulic_pressure * health * super::fbw::actuator_power(f);
@@ -133,6 +135,12 @@ pub(super) fn forces(f: &mut Flight, dt: f64) -> Loads {
             loads.add(force, at - cg);
             wing_lift[side_i] += force.y;
         }
+        // Projected control-surface drag follows achieved angles, not the switch.
+        let flap=crate::control_surfaces::effective_angle(&f.damage,base+1,f.hornet.angles[base+1]);
+        let aileron=crate::control_surfaces::effective_angle(&f.damage,base+2,f.hornet.angles[base+2]);
+        let area=1.1*(5.*flap.sin().powi(2)*f.damage.surfaces[base+1]
+            +3.*aileron.sin().powi(2)*f.damage.surfaces[base+2]);
+        loads.add(-air.normalize_or_zero()*q*area,DVec3::new(side*3.5,0.,1.)-cg);
         // Leading-edge extension vortex contribution is separate from wing strips.
         let vortex = f.damage.wings[side_i]
             * 0.3
@@ -173,11 +181,11 @@ pub(super) fn forces(f: &mut Flight, dt: f64) -> Loads {
                 * f.damage.surfaces[base + 3];
             loads.add(force, fin - cg);
             loads.elastic[4 + side_i] = force.x;
+            loads.add(-v.normalize_or_zero()*q*3.8*1.1*f.hornet.angles[base+3].sin().powi(2)*f.damage.surfaces[base+3],fin-cg);
         }
     }
     let cd = 0.008
-        + 0.02 * f.gear_extension
-        + 0.05 * if f.airbrake { 1. } else { 0. }
+        + (2.8*f.gear_extension.clamp(0.,1.).powi(2)+0.8*f.gear_door.clamp(0.,1.))/config::AREA
         + crate::aircraft::store_drag(f)
         - f.hornet.tanks.fuel.iter().flatten().count() as f64 * stores::DRAG;
     let tank_drag=stores::drag(f,cg);loads.force+=tank_drag.force;loads.moment+=tank_drag.moment;

@@ -980,6 +980,15 @@ fn main() {
             initial_flight.paused = paused;
         }
         if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
+            if mode.starts_with("speedbrake-") && a==aircraft::Aircraft::Hornet {
+                initial_flight.assist=false;initial_flight.hornet.initialized=true;
+                initial_flight.airbrake=mode.ends_with("extended");initial_flight.flaps=0.;
+                initial_flight.gear=false;initial_flight.gear_extension=0.;initial_flight.gear_door=0.;
+                initial_flight.controls=DVec3::ZERO;initial_flight.alpha=0.1;initial_flight.mach=0.6;
+                for _ in 0..720 {aircraft::hornet::aero::advance_actuators(&mut initial_flight,15000.,1./240.);}
+                initial_view.index=0;initial_view.yaw=0.55;initial_view.pitch=-0.35;initial_view.zoom=0.75;
+                println!("SPEEDBRAKE REVIEW {mode} deployment={} angles={:?}",initial_flight.hornet.speedbrake,initial_flight.hornet.angles);
+            }
             initial_view.help=false;initial_view.map=false;initial_view.zoom=0.65;initial_view.yaw=2.30;initial_view.pitch=-0.30;initial_view.index=0;
             if a==aircraft::Aircraft::F22 && mode!="ground" && mode!="gear"{initial_flight.gear=false;initial_flight.gear_extension=0.;initial_flight.flaps=0.;}
             if mode=="cockpit"{initial_view.index=3;initial_view.yaw=0.;initial_view.pitch=-0.13;initial_view.zoom=1.;}
@@ -1308,9 +1317,12 @@ fn main() {
             initial_flight.position=surface_point(0.,1050.,RUNWAY_HEIGHT+2.1);
             initial_flight.engine=false;initial_flight.assist=false;initial_flight.apu=true;
             for _ in 0..720{simulate(&mut initial_flight,&e,1./240.);}
-            initial_flight.velocity=initial_flight.forward()*3.;initial_flight.hornet.nws_high=true;
-            initial_flight.controls.y=if mode=="taxi-right"{-1.}else{1.};
-            for _ in 0..1440{simulate(&mut initial_flight,&e,1./240.);}
+            initial_flight.velocity=initial_flight.forward()*if mode.starts_with("brake-"){20.}else{3.};initial_flight.hornet.nws_high=true;
+            initial_flight.controls.y=if mode.starts_with("brake-"){0.}else if mode=="taxi-right"{-1.}else{1.};
+            initial_flight.brakes=mode=="brake-stop";
+            let start=initial_flight.position;
+            for _ in 0..if mode.starts_with("brake-"){2880}else{1440}{simulate(&mut initial_flight,&e,1./240.);}
+            if mode.starts_with("brake-"){println!("BRAKE REVIEW {mode} distance={} speed={}",initial_flight.position.distance(start),aircraft::hornet::ground::speed(&initial_flight));if initial_flight.brakes{assert!(aircraft::hornet::ground::speed(&initial_flight)<1.);}}
             println!("TAXI REVIEW speed={} steer={} bank={} status={}",aircraft::hornet::ground::speed(&initial_flight),initial_flight.hornet.nose_steering.to_degrees(),initial_flight.roll().to_degrees(),initial_flight.status);
             assert!(!initial_flight.crashed);
         }
@@ -3212,7 +3224,7 @@ fn update_hud(
                 } else if v.help && v.scenario == 4 {
                     "FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   Shift full · Ctrl cut · Z/X adjust\nWEAPONS   Tab target · O type · Space missile\nVIEW   C camera · 2 aircraft · 6 missile / 7 return\nRESTART   R · PAUSE   P · HELP   H\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute".into()
                 } else if v.help {
-                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "S hold NWS HI at taxi speed · Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing\nCARRIER  Option+Shift+C attach / release (idle, stopped on deck) · Enter launch at full throttle" } else { "" })
+                    format!("FLIGHT   W/S pitch · Q/E roll · A/D yaw\nPOWER   {} full · Ctrl cut · Z/X adjust\nGROUND   G gear · B brakes\nVIEW   C camera · M map · Home recenter\nWARP   , / . rate · / normal time\nSYSTEMS   1 battery · Alt+2 APU · 3 engine\nASSIST   I lights · T FBW · F6 hangar · Alt+F6 approach · {}\nAIRCRAFT   Y STOVL (F-35B) · Alt+Y airbrake · Alt+B bays · Alt+J jettison\nAUDIO   9 volume · 0 mute{}", "Shift", if f.aircraft == aircraft::Aircraft::Hornet { "Y surface speedbrake · S hold NWS HI at taxi speed · Shift+H help · H hook · Alt+O canopy · Alt+F wing fold · Option+C ×3 eject" } else { "H help" }, if f.aircraft == aircraft::Aircraft::Hornet { "\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing\nCARRIER  Option+Shift+C attach / release (idle, stopped on deck) · Enter launch at full throttle" } else { "" })
                 } else {
                     String::new()
                 }

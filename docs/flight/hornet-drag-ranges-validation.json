@@ -1,0 +1,40 @@
+{
+  "tests": {
+    "passed": 778,
+    "failed": 0,
+    "seconds": 95.28
+  },
+  "native": {
+    "seconds": 69.7849777500087,
+    "captures": [
+      "speedbrake-clean",
+      "speedbrake-extended",
+      "brake-coast",
+      "brake-stop"
+    ],
+    "restoration_handler_completed": true
+  },
+  "runway_rollout": {
+    "initial_speed_m_s": 20,
+    "duration_sim_s": 12,
+    "braked_distance_m": 42.96050488706911,
+    "braked_final_speed_m_s": 8.971000310570307e-05,
+    "unbraked_distance_m": 225.56485076511956,
+    "unbraked_final_speed_m_s": 17.629809409374104
+  },
+  "ranges_m": {
+    "raid_spawn": 300000,
+    "bomber_release": 150000,
+    "standard_outer_cap": 70000,
+    "essm_outer_cap": 30000
+  },
+  "weapon_fixtures": {
+    "standard_launch_m": 65000,
+    "standard_intercept_s": 63.475,
+    "essm_launch_m": 28000,
+    "essm_intercept_s": 32.833333333333336,
+    "cruise_launch_horizontal_m": 149000,
+    "cruise_impact_s": 537.9083333330085
+  },
+  "limits": "Estimated game parameters. Scripted snapshots and deterministic fixtures are separate from manual flight review and real-weapon validation."
+}

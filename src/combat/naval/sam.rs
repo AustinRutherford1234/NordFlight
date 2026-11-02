@@ -406,6 +406,11 @@ mod tests {
         panic!("unbounded SAM flight");
     }
     #[test]
+    fn outer_envelope_intercepts_approaching_targets() {
+        engagement(Kind::Standard,DVec3::Z*480.,65000.,120,true);
+        engagement(Kind::Essm,DVec3::Z*450.,28000.,120,true);
+    }
+    #[test]
     fn standard_intercepts_fast_approaching_crossing_and_receding_bombers() {
         engagement(Kind::Standard, DVec3::Z * 480., 16000., 120, true);
         engagement(Kind::Standard, DVec3::X * 480., 12000., 120, true);

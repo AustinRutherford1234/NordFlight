@@ -38,7 +38,7 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             && r.stores > 0
             && !r.withdrew
             && !n.ended
-            && t.position.distance(ship) < 28000.
+            && t.position.distance(ship) < envelope::STRIKE_RANGE+5000.
             && t.dynamics.mach<0.95;
         r.bay += ((if open { 1. } else { 0. }) - r.bay).clamp(-0.5 * dt, 0.5 * dt);
         if r.role == Role::Fighter {
@@ -85,7 +85,7 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             if !r.strike_reverse && along>35000. {r.strike_reverse=true;}
             if r.strike_reverse && along< -35000. {r.strike_reverse=false;}
             let target=ship+axis*if r.strike_reverse {-40000.}else{40000.};
-            let altitude=if t.position.distance(ship)>45000. && r.stores==BOMBER_MISSILES {10000.}else{8000.};
+            let altitude=if t.position.distance(ship)>envelope::STRIKE_RANGE+40000. && r.stores==BOMBER_MISSILES {10000.}else{8000.};
             let goal=target.normalize()*(RADIUS+altitude);
             ((goal-t.position).normalize_or(-outward),"STRIKE RUN")
         } else {
@@ -124,7 +124,7 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             t.dynamics.bomber_stores = r.stores;
             t.dynamics.systems.bays = r.bay;
         }
-        let release_configuration=if r.role==Role::Bomber && !r.withdrew && (t.position.distance(ship)<40000. || r.stores<BOMBER_MISSILES) {1.}else{r.bay};
+        let release_configuration=if r.role==Role::Bomber && !r.withdrew && (t.position.distance(ship)<envelope::STRIKE_RANGE+40000. || r.stores<BOMBER_MISSILES) {1.}else{r.bay};
         let speed=mission_speed(r.role,t.dynamics.altitude(),release_configuration,intercept.is_some(),r.withdrew);
         ai::fly(
             t,
@@ -134,7 +134,7 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             difficulty,
             dt,
         );
-        if r.withdrew && t.position.distance(ship) > 145000. {
+        if r.withdrew && t.position.distance(ship) > RAID_SPAWN_RANGE+25000. {
             t.alive = false;
         }
     }
@@ -179,7 +179,7 @@ pub fn protect(f: &mut Flight) {
 mod tests {
     use super::*;
     #[test]
-    fn raid_flies_from_120km_to_physical_release_then_withdraws_without_unbounded_turns() {
+    fn raid_flies_from_300km_to_physical_release_then_withdraws_without_unbounded_turns() {
         let mut f = flight(false);
         f.crashed = true;
         let mut c = Combat::default();

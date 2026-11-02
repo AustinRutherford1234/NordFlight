@@ -14,6 +14,10 @@ pub fn tyre(
     mass_side: f64,
     dt: f64,
 ) -> DVec2 {
+    tyre_with_brake(longitudinal,lateral,load,mu,rolling,brake,mass_long,mass_side,dt,0.60)
+}
+#[allow(clippy::too_many_arguments)]
+pub fn tyre_with_brake(longitudinal:f64,lateral:f64,load:f64,mu:f64,rolling:f64,brake:bool,mass_long:f64,mass_side:f64,dt:f64,brake_effort:f64)->DVec2 {
     if load <= 0. || dt <= 0. {
         return DVec2::ZERO;
     }
@@ -22,7 +26,7 @@ pub fn tyre(
         -load
             * (rolling * longitudinal.tanh()
                 + if brake {
-                    0.60 * (longitudinal / 0.03).tanh()
+                    brake_effort * (longitudinal / 0.03).tanh()
                 } else {
                     0.
                 }),

@@ -49,10 +49,23 @@ pub fn steer(f: &mut Flight, velocity: DVec3, forward: DVec3, right: DVec3, dt: 
     };
     f.hornet.nose_steering += (target - f.hornet.nose_steering).clamp(-rate * dt, rate * dt);
 }
-pub use crate::ground::tyre;
+#[allow(clippy::too_many_arguments)]
+pub fn tyre(longitudinal:f64,lateral:f64,load:f64,mu:f64,rolling:f64,brake:bool,mass_long:f64,mass_side:f64,dt:f64)->bevy::math::DVec2 {
+ crate::ground::tyre_with_brake(longitudinal,lateral,load,mu,rolling,brake,mass_long,mass_side,dt,0.90)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]fn stronger_main_wheel_brakes_respect_grip_and_never_reverse_motion(){
+        for mu in [0.70,0.85] {
+            let old=crate::ground::tyre(20.,0.,50000.,if mu==0.70{0.35}else{0.65},0.016,true,5000.,5000.,1./240.);
+            let new=tyre(20.,0.,50000.,mu,0.016,true,5000.,5000.,1./240.);
+            assert!(new.x.abs()>old.x.abs()*1.3);
+            assert!(new.length()<=50000.*mu+1e-8);
+            let crawl=tyre(0.001,0.,50000.,mu,0.016,true,5000.,5000.,1./240.);
+            assert!(0.001+crawl.x/5000./240.>=-1e-12);
+        }
+    }
     #[test]
     fn combined_grip_is_bounded_and_dissipative_at_all_speeds() {
         for vx in [-80., -4., -0.001, 0., 0.001, 4., 80.] {
