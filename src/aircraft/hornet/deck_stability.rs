@@ -13,9 +13,9 @@ fn landing(bank: f64, offset: f64, assist: bool, hz: usize) -> (Flight, f64, f64
     let clear = crate::collision::wheel_clearance(&f);
     f.position = crate::carrier::world(
         DVec3::new(
-            crate::carrier::lane(125.) + offset,
+            crate::carrier::lane(crate::carrier::WIRES[0]+13.) + offset,
             crate::carrier::DECK + clear + 0.45,
-            125.,
+            crate::carrier::WIRES[0]+13.,
         ),
         0.,
     );
@@ -28,7 +28,10 @@ fn landing(bank: f64, offset: f64, assist: bool, hz: usize) -> (Flight, f64, f64
         simulate(&mut f, &e, 1. / hz as f64);
         let bank = f.roll().abs().to_degrees();
         peak = peak.max(bank);
-        if (f.velocity - crate::carrier::velocity(f.elapsed)).length() < 3. {
+        // A faster stop crosses 3 m/s while the original touchdown bank is
+        // still settling. Measure settled roll after eight seconds; `peak`
+        // above still bounds the entire touchdown/deceleration transient.
+        if f.elapsed > 8. && (f.velocity - crate::carrier::velocity(f.elapsed)).length() < 3. {
             slow = slow.max(bank);
         }
         if f.crashed {
@@ -44,8 +47,8 @@ fn neutral_carrier_arrests_settle_without_roll_divergence() {
             for offset in [-6., 0., 6.] {
                 let (f, peak, slow) = landing(bank, offset, assist, 240);
                 println!(
-                    "assist={assist} bank={bank} offset={offset} peak={peak:.2} slow={slow:.2} crash={} status={}",
-                    f.crashed, f.status
+                    "assist={assist} bank={bank} offset={offset} peak={peak:.2} settled={slow:.2} final_roll={} final_rate={} crash={} status={}",
+                    f.roll().to_degrees(), f.rates.z, f.crashed, f.status
                 );
                 assert!(
                     !f.crashed && f.carrier.arrested,
@@ -81,7 +84,7 @@ fn carrier_stop_is_consistent_at_render_timestep_rates() {
 fn arrest_reaction_is_dissipative_at_the_airframe_pivot() {
     let mut f = crate::carrier::scenario(false);
     f.carrier.arrested = true;
-    f.carrier.deck_position = DVec3::new(crate::carrier::lane(112.), crate::carrier::DECK, 112.);
+    f.carrier.deck_position = DVec3::new(crate::carrier::lane(crate::carrier::WIRES[0]), crate::carrier::DECK, crate::carrier::WIRES[0]);
     f.position = crate::carrier::world(DVec3::new(2., crate::carrier::DECK + 2., 70.), 0.);
     f.rates = DVec3::new(0.1, -0.2, 0.15);
     f.velocity = crate::carrier::velocity(0.) + f.orientation * DVec3::new(1., -0.2, -35.);

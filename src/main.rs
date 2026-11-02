@@ -1227,7 +1227,7 @@ fn main() {
         if arrest {
             initial_flight.orientation=carrier::rotation(0.)*bevy::math::DQuat::from_rotation_y(0.14)*bevy::math::DQuat::from_rotation_x(0.03);
             let clear=collision::wheel_clearance(&initial_flight);
-            initial_flight.position=carrier::world(DVec3::new(carrier::lane(125.),carrier::DECK+clear+0.6,125.),0.);
+            initial_flight.position=carrier::world(DVec3::new(carrier::lane(carrier::WIRES[0]+13.),carrier::DECK+clear+0.6,carrier::WIRES[0]+13.),0.);
             initial_flight.velocity=carrier::velocity(0.)+carrier::rotation(0.)*DVec3::new(-9.8,-3.,-70.);
             let duration=if mode=="arrest-mid"{1.5}else{6.};
             for _ in 0..(duration*240.)as usize {simulate(&mut initial_flight,&initial_environment,1./240.);}
@@ -1264,7 +1264,7 @@ fn main() {
             initial_flight=carrier::scenario(false);
             initial_flight.orientation=carrier::rotation(0.)*bevy::math::DQuat::from_rotation_y(0.14)*bevy::math::DQuat::from_rotation_x(0.07)*bevy::math::DQuat::from_rotation_z(1f64.to_radians());
             let clear=collision::wheel_clearance(&initial_flight);
-            initial_flight.position=carrier::world(DVec3::new(carrier::lane(125.)+6.,carrier::DECK+clear+0.45,125.),0.);
+            initial_flight.position=carrier::world(DVec3::new(carrier::lane(carrier::WIRES[0]+13.)+6.,carrier::DECK+clear+0.45,carrier::WIRES[0]+13.),0.);
             initial_flight.velocity=carrier::velocity(0.)+carrier::rotation(0.)*DVec3::new(-9.8,-4.,-70.);initial_flight.throttle=0.45;
             let duration=match mode.as_str(){"landing-roll-touch"=>0.2,"landing-roll-decel"=>2.,"landing-roll-slow"=>4.,_=>12.};
             for _ in 0..(duration*240.)as usize{simulate(&mut initial_flight,&initial_environment,1./240.);}
@@ -2756,6 +2756,11 @@ fn update_camera(
         p = center + level * (look * Vec3::new(0., 7., 28.)) * v.zoom;
         target = center;
         up_view = radial;
+    }
+    if std::env::var("NORD_CARRIER_CAPTURE").as_deref()==Ok("wire-layout") {
+        let q=world::local_rot(carrier::ship_rotation(&f,0,f.elapsed),&f);
+        target=local(carrier::ship_world(&f,0,DVec3::new(carrier::lane(114.),carrier::DECK,114.),f.elapsed),&f);
+        p=target+q*Vec3::new(0.,90.,60.);up_view=q*Vec3::Y;
     }
     if let Some(ship)=v.ship_follow {
         let q=world::local_rot(carrier::ship_rotation(&f,ship,f.elapsed),&f);

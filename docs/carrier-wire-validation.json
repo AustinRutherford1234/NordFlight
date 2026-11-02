@@ -1,0 +1,30 @@
+{
+  "wire_positions_z_m": [
+    132,
+    120,
+    108,
+    96
+  ],
+  "aft_shift_m": 20,
+  "force_cap_N": 850000,
+  "energy_limit_J": 110000000,
+  "stroke_limit_m": 130,
+  "automated_tests": {
+    "passed": 780,
+    "failed": 0,
+    "seconds": 76.63
+  },
+  "native_review": {
+    "seconds": 36.72001116699539,
+    "captures": [
+      "wire-layout",
+      "arrest"
+    ],
+    "restoration_handler_completed": true
+  },
+  "native_images_inspected": [
+    "wire-layout",
+    "arrest"
+  ],
+  "limits": "Estimated game tuning; scripted snapshots separate from manual flight review."
+}
