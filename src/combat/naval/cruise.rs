@@ -10,14 +10,26 @@ pub(super) fn acceleration(position:DVec3, velocity:DVec3, goal:DVec3, time:f64)
     let range=to.length();
     // Smooth terminal transition; heights are conservative simulation estimates.
     let clearance=5.+7.*((range-3000.)/5000.).clamp(0.,1.);
-    let ahead=position+horizontal*speed*1.5;
-    let height=|p:DVec3| if carrier::sea(p.x,p.z) {
-        crate::ocean::sample(p,time).height.max(0.)
-    }else{terrain_height(p.x,p.z).max(0.)};
-    let floor=height(position).max(height(ahead));
-    let error=floor+clearance-(position.length()-RADIUS);
-    // Descend early after high-altitude release. Arrest descent before reaching
-    // the surface rather than aiming down at a distant point on the sea.
+    // A radar-altimeter channel remains independent of target acquisition.
+    // Preview a fixed, bounded set of terrain samples (no allocations). The
+    // former 1.5-second preview could meet a coastline before the aircraft-like
+    // altitude response had time to climb. Land gets extra obstacle clearance;
+    // open-water cruise/terminal heights remain 12/5 m.
+    let mut target_height=if carrier::sea(position.x,position.z) {
+        clearance+crate::ocean::sample(position,time).height.max(0.)
+    }else{terrain_height(position.x,position.z).max(0.)+30.};
+    for seconds in [2.,4.,8.,12.,20.,30.,40.] {
+        // Stop preview at the navigation goal: terrain beyond the target ship
+        // must not pull a terminal sea-skimmer upward before impact.
+        let ahead=position+horizontal*(speed*seconds).min(range);
+        let desired=if carrier::sea(ahead.x,ahead.z) {clearance}
+            else {terrain_height(ahead.x,ahead.z).max(0.)+30.};
+        target_height=target_height.max(desired);
+    }
+    let height=position.length()-RADIUS;
+    let error=target_height-height;
+    // Retain the bounded physical climb/descent response. Preview raises the
+    // commanded altitude early, rather than increasing force or snapping height.
     let vertical=(error/4.).clamp(-60.,25.);
     let vertical_accel=((vertical-velocity.dot(up))*1.5).clamp(-12.,25.);
     let yaw=(bearing-horizontal*horizontal.dot(bearing))*speed*2.;
@@ -28,6 +40,22 @@ pub(super) fn acceleration(position:DVec3, velocity:DVec3, goal:DVec3, time:f64)
 
 #[cfg(test)] mod tests {
  use super::*;
+ #[test] fn sea_to_land_transition_clears_the_coast() {
+  for hz in [60,120,240] {
+   let mut p=crate::terrain::point(14500.,-40000.,14.);
+   let mut v=-DVec3::X*290.;
+   let goal=crate::terrain::point(0.,-40000.,70.);
+   for k in 0..hz*35 {
+    let speed=v.length();let direction=v/speed;
+    let thrust=if speed<290. {45.}else{0.};
+    let a=acceleration(p,v,goal,k as f64/hz as f64)-p.normalize()*9.81
+      +direction*(thrust-0.000025*speed*speed);
+    v+=a/hz as f64;p+=v/hz as f64;
+    let floor=terrain_height(p.x,p.z).max(0.);
+    assert!(p.length()-RADIUS>floor+1.,"coast collision hz={hz} t={} h={} floor={floor}",k as f64/hz as f64,p.length()-RADIUS);
+   }
+  }
+ }
  #[test] fn high_release_descends_then_tracks_sea_skimming_height() {
   for hz in [60,120,240] {
    let mut p=carrier::world(DVec3::new(0.,10000.,-120000.),0.);

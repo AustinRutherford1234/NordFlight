@@ -502,10 +502,15 @@ impl State {
             let up = m.position.normalize();
             let gravity = up * 9.81;
             let compensation = gravity - direction * gravity.dot(direction);
-            let guidance = if tracked.is_none() {
+            let guidance = if m.kind == Kind::AntiShip {
+                // Losing the RF target must not disable the independent
+                // altimeter/terrain channel. Without a usable target, maintain
+                // the current course rather than steering toward hidden truth.
+                let navigation_goal=if tracked.is_some() {estimate+estimated_velocity*intercept}
+                    else {m.position+direction*100000.};
+                super::cruise::acceleration(m.position,m.velocity,navigation_goal,f.elapsed)
+            } else if tracked.is_none() {
                 DVec3::ZERO
-            } else if m.kind == Kind::AntiShip {
-                super::cruise::acceleration(m.position,m.velocity,estimate+estimated_velocity*intercept,f.elapsed)
             } else {
                 (lateral + compensation).clamp_length_max(turn * 9.81)
             };
@@ -749,6 +754,48 @@ mod engagement_tests {
 #[cfg(test)]
 mod defense_tests {
     use super::*;
+    #[test]
+    fn cruise_altitude_control_survives_terminal_track_loss() {
+        for hz in [60,120,240] {
+            let mut f=flight(true);let mut c=Combat::default();
+            let mut n=State::new(1,2,false);n.ended=true;
+            let p=carrier::world(DVec3::new(0.,18.,-25000.),0.);
+            let velocity=carrier::rotation(0.)*DVec3::Z*290.;
+            assert!(n.round(TargetId::Aircraft(1),TargetId::Aircraft(999),Kind::AntiShip,p,velocity));
+            tracking::seed(&mut n.rounds[0],p+velocity.normalize()*10000.,DVec3::ZERO);
+            for k in 0..hz*24 {
+                f.elapsed=k as f64/hz as f64;n.clock=f.elapsed;
+                n.weapons(&mut c,&mut f,1./hz as f64);
+                let m=&n.rounds[0];
+                assert!(m.alive,"cruise fell after lost track: hz={hz} t={} h={}",m.age,m.position.length()-RADIUS);
+                assert!(m.position.length()-RADIUS>3.);
+            }
+            assert!(!n.rounds[0].visual.guided,"fixture must exhaust seeker memory");
+            assert_eq!(n.rounds[0].visual.gnc.mode,guidance::Mode::Inertial);
+        }
+    }
+    #[test]
+    fn cruise_routes_from_eight_raid_bearings_clear_terrain_and_reach_fleet() {
+        for bearing in 0..8 {
+            let mut f=flight(true);let mut c=Combat::default();
+            let mut n=State::new(1,2,false);n.ended=true;
+            let angle=bearing as f64*std::f64::consts::FRAC_PI_4;
+            let p=carrier::world(DVec3::new(angle.sin()*149000.,10000.,angle.cos()*149000.),0.);
+            let target=carrier::ship_world(&f,0,DVec3::Y*5.,0.);
+            let up=p.normalize();let to=target-p;
+            let velocity=(to-up*to.dot(up)).normalize()*270.;
+            assert!(n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,velocity));
+            tracking::seed(&mut n.rounds[0],target,carrier::velocity(0.));
+            for k in 0..120*730 {
+                f.elapsed=k as f64/120.;n.clock=f.elapsed;
+                n.weapons(&mut c,&mut f,1./120.);
+                if !n.rounds[0].alive {break;}
+            }
+            let m=&n.rounds[0];
+            println!("CRUISE bearing={} age={} h={} floor={} hull={}",bearing*45,m.age,m.position.length()-RADIUS,terrain_height(m.position.x,m.position.z),n.ships[0].hull);
+            assert!(n.ships.iter().any(|s|s.hull<1.),"route bearing={} missed fleet or struck terrain: {:?}",bearing*45,m);
+        }
+    }
     #[test]
     fn cruise_weapon_reaches_moving_carrier_from_outer_bomber_release_range() {
         let mut f=flight(true);let mut c=Combat::default();

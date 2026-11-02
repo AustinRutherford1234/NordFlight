@@ -76,7 +76,9 @@ pub(super) fn update(m: &mut Round, target: Option<guidance::Contact>, support: 
     if inertial {v.gnc.reason="INERTIAL SEA-SKIM / SEEKER STANDBY";v.lost_for=0.;}
     else if v.lost_for>SENSOR_DT*1.5 {v.gnc.confidence=(v.gnc.confidence-dt*0.18).max(0.);}
     v.guided=v.gnc.initialized && v.gnc.confidence>0.05 && v.lost_for<MEMORY_SECONDS;
+    if !v.guided && m.kind==Kind::AntiShip {v.gnc.reason="TARGET LOST / ALTITUDE AND COURSE HOLD";}
     v.gnc.mode=if m.age<0.6 && matches!(m.source,TargetId::Ship(_)) {Mode::Separation}
+        else if !v.guided && m.kind==Kind::AntiShip {Mode::Inertial}
         else if !v.guided {Mode::Ballistic}
         else if inertial {Mode::Inertial}
         else if v.lost_for>SENSOR_DT*1.5 || v.gnc.signal<0.18 {Mode::Memory}
