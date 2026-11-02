@@ -2106,7 +2106,7 @@ pub fn smoke(
             combat.active
                 && m.alive
                 && smoke_near_camera(tag.0,m,&f,camera.translation)
-                && !(smoke_gpu::enabled() && (m.gnc.aim9x || m.kind == Weapon::Radar))
+                && !(smoke_gpu::enabled() && tag.0<RENDER_MISSILES && (m.gnc.aim9x || m.kind == Weapon::Radar))
                 && m.trail.len() > 2
                 && m.age < combat.smoke_duration(tag.0,m) + 3.8
         });
@@ -2120,7 +2120,10 @@ pub fn smoke(
             continue;
         };
         let detailed=missile.gnc.aim9x||missile.kind==Weapon::Radar;
-        let mat=if detailed{&aim9x_assets.smoke}else{&missile_meshes.smoke};
+        let naval=tag.0>=RENDER_MISSILES && combat.naval.as_ref()
+            .and_then(|n|n.rounds.get(tag.0-RENDER_MISSILES))
+            .is_some_and(|m|m.kind!=naval::Kind::AirToAir);
+        let mat=if naval {&aim9x_assets.naval_smoke}else if detailed{&aim9x_assets.smoke}else{&missile_meshes.smoke};
         if material.0!=*mat{material.0=mat.clone();}
         // Generic trails are built relative to their first point in world
         // axes and placed by Transform, so a coasting trail keeps its vertex
@@ -2164,13 +2167,14 @@ pub fn smoke(
         }
         if let Some(asset) = meshes.get_mut(&handle.0) {
             if detailed {
-                *bounds = aim9x::write_smoke(
+                *bounds = aim9x::write_smoke_styled(
                     asset,
                     missile,
                     basis,
                     origin,
                     camera.translation,
                     camera.rotation * Vec3::Y,
+                    if naval {aim9x::SmokeStyle::naval(missile.gnc.maritime)}else{aim9x::SmokeStyle::default()},
                 );
                 previous[tag.0] = Some(state);
                 continue;

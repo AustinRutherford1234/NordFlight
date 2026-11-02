@@ -11,6 +11,7 @@ pub struct VisualAssets {
     pub plumes: [Handle<Mesh>; 3],
     pub plume_materials: [Handle<StandardMaterial>; 3],
     pub smoke: Handle<StandardMaterial>,
+    pub naval_smoke: Handle<StandardMaterial>,
     tail: Handle<Mesh>,
     vane: Handle<Mesh>,
     metal: Handle<StandardMaterial>,
@@ -367,7 +368,20 @@ pub fn prepare(
         cull_mode: None,
         ..default()
     });
+    let mut naval_texture=Image::new_fill(Extent3d {width:128,height:128,depth_or_array_layers:1},
+        TextureDimension::D2,&[0,0,0,0],TextureFormat::Rgba8UnormSrgb,RenderAssetUsages::default());
+    let mut pixels=smoke_pixels();
+    for y in 0..128 {for x in 0..128 {
+        let u=(x as f32+0.5)/64.-1.;let v=(y as f32+0.5)/64.-1.;
+        let light=(0.93-0.04*u-0.06*v+0.04*(u*8.+v*5.).sin()).clamp(0.8,1.);
+        let i=(y*128+x)*4;
+        for k in 0..3 {pixels[i+k]=(pixels[i+k] as f32*light) as u8;}
+    }}
+    naval_texture.data=Some(pixels);
+    let naval_smoke=materials.add(StandardMaterial {base_color_texture:Some(images.add(naval_texture)),
+        base_color:Color::srgba(0.96,0.955,0.94,0.86),unlit:true,alpha_mode:AlphaMode::Blend,cull_mode:None,..default()});
     VisualAssets {
+        naval_smoke,
         plumes: std::array::from_fn(|i| meshes.add(plume_mesh(i))),
         plume_materials,
         smoke,
@@ -494,6 +508,12 @@ pub fn plume_transform(m: &Missile, layer: usize) -> Transform {
 
 /// Soft overlapping ellipses align with the projected smoke path. Six lobes
 /// per retained segment keep the pool bounded and continuous even at high speed.
+#[derive(Clone,Copy)]
+pub struct SmokeStyle {pub width:f32,pub billow:f32,pub rise:f64,pub drift:f64,pub opacity:f32,pub near:f64,pub far:f64}
+impl Default for SmokeStyle {fn default()->Self {Self{width:1.,billow:0.,rise:0.4,drift:0.25,opacity:1.,near:16.,far:30.}}}
+impl SmokeStyle {
+    pub fn naval(cruise:bool)->Self {Self{width:if cruise {3.4}else{5.5},billow:0.65,rise:0.9,drift:0.6,opacity:1.35,near:4.,far:14.}}
+}
 pub fn write_smoke(
     asset: &mut Mesh,
     m: &Missile,
@@ -502,6 +522,11 @@ pub fn write_smoke(
     eye: Vec3,
     camera_up: Vec3,
 ) -> Aabb {
+    write_smoke_styled(asset,m,basis,origin,eye,camera_up,SmokeStyle::default())
+}
+pub fn write_smoke_styled(
+    asset:&mut Mesh,m:&Missile,basis:DQuat,origin:DVec3,eye:Vec3,camera_up:Vec3,style:SmokeStyle,
+)->Aabb {
     use bevy::mesh::VertexAttributeValues as V;
     let mut p = match asset.remove_attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(V::Float32x3(v)) => v,
@@ -524,15 +549,19 @@ pub fn write_smoke(
     let points = m.trail.iter().copied().chain(tail);
     let all: Vec<DVec3> = points.clone().collect();
     let distance = super::smoke_distances(&all, tail.unwrap_or(m.position));
+    let eye_distance=(basis*(m.position-origin)).as_vec3().distance_squared(eye);
+    let lobes=if style.billow>0. && eye_distance>6000_f32.powi(2) {2}
+        else if style.billow>0. && eye_distance>1800_f32.powi(2) {3}else{6};
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {
-        for j in 0..6 {
-            let t = (j as f64 + 0.5) / 6.;
-            let clearance =
-                super::smoke_clearance(distance[i] + (distance[i + 1] - distance[i]) * t);
+        for j in 0..lobes {
+            let t = (j as f64 + 0.5) / lobes as f64;
+            let behind_nozzle=distance[i]+(distance[i+1]-distance[i])*t;
+            let blend=((behind_nozzle-style.near)/(style.far-style.near)).clamp(0.,1.) as f32;
+            let clearance=blend*blend*(3.-2.*blend);
             let behind = (point_count - 2 - i) as f64 + 1. - t;
             let age = (m.trail_clock + behind * 0.075).max(0.);
             let center_world =
-                a.lerp(b, t) + a.normalize() * (age * 0.40) + DVec3::X * (age * 0.25);
+                a.lerp(b, t) + a.normalize() * (age * style.rise) + DVec3::X * (age * style.drift);
             let center = (basis * (center_world - origin)).as_vec3();
             let normal = (eye - center).normalize_or(Vec3::Z);
             let tangent = (basis * (b - a)).as_vec3();
@@ -541,13 +570,17 @@ pub fn write_smoke(
             let phase = (a.x * 0.13 + a.z * 0.19 + j as f64 * 2.4) as f32;
             let width = (0.10 + 0.64 * (age as f32).sqrt())
                 * (1. + 0.16 * phase.sin())
-                * if m.kind == Weapon::Radar { 1.35 } else { 1.0 };
-            let half = (tangent.length() / 12. + width * 0.8).max(width);
-            let center = center + across * (0.13 * width * (phase + age as f32).sin());
-            let alpha = ((1. - age / 5.).clamp(0., 1.).powi(2) * 0.82) as f32 * clearance;
+                * if m.kind == Weapon::Radar { 1.35 } else { 1.0 } * style.width;
+            let half = (tangent.length() / (2.*lobes as f32) + width * 0.8).max(width);
+            let center = center + across * ((0.13+style.billow*0.35) * width * (phase + age as f32).sin())
+                + along*(style.billow*width*0.22*(phase*1.7+age as f32).cos());
+            let fade=(1.-age/5.).clamp(0.,1.);
+            let fade=if style.billow>0. {fade.powf(1.25)}else{fade*fade};
+            let alpha=(fade as f32*0.82*clearance*style.opacity).min(1.);
             for (x, y) in [(-1., -1.), (1., -1.), (1., 1.), (-1., 1.)] {
                 p.push((center + along * half * y + across * width * x).to_array());
-                col.push([1., 1., 1., alpha]);
+                let shade=1.-style.billow*0.12*(0.5+0.5*phase.sin());
+                col.push([shade,shade,shade,alpha]);
                 uv.push([(x + 1.) * 0.5, (y + 1.) * 0.5]);
             }
         }
@@ -685,6 +718,25 @@ mod tests {
             assert_eq!(a.translation, b.translation);
             assert!((a.rotation.length() - 1.).abs() < 1e-6);
         }
+    }
+    #[test]
+    fn naval_smoke_is_fuller_bounded_and_simplifies_at_distance() {
+        use bevy::mesh::VertexAttributeValues as V;
+        let m=posed_missile();let anchor=m.trail[0];let eye=Vec3::new(80.,20.,30.);
+        let mut old=super::super::mesh(vec![],vec![]);
+        let normal=write_smoke(&mut old,&m,DQuat::IDENTITY,anchor,eye,Vec3::Y);
+        let mut naval=super::super::mesh(vec![],vec![]);
+        let larger=write_smoke_styled(&mut naval,&m,DQuat::IDENTITY,anchor,eye,Vec3::Y,SmokeStyle::naval(false));
+        let volume=|b:Aabb|b.half_extents.x*b.half_extents.y*b.half_extents.z;
+        assert!(volume(larger)>volume(normal)*1.5);
+        let Some(V::Float32x3(vertices))=naval.attribute(Mesh::ATTRIBUTE_POSITION)else{panic!()};
+        let near_count=vertices.len();let capacity=vertices.capacity();
+        assert!(vertices.iter().flatten().all(|v|v.is_finite()));
+        let Some(V::Float32x4(colors))=naval.attribute(Mesh::ATTRIBUTE_COLOR)else{panic!()};
+        assert!(colors.iter().all(|c|c[3]>=0.&&c[3]<=1.));
+        write_smoke_styled(&mut naval,&m,DQuat::IDENTITY,anchor,Vec3::X*9000.,Vec3::Y,SmokeStyle::naval(false));
+        let Some(V::Float32x3(vertices))=naval.attribute(Mesh::ATTRIBUTE_POSITION)else{panic!()};
+        assert_eq!(vertices.len()*3,near_count);assert_eq!(vertices.capacity(),capacity);
     }
     #[test]
     fn smoke_texture_is_soft_bounded_and_not_uniform() {

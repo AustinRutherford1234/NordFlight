@@ -1443,6 +1443,7 @@ fn main() {
         .add_plugins(earth_gpu::EarthGpuPlugin)
         .add_plugins(ocean::OceanPlugin)
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
+        .add_systems(PostUpdate,combat::naval::smoke::update.before(bevy::transform::TransformSystems::Propagate))
         .add_plugins(terrain_ready::TerrainReadyPlugin)
         .add_systems(
             PostStartup,
@@ -1459,6 +1460,7 @@ fn main() {
                 .before(bevy::ui::UiSystems::Focus),
         )
         .add_systems(PostStartup, benchmark_ablation)
+        .add_systems(PostStartup,combat::naval::smoke::setup)
         .add_systems(
             Startup,
             (
@@ -2800,6 +2802,16 @@ fn update_camera(
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {
+        if mode.starts_with("defense-smoke-") {
+            if let Some(n)=combat.naval.as_ref() {if let Some(m)=n.rounds.first() {
+                let q=carrier::ship_rotation(&f,1,f.elapsed);
+                let at=if mode.ends_with("launch") {carrier::ship_world(&f,1,combat::naval::smoke::review_mount(),f.elapsed)+f.up()*12.}
+                    else {m.position-m.velocity.normalize()*65.};
+                target=local(at,&f);
+                p=local(at+q*DVec3::new(if mode.ends_with("launch"){-45.}else{-70.},if mode.ends_with("launch"){40.}else{24.},if mode.ends_with("launch"){-70.}else{65.}),&f);
+                up_view=(world::frame(&f).conjugate()*f.up()).as_vec3();
+            }}
+        }
         if mode=="defense-ciws" {
             let q=world::local_rot(carrier::ship_rotation(&f,1,f.elapsed),&f);
             target=local(carrier::ship_world(&f,1,combat::naval::ciws_review_mount(),f.elapsed),&f);

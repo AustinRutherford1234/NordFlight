@@ -63,7 +63,7 @@ fn setup(
         return;
     }
     let material = base.get(&source.smoke).unwrap();
-    for slot in 0..EFFECT_MISSILES {
+    for slot in 0..RENDER_MISSILES {
         c.spawn((
             Trail {
                 slot,

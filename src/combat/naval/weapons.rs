@@ -1070,7 +1070,26 @@ mod fleet_repair_tests {
 pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mut ViewState) {
  let mut n=c.naval.take().unwrap();n.rounds.clear();
  for r in &mut n.raiders {r.next_shot=1e9;r.stores=0;}
- if mode=="defense-skim" {
+ if mode.starts_with("defense-smoke-") {
+  n.ended=true;
+  for ship in &mut n.ships {ship.standard=0;ship.essm=0;ship.gun=0;}
+  let cruise=mode.ends_with("cruise");
+  let source=if cruise {TargetId::Aircraft(n.raiders[2].id)}else{TargetId::Ship(1)};
+  let p=if cruise {carrier::world(DVec3::new(0.,180.,-8000.),0.)}
+    else{carrier::ship_world(f,1,launch_mount(1),0.)};
+  let goal=if cruise {carrier::ship_world(f,0,DVec3::Y*5.,0.)}
+    else{p+carrier::rotation(0.)*DVec3::new(0.,4000.,-6000.)};
+  let target=if cruise {TargetId::Ship(0)}else{TargetId::Aircraft(n.raiders[0].id)};
+  if !cruise {c.targets[0].position=goal;c.targets[0].velocity=DVec3::ZERO;
+   n.tracks=vec![Track{id:n.raiders[0].id,position:goal,velocity:DVec3::ZERO,seen:0.,hits:5,role:Some(Role::Fighter)}];}
+  let velocity=if cruise {(goal-p).normalize()*290.}else{p.normalize()*35.+carrier::velocity(0.)};
+  n.round(source,target,if cruise {Kind::AntiShip}else{Kind::Standard},p,velocity);
+  tracking::seed(&mut n.rounds[0],goal,DVec3::ZERO);
+  let ticks=if mode.ends_with("launch") {192}else{360};
+  for k in 0..ticks {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.weapons(c,f,1./120.);}
+  println!("SMOKE REVIEW {mode} alive={} age={} samples={}",n.rounds[0].alive,n.rounds[0].age,n.rounds[0].visual.trail.len());
+  assert!(n.rounds[0].alive);v.restore_camera();v.simple=true;
+ } else if mode=="defense-skim" {
   n.ended=true;
   let p=carrier::world(DVec3::new(0.,500.,-20000.),0.);
   let goal=carrier::ship_world(f,0,DVec3::Y*5.,0.);

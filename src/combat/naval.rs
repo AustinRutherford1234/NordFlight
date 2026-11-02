@@ -4,6 +4,7 @@ use crate::carrier;
 pub mod damage;
 mod radio;
 mod visual;
+pub mod smoke;
 mod weapons;
 mod tracking;
 mod sam;
