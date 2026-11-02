@@ -23,6 +23,8 @@ pub mod guidance;
 pub mod hud;
 pub mod rwr;
 
+// Simulation seconds; motor burn duration is a separate physical parameter.
+pub(crate) const MISSILE_LIFETIME: f64 = 300.;
 const TARGET_COUNT: usize = 3;
 const MAX_AIRCRAFT: usize = 12;
 pub mod naval;
@@ -748,7 +750,7 @@ impl Combat {
                 self.recent_hit = Some(effects::HitReport::new(missile.target, target, self.clock));
             } else if missile.position.length() - RADIUS
                 < terrain_height(missile.position.x, missile.position.z).max(0.0)
-                || missile.age > 45.0
+                || missile.age > MISSILE_LIFETIME
                 || !missile.position.is_finite()
             {
                 missile.alive = false;

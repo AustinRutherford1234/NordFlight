@@ -363,3 +363,177 @@ fn response_matrix_writes_diagnostic_evidence() {
     )
     .unwrap();
 }
+
+#[test]
+fn high_speed_diagnostic_matrix() {
+    let mut rows = Vec::new();
+    for (height, speed) in [
+        (3000., 300.),
+        (3000., 394.),
+        (3000., 400.),
+        (3000., 450.),
+        (10000., 350.),
+        (10000., 359.),
+        (10000., 450.),
+        (10000., 500.),
+    ] {
+        for maneuver in [false, true] {
+            let mut f = flight(180., 0.);
+            f.position = surface_point(0., 0., height);
+            f.velocity = DVec3::NEG_Z * speed;
+            let t = trim::solve(&f, height, speed, 0., 0.).unwrap_or_else(|| {
+                let mut t = trim::solve(&f, height, 250., 0., 0.).unwrap();
+                t.alpha = (t.alpha + 0.025) * (250. / speed).powi(2) - 0.025;
+                t.stabilator *= (250. / speed).powi(2);
+                t.throttle = 1.;
+                println!("HIGH SPEED TRANSIENT (no steady power trim) h={height} v={speed}");
+                t
+            });
+            f.orientation = DQuat::from_rotation_x(t.alpha);
+            trim::apply(&mut f, t);
+            f.hornet.fbw = State::default();
+            let mut peak_rate = 0f64;
+            let mut peak_g = 0f64;
+            let mut min_g = 1f64;
+            let mut end_rate = 0f64;
+            let initial_trim = f.hornet.trim;
+            for k in 0..4800 {
+                let at = k as f64 / 240.;
+                f.controls = if maneuver && (2. ..4.).contains(&at) {
+                    DVec3::new(0.15, 0.05, 0.2)
+                } else {
+                    DVec3::ZERO
+                };
+                simulate(&mut f, &environment(), 1. / 240.);
+                peak_rate = peak_rate.max(f.rates.length());
+                peak_g = peak_g.max(f.g_load);
+                min_g = min_g.min(f.g_load);
+                if at > 15. {
+                    end_rate = end_rate.max(f.rates.length());
+                }
+                if k % 12 == 0 {
+                    rows.push(serde_json::json!({"height":height,"speed":speed,"maneuver":maneuver,"t":at,"v":f.airspeed,"mach":f.mach,"q":0.5*f.density*f.airspeed.powi(2),"g":f.g_load,"rates":f.rates.to_array(),"angles":f.hornet.angles,"trim":f.hornet.trim,"saturation":f.hornet.fbw.saturation,"residual":f.hornet.fbw.allocation_residual.to_array(),"damage":f.integrity,"mode":format!("{:?}",f.hornet.fbw.mode)}));
+                }
+                if f.crashed {
+                    break;
+                }
+            }
+            assert!(
+                !f.crashed && f.integrity > 0.99,
+                "structural damage h={height} v={speed}"
+            );
+            assert!(
+                peak_rate < 1. && peak_g < 4. && min_g > -1.,
+                "unstable transient h={height} v={speed}"
+            );
+            assert!(
+                end_rate < if maneuver { 0.08 } else { 0.005 },
+                "release did not settle h={height} v={speed}"
+            );
+            if !maneuver && (speed == 300. || speed == 350. || (height == 10000. && speed == 450.))
+            {
+                assert!(
+                    (f.hornet.trim - initial_trim).abs() < 0.001,
+                    "neutral trim drift"
+                );
+                assert!((f.g_load - 1.).abs() < 0.03, "neutral load drift");
+            }
+            println!("HIGH SPEED h={height} v={speed} maneuver={maneuver} peak_rate={peak_rate} end_rate={end_rate} peak_g={peak_g} min_g={min_g} integrity={} trim_before={initial_trim} trim_after={} final_v={} crash={}",f.integrity,f.hornet.trim,f.airspeed,f.crashed);
+        }
+    }
+    std::fs::create_dir_all("tests/hornet-fbw").unwrap();
+    std::fs::write(
+        "tests/hornet-fbw/high-speed.json",
+        serde_json::to_vec_pretty(&rows).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn acceleration_diagnostic_matrix() {
+    let mut rows = Vec::new();
+    for height in [3000., 10000.] {
+        for maneuver in [false, true] {
+            let mut f = flight(250., 0.);
+            f.position = surface_point(0., 0., height);
+            let t = trim::solve(&f, height, 250., 0., 0.).unwrap();
+            f.orientation = DQuat::from_rotation_x(t.alpha);
+            trim::apply(&mut f, t);
+            f.throttle = 1.;
+            let mut peak = 0f64;
+            let mut gmin = 1f64;
+            let mut gmax = 1f64;
+            // A large roll command leaves the aircraft banked: neutral FBW is
+            // not an autopilot. Stop the low-altitude trial before terrain impact.
+            for k in 0..240 * if height == 3000. { 40 } else { 60 } {
+                let at = k as f64 / 240.;
+                f.controls = if maneuver && (20. ..22.).contains(&at) {
+                    DVec3::new(0.4, 0., 0.3)
+                } else {
+                    DVec3::ZERO
+                };
+                simulate(&mut f, &environment(), 1. / 240.);
+                peak = peak.max(f.rates.length());
+                gmin = gmin.min(f.g_load);
+                gmax = gmax.max(f.g_load);
+                if k % 24 == 0 {
+                    rows.push(serde_json::json!({"height":height,"maneuver":maneuver,"t":at,"v":f.airspeed,"mach":f.mach,"g":f.g_load,"altitude":f.altitude(),"q":0.5*f.density*f.airspeed.powi(2),"rates":f.rates.to_array(),"angles":f.hornet.angles,"trim":f.hornet.trim,"integrity":f.integrity,"mode":format!("{:?}",f.hornet.fbw.mode)}));
+                }
+                if f.crashed {
+                    break;
+                }
+            }
+            std::fs::write(
+                "tests/hornet-fbw/acceleration.json",
+                serde_json::to_vec_pretty(&rows).unwrap(),
+            )
+            .unwrap();
+            println!("ACCEL DEBUG h={height} maneuver={maneuver} peak={peak} g={gmin}..{gmax} integrity={} rates={:?} altitude={} q={} cause={}",f.integrity,f.rates,f.altitude(),0.5*f.density*f.airspeed.powi(2),f.status);
+            assert!(
+                !f.crashed && f.integrity > 0.99,
+                "acceleration caused damage h={height}"
+            );
+            assert!(
+                peak < 2. && gmax < 8. && gmin > -2.,
+                "unstable acceleration h={height}"
+            );
+            assert!(f.rates.length() < 0.08, "release did not settle h={height}");
+            println!("ACCEL height={height} maneuver={maneuver} peak_rate={peak} gmin={gmin} gmax={gmax} final_v={} final_mach={} rates={:?} alpha={} integrity={} crash={} cause={}",f.airspeed,f.mach,f.rates,f.alpha,f.integrity,f.crashed,f.status);
+        }
+    }
+    std::fs::write(
+        "tests/hornet-fbw/acceleration.json",
+        serde_json::to_vec_pretty(&rows).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn mach_1_2_release_is_independent_of_render_partition() {
+    let mut initial = flight(180., 0.);
+    initial.position = surface_point(0., 0., 10000.);
+    initial.velocity = DVec3::NEG_Z * 359.;
+    let trim = trim::solve(&initial, 10000., 359., 0., 0.).unwrap();
+    initial.orientation = DQuat::from_rotation_x(trim.alpha);
+    trim::apply(&mut initial, trim);
+    initial.hornet.fbw = State::default();
+    let mut runs = Vec::new();
+    for hz in [60, 120, 240] {
+        let mut f = initial.clone();
+        for k in 0..hz * 12 {
+            let t = k as f64 / hz as f64;
+            f.controls = if (2. ..4.).contains(&t) {
+                DVec3::new(0.15, 0.05, 0.2)
+            } else {
+                DVec3::ZERO
+            };
+            simulate(&mut f, &environment(), 1. / hz as f64);
+        }
+        assert!(!f.crashed && f.integrity > 0.99 && f.rates.length() < 0.08);
+        runs.push(f);
+    }
+    for f in &runs[..2] {
+        assert!((f.position - runs[2].position).length() < 0.1);
+        assert!((f.rates - runs[2].rates).length() < 0.001);
+    }
+}

@@ -30,13 +30,13 @@ A steady disagreement without a computer-command quorum falls back to direct con
 
 ## Command laws and trim
 
-In the clean configuration, pitch blends normal-load demand with pitch-rate damping. Pilot input commands approximately -3 to +7.5 g, with the positive limit reduced for mass above the 20,000 kg reference. An outer normal-load error term and limited integrator generate a pitch-rate demand; the inner loop commands angular acceleration. Neutral input targets the configured trimmed response, not a stored attitude, altitude or heading.
+In the clean configuration, pitch blends normal-load demand with pitch-rate damping. Pilot input commands approximately -3 to +7.5 g, with the positive limit reduced for mass above the 20,000 kg reference. An outer normal-load error term and limited integrator, scaled by clamp(180 m/s / airspeed, .35, 1), generate a pitch-rate demand; the inner loop commands angular acceleration. Neutral input targets the configured trimmed response, not a stored attitude, altitude or heading.
 
 Manual flap extension smoothly blends toward a damped pitch-rate response. There is no stored on-speed angle of attack or descent path. Pitch input filtering removes keyboard discontinuities without changing the existing key directions. Roll demand is scheduled with pressure, incidence and manual flap configuration. Stability-axis roll/yaw mixing, sideslip feedback and turn coordination reduce adverse yaw; they do not command a navigation heading. Positive and negative roll responses are tested separately.
 
 Normal protection reduces and, where needed, reverses the requested pitch rate as predicted incidence or measured load approaches an estimated limit. Incidence prediction includes pitch rate. High-incidence roll authority is reduced. These are soft closed-loop protections with finite actuator authority and sensor/plant delay; external disturbances, failures and unachievable loads can exceed an intended bound. Direct mode removes these control-law protections.
 
-Settled tail bias transfers into the existing Hornet trim value only with near-neutral pitch input, modest pitch rate, usable hydraulic pressure and airborne operation. This makes direct-mode entry retain a useful bias. It does not create an attitude or flight-path reference. Integrators are bounded and frozen/leaked under saturation or significant allocation residual. Mode transitions reset integrators and ramp normal engagement over 300 ms; surfaces always move through the physical actuator model.
+Settled tail bias transfers into the existing Hornet trim value only after 0.75 s of near-neutral input on all axes, low angular rates, settled normal load, small pitch allocation residual, usable hydraulic pressure and airborne operation. The achieved stabilator average is filtered over 1.5 s and trim transfers at no more than 0.003 rad/s. This makes direct-mode entry retain a useful bias. It does not create an attitude or flight-path reference. Integrators are bounded and frozen/leaked under saturation or significant allocation residual. Mode transitions reset integrators and ramp normal engagement over 300 ms; surfaces always move through the physical actuator model.
 
 Weight-on-wheels uses pilot commands with gyro damping and preserves takeoff trim. It does not invert free-flight moments against suspension/deck reactions. Ground/air transitions use contact hysteresis, preventing touchdown chatter from repeatedly changing the law. Launch rotation remains pilot-commanded.
 
@@ -64,15 +64,15 @@ All numerical controller/sensor values below are simulation engineering estimate
 | Load sensor health thresholds | .05, .20, .40, .70 | ±.1 |
 | Normal pitch range | -3 to +7.5 g; 20,000 kg reference, positive limit floor 5.5 g | positive 6–7.5 g, negative -2 to -3 g |
 | Pitch-rate limits | .65 rad/s clean to .45 rad/s fully flapped | ±25% |
-| Normal-load feedback / integral | .12 rad/s/g; .025 rad/s/g/s, capped ±.10 rad/s | ±30% |
-| Inner pitch / yaw / roll gain | 2.8 / 2.5 / 3.0 per s | ±25% |
+| Normal-load feedback / integral | .12 rad/s/g; .025 rad/s/g/s, capped ±.10 rad/s; all multiplied by clamp(180 / V, .35, 1), V in m/s | Engineering estimates, ±30% |
+| Inner pitch / yaw / roll gain | 2.8 / 2.5 / 3.0 per s, multiplied by 1 / 1 / .85 / .65 / .5 at 0 / 15 / 40 / 80 / 140 kPa | Engineering estimates, ±25% |
 | Inner integral | gain .4; state bound ±.18 rad; .35 s saturated leak | ±30% |
 | Roll schedule | .5, 1, 2.8, 3.2, 2 rad/s at 0, 1.5, 6, 30, 80 kPa | ±25% |
 | Incidence upper schedule | .60 rad below Mach .7; .40 at 1.2; .28 at 2.2 | ±.1 rad; constrained by plant evidence |
 | Incidence prediction / unloading gain | .20 s; 2 per s | ±30% |
 | Negative incidence / load feedback | -.28 rad; -3.2 g feedback margin; .18 rate/g | ±20% |
 | Yaw pilot / sideslip feedback | .45 rad/s; .85 per s | ±30% |
-| Auto-trim rate / range | .025 rad/s; ±.4 rad | .01–.04 rad/s; range ±.1 rad |
+| Auto-trim rate / range | .003 rad/s; ±.4 rad; .75 s settle gate, 1.5 s filter | Engineering estimates; rate ±50%, timing ±30% |
 | Ground/air contact timing | >25 ms contact, below -100 ms release timer, bounded ±200 ms | ±50% |
 | Normal engagement | .30 s | .15–.6 s |
 | Allocation reachability / probe / secant | .22 s; ±.002 rad local; ±.4 rad around trim | ±30% |

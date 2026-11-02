@@ -1211,7 +1211,28 @@ fn main() {
                 if mode.contains("degraded"){initial_flight.hornet.fbw.computers[2].enabled=false;initial_flight.hornet.fbw.computers[3].enabled=false;}
                 if mode.contains("direct"){initial_flight.assist=false;}
                 if mode.contains("failed"){initial_flight.battery=false;initial_flight.apu=false;initial_flight.engine=false;}
-                for _ in 0..60 {simulate(&mut initial_flight,&initial_environment,1./240.);}
+                if mode.starts_with("fbw-highspeed") {
+                    initial_environment.wind_enabled=false;
+                    initial_flight.position=physics::surface_point(0.,0.,10000.);
+                    initial_flight.velocity=DVec3::NEG_Z*359.;
+                    initial_flight.gear=false;initial_flight.gear_extension=0.;initial_flight.gear_door=0.;initial_flight.flaps=0.;
+                    initial_flight.airbrake=false;initial_flight.autopilot=false;initial_flight.assist=true;initial_flight.landed=false;
+                    let trim=aircraft::hornet::trim::solve(&initial_flight,10000.,359.,0.,0.).expect("high-speed review trim");
+                    initial_flight.orientation=bevy::math::DQuat::from_rotation_x(trim.alpha);
+                    aircraft::hornet::trim::apply(&mut initial_flight,trim);
+                    initial_flight.hornet.fbw=Default::default();
+                    let mut peak=0_f64;
+                    for k in 0..7200 {
+                        let t=k as f64/240.;
+                        initial_flight.controls=if mode.contains("release")&&(2. ..4.).contains(&t){DVec3::new(0.15,0.05,0.2)}else{DVec3::ZERO};
+                        simulate(&mut initial_flight,&initial_environment,1./240.);
+                        peak=peak.max(initial_flight.rates.length());
+                    }
+                    println!("HIGH SPEED NATIVE {mode} mach={} g={} rates={:?} peak_rate={peak} integrity={} trim={} crashed={}",initial_flight.mach,initial_flight.g_load,initial_flight.rates,initial_flight.integrity,initial_flight.hornet.trim,initial_flight.crashed);
+                    assert!(!initial_flight.crashed&&initial_flight.integrity>0.99&&initial_flight.rates.length()<0.08);
+                } else {
+                    for _ in 0..60 {simulate(&mut initial_flight,&initial_environment,1./240.);}
+                }
                 println!("FBW capture {mode}: {} trim={:.3} flaps={} autopilot={}",aircraft::hornet::fbw::summary(&initial_flight),initial_flight.hornet.trim,initial_flight.flaps,initial_flight.autopilot);
                 initial_flight.paused=true;
                 if mode.ends_with("cockpit"){initial_view.index=3;initial_view.yaw=0.;initial_view.pitch=-0.13;initial_view.zoom=1.;}

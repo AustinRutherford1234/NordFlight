@@ -43,7 +43,7 @@
 | Engine thermal time constant | 12 s; damaged-engine excess temperature can degrade health above 1120 K | Engineering estimate, low | ±50%; failure threshold ±100 K |
 | Inlet-distortion flameout / restart | sustained severe α/β distortion >1.2 s; restart below 12 km with APU or >80 m/s | Bounded engineering estimate, very low | Thresholds ±50%; not an operational envelope |
 | Wing / tail / fin bending | 6 / 8 / 10 Hz, effective masses 210 / 65 / 80 kg | Engineering estimates, low | frequencies ±30%, modal masses ±40% |
-| Wing / tail / fin torsion | 12 / 15 / 16 Hz; stiffness 4.4e6 / 110,000 / 140,000 N m/rad | Engineering estimates, low; chosen to avoid artificial static divergence in tested range | ±30% frequency, factor 2 stiffness |
+| Wing / tail / fin torsion | 12 / 15 / 16 Hz; stiffness 4.4e6 / 300,000 / 140,000 N m/rad | Engineering estimates, low; chosen to avoid artificial static divergence in tested range | ±30% frequency, factor 2 stiffness |
 | Bending / torsion damping | .18 / .22 damping ratio | Engineering estimate, low | .08–.3 |
 | Load damage thresholds | +7.5 / -3 g equivalent distributed wing load; 90 kPa; Mach 1.85 | Simulation limits, low; no fatigue-life validation | ±20% |
 | Skin thermal state | recovery .85, lag 40 s, degradation above 450 K | Engineering estimate, very low | ±50% lag; threshold ±50 K |

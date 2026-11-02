@@ -51,6 +51,8 @@ pub struct State {
     pub mode: Mode,
     pub computers: [Computer; 4],
     pub sensors: sensors::Sensors,
+    pub trim_settle: f64,
+    pub trim_bias: f64,
     pub channels: usize,
     pub pilot: DVec3,
     pub output: [f64; 16],
@@ -72,6 +74,8 @@ impl Default for State {
             mode: Mode::Normal,
             computers: [Computer::default(); 4],
             sensors: Default::default(),
+            trim_settle: 0.,
+            trim_bias: 0.,
             channels: 4,
             pilot: DVec3::ZERO,
             output: [0.; 16],
@@ -193,6 +197,7 @@ pub fn commands(f: &mut Flight, q: f64, dt: f64) -> [f64; 16] {
         state.ground = contact;
         state.pilot = f.controls;
         state.output = f.hornet.angles;
+        state.trim_bias = f.hornet.trim;
         state.initialized = true;
     }
     if state.ground_timer > 0.025 {
@@ -322,16 +327,26 @@ pub fn commands(f: &mut Flight, q: f64, dt: f64) -> [f64; 16] {
             state.allocation_residual = allocation.residual;
             state.saturation = allocation.saturation;
             state.authority = allocation.authority;
-            // Transfer the settled tail bias to trim for a bumpless direct-mode entry.
-            // This is automatic trim, not an attitude or flight-path reference.
-            if !state.ground
-                && state.pilot.x.abs() < 0.08
-                && s.rates.x.abs() < 0.15
-                && f.hornet.hydraulic_pressure > 0.3
-            {
-                let trim = (output[0] + output[4]) * 0.5;
-                f.hornet.trim += (trim - f.hornet.trim).clamp(-0.025 * dt, 0.025 * dt);
-                f.hornet.trim = f.hornet.trim.clamp(-0.4, 0.4);
+            // Trim is a slow record of settled physical tail bias, never a
+            // chase of instantaneous inverse-model commands after stick release.
+            let settled = !state.ground
+                && state.pilot.length() < 0.08
+                && s.rates.length() < 0.06
+                && (s.load - state.requested_load).abs() < 0.15
+                && state.allocation_residual.x.abs() < 0.3
+                && f.hornet.hydraulic_pressure > 0.3;
+            if settled {
+                state.trim_settle = (state.trim_settle + dt).min(2.);
+                if state.trim_settle > 0.75 {
+                    let actual = (f.hornet.angles[0] + f.hornet.angles[4]) * 0.5;
+                    state.trim_bias += (actual - state.trim_bias) * (1. - (-dt / 1.5).exp());
+                    f.hornet.trim +=
+                        (state.trim_bias - f.hornet.trim).clamp(-0.003 * dt, 0.003 * dt);
+                    f.hornet.trim = f.hornet.trim.clamp(-0.4, 0.4);
+                }
+            } else {
+                state.trim_settle = 0.;
+                state.trim_bias = f.hornet.trim;
             }
         } else {
             state.mode = Mode::Direct;

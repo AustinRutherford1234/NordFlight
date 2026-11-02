@@ -12,7 +12,10 @@ fn parameters(i: usize) -> (f64, f64, f64, f64) {
     if i < 2 {
         (210., 6., 12., 4400000.)
     } else if i < 4 {
-        (65., 8., 15., 110000.)
+        // Estimated torsional stiffness keeps the reduced-order tail divergence
+        // boundary above the nominal 90 kPa envelope. The former 110 kN m/rad
+        // implied a positive-feedback boundary near 72 kPa (within clean flight).
+        (65., 8., 15., 300000.)
     } else {
         (80., 10., 16., 140000.)
     }

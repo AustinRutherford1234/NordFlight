@@ -1,5 +1,8 @@
 # Hornet FBW validation evidence
 
+November 2 update: high-speed stability, trim and the rebuilt app supersede the original tuning/build snapshot below. See [high-speed validation](HIGH_SPEED_FBW_2026-11-02.md) for the current changes and test evidence. Earlier cost measurements below are historical, not new performance measurements.
+
+
 The subsequent [stores and actuator update](STORES_VALIDATION.md) records the current regression results after the user-requested 2x actuator time scale. Numbers below describe the original FBW milestone.
 
 2026-10-28. Parent physics milestone: `68ca41e`. Architecture, user-selected scope, source distinctions and estimated parameter values are in [FBW.md](FBW.md). These results validate the implemented simulation in the tested cases; they do not validate production Super Hornet handling qualities.

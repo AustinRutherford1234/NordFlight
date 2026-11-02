@@ -714,7 +714,7 @@ impl Combat {
                 });
             } else if m.position.length() - RADIUS
                 < terrain_height(m.position.x, m.position.z).max(0.0)
-                || m.age > 45.0
+                || m.age > super::MISSILE_LIFETIME
             {
                 m.alive = false;
                 self.impacts.push(Impact {

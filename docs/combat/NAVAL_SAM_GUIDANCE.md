@@ -24,18 +24,17 @@ All quantities use SI units. Confidence is low for class-specific calibration; e
 | Maximum commanded load, g | 30 | 40 |
 | Effective maximum lift coefficient | 2.5 | 2.5 |
 | Launch guidance speed estimate, m/s | 1,050 | 950 |
-| Maximum flight age, s | 100 | 50 |
+| Maximum flight age, s | 300 | 300 |
 
 Mass decreases linearly through the burn interval. Drag coefficient is `0.32 + 0.28 exp(-((Mach - 1.1)/0.32)^2)`. The lift-induced drag term uses a factor of 0.06 and the effective lift area. PN gain is 4; large heading-error capture uses a 1.5/s gain. The latter is reduced smoothly as heading error drops between 0.25 and 0.05 radians. Positive intercept time is bounded to 75 s for steering robustness.
 
-## Finite end-of-flight behavior
+## Finite end-of-flight behavior (updated November 2, 2026)
 
-- A close intercept pass (minimum estimated range below 2 km) followed by >100 m opening distance at >20 m/s for 2.5 s retires the missed weapon.
-- Eight seconds without positive closing speed after burnout +3 s, outside 2 km, retires an energy-unreachable pursuit.
-- After burnout +2 s, speed below 170 m/s, or speed below 300 m/s with less than 2 g available lift, retires the spent weapon.
-- Existing age, terrain/sea contact, swept ship collision and relative swept target-fuse checks remain in force.
+A close intercept pass followed by 2.5 s of opening, eight seconds of unreachable pursuit after burnout, or insufficient speed/lift now ends guidance and transitions the round to ballistic flight. It no longer deletes the round at that point. Thrust still follows the original motor schedule; gravity, drag, swept collision and proximity checks remain active. The label becomes `BALLISTIC`.
 
-Retirement clears the active round and its engagement commitment through the existing bounded weapon pool. It is a game end-of-flight abstraction, not a newly simulated debris/self-destruct event. Pool reuse resets all added control/intercept-history state. No expired missile is kept alive just to maintain a lock or orbit.
+Player/enemy air-to-air missiles and Standard/ESSM rounds have a shared **300 simulation-second** maximum age. Actual impacts can end flight sooner. Anti-ship cruise missiles retain **720 s**, with the existing 620 s motor/endurance estimate, so the 150 km engagement fixture remains possible. Longer cleanup does not extend SAM or air-to-air motor burn.
+
+The weapon pool remains bounded; inactive entries are recycled and reuse resets ballistic/history state. A ballistic round remains allocated until impact or age expiry. This supersedes the early-retirement behavior in the original evidence below; those earlier runtime captures and retirement times are historical, not revalidated current behavior.
 
 ## Evidence and limits
 

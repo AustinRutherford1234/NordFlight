@@ -474,10 +474,10 @@ impl State {
             m.previous = m.position;
             m.age += dt;
             let (max_speed, accel, turn, burn, life) = match m.kind {
-                Kind::Standard => (1050., 110., 30., 14., 100.),
-                Kind::Essm => (950., 160., 40., 9., 50.),
+                Kind::Standard => (1050., 110., 30., 14., super::super::MISSILE_LIFETIME),
+                Kind::Essm => (950., 160., 40., 9., super::super::MISSILE_LIFETIME),
                 Kind::AntiShip => (290., 45., 6., envelope::CRUISE_BURN, envelope::CRUISE_LIFE),
-                Kind::AirToAir => (850., 150., 25., 7., 45.),
+                Kind::AirToAir => (850., 150., 25., 7., super::super::MISSILE_LIFETIME),
             };
             if support.is_none() {m.support_lost+=dt;}else{m.support_lost=0.;}
             // A seeded launch coordinate is available to the anti-ship INS. Other

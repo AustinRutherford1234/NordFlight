@@ -6,6 +6,7 @@ pub struct FlightState {
     pub best_range: f64,
     pub opening: f64,
     pub no_closure: f64,
+    pub ballistic: bool,
 }
 impl Default for FlightState {
     fn default() -> Self {
@@ -14,6 +15,7 @@ impl Default for FlightState {
             best_range: f64::INFINITY,
             opening: 0.,
             no_closure: 0.,
+            ballistic: false,
         }
     }
 }
@@ -43,7 +45,7 @@ fn spec(kind: Kind) -> Spec {
             sustain: 28000.,
             boost_time: 4.,
             burn: 14.,
-            life: 100.,
+            life: super::super::MISSILE_LIFETIME,
             cruise: 1050.,
         },
         _ => Spec {
@@ -56,7 +58,7 @@ fn spec(kind: Kind) -> Spec {
             sustain: 20000.,
             boost_time: 2.,
             burn: 9.,
-            life: 50.,
+            life: super::super::MISSILE_LIFETIME,
             cruise: 950.,
         },
     }
@@ -107,6 +109,7 @@ fn command(p: DVec3, v: DVec3, target: DVec3, tv: DVec3, cruise: f64) -> DVec3 {
 }
 pub(super) fn advance(m: &mut Round, track: Option<(DVec3, DVec3)>, dt: f64) {
     let s = spec(m.kind);
+    let track = if m.sam.ballistic { None } else { track };
     let steps = (dt * 240.).ceil().max(1.) as usize;
     let h = dt / steps as f64;
     for k in 0..steps {
@@ -114,7 +117,8 @@ pub(super) fn advance(m: &mut Round, track: Option<(DVec3, DVec3)>, dt: f64) {
         let speed = m.velocity.length().max(1.);
         let direction = m.velocity.normalize_or(m.position.normalize());
         let up = m.position.normalize();
-        let target = track.map(|(p, v)| (p + v * ((k + 1) as f64 * h - dt), v));
+        let target = track.filter(|_| !m.sam.ballistic)
+            .map(|(p, v)| (p + v * ((k + 1) as f64 * h - dt), v));
         let request = if matches!(m.source, TargetId::Ship(_)) && age < 0.6 {
             (up - direction * up.dot(direction)) * speed * 2.
         } else if let Some((p, v)) = target {
@@ -181,23 +185,21 @@ pub(super) fn advance(m: &mut Round, track: Option<(DVec3, DVec3)>, dt: f64) {
         }
         let spent =
             age > s.burn + 2. && (next_speed < 170. || (limit < 2. * 9.81 && next_speed < 300.));
-        if age > s.life
-            || spent
-            || m.sam.opening > 2.5
-            || m.sam.no_closure > 8.
-            || !m.velocity.is_finite()
-            || !m.position.is_finite()
-        {
+        // Stop unreachable pursuit without deleting the physical round. Motor
+        // duration, drag, gravity and impact handling remain independent of age.
+        if spent || m.sam.opening > 2.5 || m.sam.no_closure > 8. {
+            m.sam.ballistic = true;
+        }
+        if age > s.life || !m.velocity.is_finite() || !m.position.is_finite() {
             m.alive = false;
-            m.visual.gnc.reason = if spent || m.sam.no_closure > 8. {
-                "ENERGY DEPLETED"
-            } else if m.sam.opening > 2.5 {
-                "MISSED INTERCEPT"
-            } else {
-                "FLIGHT LIMIT"
-            };
+            m.visual.gnc.reason = "FLIGHT LIMIT";
             break;
         }
+    }
+    if m.sam.ballistic && m.alive {
+        m.visual.guided = false;
+        m.visual.gnc.mode = guidance::Mode::Ballistic;
+        m.visual.gnc.reason = "BALLISTIC";
     }
 }
 /// Opt-in native inspection uses the same supported-target weapon path as tests.
@@ -229,7 +231,7 @@ pub(super) fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut
     );
     let velocity = DVec3::Z * if mode == "sam-spent" { -480. } else { 480. };
     let range = if mode == "sam-spent" { 8000. } else { 16000. };
-    for k in 0..12600 {
+    for k in 0..37200 {
         let at = k as f64 / 120.;
         f.elapsed = at;
         n.clock = at;
@@ -307,7 +309,7 @@ mod tests {
         }
     }
     #[test]
-    fn burnout_turning_costs_energy_and_spent_or_missed_rounds_retire() {
+    fn burnout_costs_energy_and_spent_or_missed_rounds_fall_ballistically() {
         let mut straight = round(Kind::Standard, 800., 16.);
         let mut turn = straight.clone();
         let target = turn.position + DVec3::X * 4000.;
@@ -320,23 +322,29 @@ mod tests {
         assert!(turn.velocity.length() < straight.velocity.length() - 1.);
         let mut spent = round(Kind::Essm, 120., 15.);
         advance(&mut spent, None, 1. / 120.);
-        assert!(!spent.alive);
-        assert_eq!(spent.visual.gnc.reason, "ENERGY DEPLETED");
+        assert!(spent.alive && spent.sam.ballistic);
+        assert_eq!(spent.visual.gnc.reason, "BALLISTIC");
         let mut missed = round(Kind::Standard, 700., 20.);
         missed.sam.best_range = 50.;
         for _ in 0..480 {
             missed.age += 1. / 120.;
             let t = missed.position + DVec3::Z * 3000.;
             advance(&mut missed, Some((t, DVec3::Z * 700.)), 1. / 120.);
-            if !missed.alive {
+            if missed.sam.ballistic {
                 break;
             }
         }
-        assert!(!missed.alive);
-        assert_eq!(missed.visual.gnc.reason, "MISSED INTERCEPT");
-        let mut expired = round(Kind::Standard, 700., 100.1);
+        assert!(missed.alive && missed.sam.ballistic);
+        assert_eq!(missed.visual.gnc.reason, "BALLISTIC");
+        let mut expired = round(Kind::Standard, 700., 300.1);
         advance(&mut expired, None, 1. / 120.);
         assert!(!expired.alive);
+        assert_eq!(expired.visual.gnc.reason, "FLIGHT LIMIT");
+        for kind in [Kind::Standard, Kind::Essm] {
+            let mut late = round(kind, 700., 299.);
+            advance(&mut late, None, 1. / 120.);
+            assert!(late.alive, "round expired before five minutes");
+        }
     }
     fn engagement(kind: Kind, velocity: DVec3, range: f64, hz: usize, expect_hit: bool) -> f64 {
         let mut f = flight(true);
@@ -367,7 +375,7 @@ mod tests {
             carrier::rotation(0.) * DVec3::Y * 35. + carrier::velocity(0.)
         ));
         let mut peak = 0f64;
-        for k in 0..hz * 105 {
+        for k in 0..hz * 305 {
             let t = k as f64 / hz as f64;
             f.elapsed = t;
             n.clock = t;
@@ -415,7 +423,7 @@ mod tests {
         engagement(Kind::Standard, DVec3::Z * 480., 16000., 120, true);
         engagement(Kind::Standard, DVec3::X * 480., 12000., 120, true);
         engagement(Kind::Standard, DVec3::NEG_Z * 300., 8000., 120, true);
-        assert!(engagement(Kind::Standard, DVec3::NEG_Z * 480., 8000., 120, false) < 100.);
+        assert!(engagement(Kind::Standard, DVec3::NEG_Z * 480., 8000., 120, false) <= 300.1);
     }
     #[test]
     fn essm_intercept_converges_across_frame_rates() {

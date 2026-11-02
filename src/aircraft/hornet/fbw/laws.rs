@@ -37,13 +37,16 @@ pub fn demand(
     let alpha_limit = config::table(s.mach, &[0., 0.7, 1.2, 2.2], &[0.60, 0.60, 0.40, 0.28]);
     let normal = mode == Mode::Normal && !ground;
     let error = load - s.load;
+    let load_scale = (180. / speed).clamp(0.35, 1.);
     if normal && !saturated && pilot.x.abs() < 0.8 {
-        law.load_integral = (law.load_integral + error * dt * 0.025).clamp(-0.10, 0.10);
+        law.load_integral = (law.load_integral + error * dt * 0.025 * load_scale)
+            .clamp(-0.10 * load_scale, 0.10 * load_scale);
     } else {
         law.load_integral *= (-dt / 0.8).exp();
     }
     let gravity = (f.orientation.conjugate() * f.up()).y;
-    let nz_rate = (load - gravity) * 9.80665 / speed + error * 0.12 + law.load_integral;
+    let nz_rate =
+        (load - gravity) * 9.80665 / speed + error * (0.12 * load_scale) + law.load_integral;
     // With manual flaps extended, use a damped pitch-rate response. No target
     // angle of attack, attitude, glide path, altitude, speed or throttle hold.
     let mut pitch = if normal {
@@ -83,10 +86,15 @@ pub fn demand(
     } else {
         law.integral *= (-dt / 0.35).exp();
     }
+    let bandwidth = config::table(
+        q,
+        &[0., 15000., 40000., 80000., 140000.],
+        &[1., 1., 0.85, 0.65, 0.5],
+    );
     let gain = if ground {
         DVec3::new(1.4, 1.8, 2.)
     } else {
-        DVec3::new(2.8, 2.5, 3.0)
+        DVec3::new(2.8, 2.5, 3.0) * bandwidth
     };
     let acceleration =
         (error * gain + law.integral * 0.4).clamp(DVec3::splat(-6.), DVec3::splat(6.));
