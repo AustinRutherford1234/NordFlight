@@ -338,7 +338,7 @@ pub fn controls(
     scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
     mut panels: Query<&mut ScrollPosition, With<Root>>,
 ) {
-    let esc = keys.just_pressed(KeyCode::Escape) && !combat.naval.as_ref().is_some_and(|n|n.radio_open);
+    let esc = keys.just_pressed(KeyCode::Escape) && !combat.naval.as_ref().is_some_and(|n|n.radio_open) && !combat.service_radio_open;
     if !menu.open {
         if esc && !hangar.open && !bvr.open {
             menu.saved_pause = f.paused;
@@ -552,7 +552,7 @@ pub fn ui(
             button(p,902,"RESUME FLIGHT",true); button(p,901,"MAIN MENU",false);
         } else if menu.page==Page::Controls {
             heading(p,"FLIGHT CONTROLS");
-            label(p,"W / S     Pitch\nQ / E     Roll\nA / D     Yaw\nShift     Full throttle\nCtrl       Cut throttle\nZ / X     Adjust throttle\nG          Landing gear\nB          Wheel brakes\nT          Flight-by-wire\nY          F-35B STOVL conversion\nC          Flight camera\nMouse drag   Look / orbit\nHome      Recenter cockpit\nM          Tactical / orbital map\nTab       Next target\nO          Missile type\nSpace    Launch missile\nU          Cannon\nV          Flares and chaff\nOption+W ×3   Dump carried weapons (within 1.5 s)\n, / .      Decrease / increase warp\n/           Normal time\nP          Pause\nEsc        Pause menu",16.,Color::srgb(0.82,0.90,0.93));
+            label(p,"W / S     Pitch\nQ / E     Roll\nA / D     Yaw\nShift     Full throttle\nCtrl       Cut throttle\nZ / X     Adjust throttle\nG          Landing gear\nB          Wheel brakes\nT          Flight-by-wire\nY          F-35B STOVL conversion\nC          Flight camera\nMouse drag   Look / orbit\nHome      Recenter cockpit\nM          Tactical / orbital map\nTab       Next target\nO          Missile type\nSpace    Launch missile\nU          Cannon\nF7         Hornet HUD: NAV / A-A / GUN / A-G\nBackslash → 1   Refuel / rearm while parked\nV          Flares and chaff\nOption+W ×3   Dump carried weapons (within 1.5 s)\n, / .      Decrease / increase warp\n/           Normal time\nP          Pause\nEsc        Pause menu",16.,Color::srgb(0.82,0.90,0.93));
             heading(p,"SPACECRAFT");
             label(p,"Use the in-flight SAS panel for attitude targets and the orbital map for maneuver planning. The warp panel edits rates and simulation timestep.",16.,Color::srgb(0.66,0.80,0.84));
         } else if menu.page==Page::Settings {

@@ -576,7 +576,7 @@ fn description(a: Action) -> &'static str {
         Action::Dump=>"JETTISON EXTERNAL STORES",
         Action::EngineL=>"LEFT ENGINE FUEL VALVE",
         Action::EngineR=>"RIGHT ENGINE FUEL VALVE",
-        Action::HudMode=>"HUD NAV / AIR / GROUND (F7)",
+        Action::HudMode=>"HUD NAV / AIR / GUN / GROUND (F7)",
         Action::HudReject=>"HUD DECLUTTER (ALT F7)",
         Action::HudCage=>"HUD CAGE (ALT END)",
         Action::HudAltitude=>"HUD BARO / RADAR (ALT DELETE)",

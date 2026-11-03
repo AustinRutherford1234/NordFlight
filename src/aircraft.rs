@@ -133,7 +133,7 @@ impl Aircraft {
                 g: 7.5,
                 alpha: 0.62,
                 limit_mach: 1.85,
-                gun: 412,
+                gun: 2060,
                 gun_interval: 0.02,
                 ammo: [2, 6],
             },

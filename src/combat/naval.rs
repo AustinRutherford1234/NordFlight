@@ -505,30 +505,12 @@ impl State {
         true
     }
     pub fn service(&mut self, c: &mut Combat, f: &mut Flight) -> bool {
-        if !self.deck_usable()
-            || !f.landed
-            || f.crashed
-            || f.ejection.active
-            || f.throttle > 0.05
-            || f.carrier.attached
-            || f.carrier.arrested
-            || f.carrier.launch.is_some()
-            || !carrier::inside(carrier::ship_relative(f, 0, f.position, f.elapsed))
-            || (f.velocity - carrier::ship_velocity(f, 0, f.position, f.elapsed)).length() > 1.
-        {
-            return false;
+        match super::servicing::station(f) {
+            None=>return false,
+            Some(super::servicing::Station::Deck) if !self.deck_usable()=>return false,
+            _=>{}
         }
-        f.fuel = crate::aircraft::Aircraft::Hornet.spec().fuel;
-        c.ammo = f.aircraft.spec().ammo;
-        if let Some(fight) = &mut c.fight {
-            fight.gun = f.aircraft.spec().gun;
-            fight.flares = 24;
-            fight.chaff = 24;
-        }
-        f.systems.stores.fill(true);
-        if self.loadout_tanks {
-            crate::aircraft::hornet::stores::fit(f);
-        }
+        super::servicing::refill(c,f,self.loadout_tanks);
         true
     }
 }
@@ -598,6 +580,7 @@ pub fn radio_controls(
         );
     }
     let Some(mut n) = c.naval.take() else {
+        super::servicing::radio_input(&mut keys,&mut c,&mut f);
         speech.update(view.generation, None);
         return;
     };
@@ -626,7 +609,7 @@ pub fn radio_controls(
             n.report = if serviced {
                 "SERVICED / FUEL AND WEAPONS RESTORED"
             } else {
-                "SERVICE: STOP ON DECK / IDLE / HOOK UP / RELEASE CATAPULT"
+                "SERVICE: STOP ON FRIENDLY RUNWAY OR USABLE DECK / IDLE / RELEASE ATTACHMENTS"
             }
             .into();
             n.report_until = n.clock + 10.;
@@ -757,7 +740,9 @@ mod tests {
         f.velocity = carrier::ship_velocity(&f, 0, f.position, f.elapsed);
         f.landed = true;
         f.throttle = 0.;
+        c.fight.as_mut().unwrap().gun=0;
         assert!(n.service(&mut c, &mut f));
+        assert_eq!(c.fight.as_ref().unwrap().gun,2060);
         n.ships[0].list = 0.1;
         assert!(!n.service(&mut c, &mut f));
     }

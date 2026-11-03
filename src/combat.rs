@@ -10,6 +10,8 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 pub mod ai;
+pub mod cannon_visual;
+pub mod servicing;
 pub mod jettison;
 pub mod aim9x;
 pub mod radar_visual;
@@ -157,6 +159,7 @@ pub struct Combat {
     pub sun: DVec3,
     pub(crate) fight: Option<dogfight::Fight>,
     pub active: bool,
+    pub service_radio_open: bool,
     pub fx: effects::State,
     pub recent_hit: Option<effects::HitReport>,
     generation: u64,
@@ -190,6 +193,7 @@ impl Default for Combat {
             sun: Environment::default().sun_direction(),
             fight: None,
             active: false,
+            service_radio_open:false,
             naval: None,
             fx: effects::State::default(),
             recent_hit: None,

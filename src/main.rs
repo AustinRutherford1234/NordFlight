@@ -1443,7 +1443,7 @@ fn main() {
         .add_plugins(earth_gpu::EarthGpuPlugin)
         .add_plugins(ocean::OceanPlugin)
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
-        .add_systems(PostUpdate,combat::naval::smoke::update.before(bevy::transform::TransformSystems::Propagate))
+        .add_systems(PostUpdate,(combat::naval::smoke::update,combat::cannon_visual::update).before(bevy::transform::TransformSystems::Propagate))
         .add_plugins(terrain_ready::TerrainReadyPlugin)
         .add_systems(
             PostStartup,
@@ -1460,7 +1460,7 @@ fn main() {
                 .before(bevy::ui::UiSystems::Focus),
         )
         .add_systems(PostStartup, benchmark_ablation)
-        .add_systems(PostStartup,combat::naval::smoke::setup)
+        .add_systems(PostStartup,(combat::naval::smoke::setup,combat::cannon_visual::setup,combat::servicing::setup))
         .add_systems(
             Startup,
             (
@@ -1575,6 +1575,7 @@ fn main() {
                 ).in_set(FlightStage::Presentation),
                 (declutter_ui,
                 start_screen::ui,
+                combat::servicing::ui,
                 start_screen::presentation).chain().in_set(FlightStage::Interface),
                 (capture_visual_check, atmospheric_render::capture, benchmark_render).chain().in_set(FlightStage::Capture),
             )
@@ -2802,7 +2803,13 @@ fn update_camera(
         let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {
-        if mode.starts_with("defense-cannon-") {
+        if mode=="defense-cannon-firing-external" {
+            let muzzle=f.position+f.orientation*aircraft::gun_origin(f.aircraft);
+            target=local(muzzle+f.forward()*0.6,&f);
+            p=local(muzzle+f.up()*1.5+f.orientation*DVec3::X*3.-f.forward()*2.8,&f);
+            up_view=(world::frame(&f).conjugate()*f.up()).as_vec3();
+        }
+        if mode.starts_with("defense-cannon-") && !mode.contains("firing") {
             target=local(f.position+f.forward()*18.,&f);
             p=local(f.position-f.forward()*28.+f.up()*13.+f.orientation*DVec3::X*10.,&f);
             up_view=(world::frame(&f).conjugate()*f.up()).as_vec3();
@@ -3315,7 +3322,7 @@ fn update_hud(
                 }
             }
         };
-        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\nF7 HUD NAV/A/A/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles\nF6 external loadout: 3 tanks · Alt+J drop tanks · Alt+Shift+J all stores");}text}else{updated};
+        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\nF7 HUD NAV/A/A/GUN/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles\nF6 external loadout: 3 tanks · Alt+J drop tanks · Alt+Shift+J all stores\nSERVICE  Backslash then 1: refuel / rearm while idle and stopped");}text}else{updated};
         let updated = if tag.0 == 9 && v.help && v.scenario >= 4 && f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet {
             let mut text = updated.replace("HELP   H", "HELP   Shift+H");
             text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold · Option+C x3 eject\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");

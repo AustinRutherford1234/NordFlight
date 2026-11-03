@@ -1284,15 +1284,20 @@ fn prepare_cannon_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mut ViewState)
     n.round(TargetId::Aircraft(999),TargetId::Ship(0),Kind::AntiShip,p,f.velocity);
     tracking::seed(&mut n.rounds[0],carrier::ship_world(f,0,DVec3::Y*5.,0.),carrier::velocity(0.));
     c.naval=Some(n);
-    if mode.ends_with("after") {
+    let firing=mode.contains("firing");
+    if firing {c.naval.as_mut().unwrap().rounds[0].position+=f.orientation*DVec3::X*10.;}
+    if mode.ends_with("after") || firing {
         let mut keys=ButtonInput::default();keys.press(KeyCode::KeyU);c.defense_controls(&keys,f);
         for _ in 0..30 {
             f.elapsed+=1./120.;f.position+=f.velocity/120.;c.tick(f,1./120.);
-            if c.naval.as_ref().unwrap().interceptions>0 {break;}
+            if firing && f.elapsed>=0.15 {break;}
+            if !firing && c.naval.as_ref().unwrap().interceptions>0 {break;}
         }
-        assert_eq!(c.naval.as_ref().unwrap().interceptions,1,"native real firing path failed");
+        if !firing {assert_eq!(c.naval.as_ref().unwrap().interceptions,1,"native real firing path failed");}
     }
     println!("CANNON REVIEW {mode} gun={} missile_alive={} interceptions={} strikes={}",
         c.fight.as_ref().unwrap().gun,c.naval.as_ref().unwrap().rounds[0].alive,c.naval.as_ref().unwrap().interceptions,c.strikes);
     f.paused=true;v.restore_camera();v.simple=true;
+    if mode.ends_with("cockpit") {v.index=3;}
+    if firing {f.hornet.hud.mode=crate::cockpit::hornet_hud::MasterMode::Gun;}
 }

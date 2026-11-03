@@ -1425,6 +1425,7 @@ pub fn draw(
         }));
     }
     for round in &fight.rounds {
+        if f.aircraft==crate::aircraft::Aircraft::Hornet && !round.hostile {continue;}
         let tip = world::local(round.position, &f);
         let tail = world::local(round.position - round.velocity.normalize() * 12.0, &f);
         gizmos.line(

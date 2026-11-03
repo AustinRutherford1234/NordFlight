@@ -12,12 +12,14 @@ pub enum MasterMode {
     Nav,
     Air,
     Ground,
+    Gun,
 }
 impl MasterMode {
     pub fn next(self) -> Self {
         match self {
             Self::Nav => Self::Air,
-            Self::Air => Self::Ground,
+            Self::Air => Self::Gun,
+            Self::Gun => Self::Ground,
             Self::Ground => Self::Nav,
         }
     }
@@ -26,6 +28,7 @@ impl MasterMode {
             Self::Nav => "NAV",
             Self::Air => "A/A",
             Self::Ground => "A/G",
+            Self::Gun => "GUN",
         }
     }
 }
@@ -370,7 +373,7 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
         let e = p + Vec2::new(25., -energy);
         c.line(e + Vec2::new(5., -4.), e);
         c.line(e, e + Vec2::new(5., 4.));
-        if f.gear_extension > 0.98 && !f.landed && state.mode != MasterMode::Air {
+        if f.gear_extension > 0.98 && !f.landed && !matches!(state.mode,MasterMode::Air|MasterMode::Gun) {
             let a = p + Vec2::new(-29., aoa_bracket_offset(f.alpha));
             c.line(a - Vec2::Y * 10., a + Vec2::Y * 10.);
             for y in [-10., 0., 10.] {
@@ -451,6 +454,7 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
     if state.mode == MasterMode::Ground {
         ground(&mut c, f, combat);
     }
+    if state.mode == MasterMode::Gun {gun(&mut c,f,combat);}
     if f.landed && f.gear_compression[0] > 0. && crate::aircraft::hornet::ground::available(f) {
         c.text(if crate::aircraft::hornet::ground::high_active(f) { "NWS HI" } else { "NWS" }, 220., 375., 1.3);
     }
@@ -495,6 +499,41 @@ fn target_direction(f:&Flight,delta:DVec3)->Vec2 {
     let el=body.y.atan2(body.x.hypot(body.z));
     let direction=Vec2::new(az as f32,-el as f32);
     if direction.length_squared()>1e-10 {direction.normalize()}else{Vec2::NEG_Y}
+}
+/// Finite gun points include eye/muzzle parallax and the Hornet cabin scale.
+fn gun_point(f:&Flight,point:DVec3)->Option<Vec2> {
+    let eye=(crate::cockpit::eye(f.vehicle)+f.aircraft.cabin_offset()).as_dvec3();
+    let body=f.orientation.conjugate()*(point-f.position)-eye;
+    let (_,ray)=crate::cockpit::cockpit_ray(f,eye,body);
+    crate::cockpit::hud_projection(f.vehicle,ray.as_vec3()).map(|p|p*2.)
+}
+fn gun(c:&mut Canvas,f:&Flight,combat:&Combat) {
+    let rounds=combat.fight.as_ref().map_or(0,|fight|fight.gun);
+    c.text("20MM",20.,297.,1.6);c.text(&format!("{:04} RDS",rounds),20.,315.,1.4);
+    c.text(if rounds==0 {"EMPTY"}else if combat.cannon_available(f){"ARM / U FIRE"}else{"SAFE"},200.,320.,1.3);
+    let funnel=crate::combat::hud::funnel(f,8.4);
+    let mut previous:Option<[Vec2;2]>=None;
+    for rails in &funnel {
+        if let [Some(left),Some(right)]=[gun_point(f,rails[0]),gun_point(f,rails[1])] {
+            if in_field(left)&&in_field(right) {
+                if let Some(old)=previous {c.line(old[0],left);c.line(old[1],right);}previous=Some([left,right]);
+            }else{previous=None;}
+        }else{previous=None;}
+    }
+    let near=(funnel[0][0]+funnel[0][1])*0.5;
+    if let Some(p)=gun_point(f,near).filter(|p|in_field(*p)) {
+        c.circle(p,4.5);c.line(p-Vec2::X*1.5,p+Vec2::X*1.5);c.text("30M",p.x+8.,p.y+7.,1.0);
+    }
+    if let Some(t)=combat.targets.get(combat.selected).filter(|t|t.alive) {
+        if let Some(solution)=crate::combat::hud::gun_solution(f,t) {
+            let muzzle=f.position+f.orientation*crate::aircraft::gun_origin(f.aircraft);
+            if let Some(p)=gun_point(f,muzzle+solution.direction*solution.range).filter(|p|in_field(*p)) {
+                c.circle(p,9.);c.line(p-Vec2::Y*14.,p-Vec2::Y*10.);
+                c.text(&format!("RNG {:04.0} M",solution.range),345.,270.,1.0);
+                c.text(&format!("TOF {:.2}",solution.time),365.,288.,1.0);
+            }
+        }
+    }
 }
 fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
     let heat = combat.weapon == Weapon::Heat;
@@ -668,7 +707,7 @@ mod tests {
             f.throttle,
         );
         let mut results = Vec::new();
-        for mode in [MasterMode::Nav, MasterMode::Air, MasterMode::Ground] {
+        for mode in [MasterMode::Nav, MasterMode::Air, MasterMode::Ground,MasterMode::Gun] {
             f.hornet.hud.mode = mode;
             draw(&mut data, &f, &combat);
             assert!(data.chunks_exact(4).filter(|p| p[3] > 0).count() > 4000);
@@ -701,7 +740,19 @@ mod tests {
                 f.throttle
             )
         );
-        assert_eq!(MasterMode::Nav.next().next().next(), MasterMode::Nav);
+        assert_eq!(MasterMode::Nav.next().next().next().next(), MasterMode::Nav);
+    }
+    #[test]
+    fn gun_mode_cycles_and_uses_the_expanded_hornet_ammunition_load() {
+        let mut f=flight();let mut combat=Combat::default();combat.start_air(&f,1,5);
+        assert_eq!(f.aircraft.spec().gun,2060);assert_eq!(combat.fight.as_ref().unwrap().gun,2060);
+        assert_eq!(MasterMode::Air.next(),MasterMode::Gun);
+        assert_eq!(MasterMode::Gun.next(),MasterMode::Ground);
+        let mut data=vec![0;WIDTH*HEIGHT*4];f.hornet.hud.mode=MasterMode::Gun;draw(&mut data,&f,&combat);
+        assert!(data.chunks_exact(4).filter(|p|p[3]>0).count()>4000);
+        let gun_frame=data.clone();f.hornet.hud.mode=MasterMode::Air;draw(&mut data,&f,&combat);assert_ne!(gun_frame,data);
+        let muzzle=f.position+f.orientation*crate::aircraft::gun_origin(f.aircraft);
+        assert!(gun_point(&f,muzzle+f.forward()*30.).is_some());
     }
     #[test]
     fn terrain_gun_prediction_intersects_surface_and_rejects_sky() {
