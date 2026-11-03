@@ -54,9 +54,34 @@ def analyze(directory):
         samples += 1
     if not samples or max_force_closure > 1e-6:
         issues.append('Missing snapshots or force budget failed to close')
+    airframe_path = directory / 'airframe_summary.json'
+    airframe_convergence = {}
+    if airframe_path.exists():
+        runs = json.loads(airframe_path.read_text())
+        cases = {(r['case'], r['hz']): r for r in runs}
+        if len(cases) != 12:
+            issues.append('Incomplete independent airframe study')
+        for case in ('free_decay', 'alpha_doublet', 'landing_flare', 'asymmetric_load'):
+            ref = cases.get((case, 960))
+            if not ref:
+                continue
+            errors = []
+            for hz in (240, 480):
+                run = cases[(case, hz)]
+                if not run['finite']:
+                    issues.append(f'Nonfinite independent airframe case: {case}/{hz}')
+                differences = {field: abs(run[field]-ref[field])/max(abs(ref[field]),1e-8)
+                               for field in ('peak_force_n','peak_bend_m','peak_root_stress_pa','peak_root_strain')}
+                errors.append({'hz':hz, 'relative_differences':differences})
+                if max(differences.values()) > .02:
+                    issues.append(f'Independent airframe convergence exceeded 2%: {case}/{hz}')
+                if case == 'free_decay' and run['final_energy_j'] > run['initial_energy_j']*.001:
+                    issues.append(f'Free elastic response failed to dissipate energy: {hz}')
+            airframe_convergence[case] = errors
     result = {'passed': not issues, 'issues': issues, 'flight_cases': len(summaries),
               'snapshot_samples': samples, 'max_force_closure_n': max_force_closure,
               'nominal_convergence': convergence,
+              'independent_airframe_convergence': airframe_convergence,
               'note': 'Fault-case aircraft losses are reported, not treated as numerical failures.'}
     (directory / 'analysis.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))

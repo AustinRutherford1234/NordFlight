@@ -1,0 +1,392 @@
+[
+  {
+    "altitude_m": 1000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": null,
+      "iterations": 5,
+      "residual": [
+        -9.282413269623725e-9,
+        -4.4313781349920966e-7,
+        2.9281344897741895e-9
+      ],
+      "solution": {
+        "alpha": 0.14850845320501652,
+        "command": 0.015294413056210482,
+        "residual": 4.432446941820721e-7,
+        "throttle": 0.30089719984239
+      }
+    },
+    "speed_m_s": 120.0
+  },
+  {
+    "altitude_m": 10000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        -7.315660481736228e-11,
+        -3.493134663493715e-9,
+        1.5450427322858073e-11
+      ],
+      "solution": {
+        "alpha": 0.10160945809328738,
+        "command": 0.020067246189924014,
+        "residual": 3.4939347993106877e-9,
+        "throttle": 0.6231249218214732
+      }
+    },
+    "speed_m_s": 240.0
+  },
+  {
+    "altitude_m": 18000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        3.916142124685501e-12,
+        3.186211216760175e-10,
+        -1.3005911315304097e-11
+      ],
+      "solution": {
+        "alpha": 0.0841991010100023,
+        "command": 0.1848307924756152,
+        "residual": 3.1891050323933486e-10,
+        "throttle": 0.9569946027637793
+      }
+    },
+    "speed_m_s": 600.0
+  },
+  {
+    "altitude_m": 23000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        5.7030349418656196e-11,
+        9.755456671211242e-10,
+        -2.9611299493283124e-11
+      ],
+      "solution": {
+        "alpha": 0.0712212771891987,
+        "command": 0.19402682133521568,
+        "residual": 9.776597764310928e-10,
+        "throttle": 0.9607388714220737
+      }
+    },
+    "speed_m_s": 900.0
+  },
+  {
+    "altitude_m": 25000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        1.5778299867996228e-9,
+        1.3895279592481813e-8,
+        -5.462550161062516e-10
+      ],
+      "solution": {
+        "alpha": 0.09002335712210635,
+        "command": 0.2401189805537868,
+        "residual": 1.3995239796556074e-8,
+        "throttle": 0.9611864092247221
+      }
+    },
+    "speed_m_s": 950.0
+  },
+  {
+    "altitude_m": 23000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": "InsufficientSpeed",
+      "iterations": 0,
+      "residual": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "solution": null
+    },
+    "speed_m_s": 20.0
+  },
+  {
+    "altitude_m": 25000.0,
+    "fuel_kg": 8000.0,
+    "report": {
+      "failure": "NoDescent",
+      "iterations": 38,
+      "residual": [
+        -0.6404232494147473,
+        0.22598516145501227,
+        -0.01492754435190189
+      ],
+      "solution": null
+    },
+    "speed_m_s": 200.0
+  },
+  {
+    "altitude_m": 1000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": null,
+      "iterations": 4,
+      "residual": [
+        -6.412754185567424e-8,
+        -3.06141689450357e-6,
+        2.7058186428495386e-8
+      ],
+      "solution": {
+        "alpha": 0.18800904328590926,
+        "command": 0.013924239407787895,
+        "residual": 3.062208008778818e-6,
+        "throttle": 0.3939024653780602
+      }
+    },
+    "speed_m_s": 120.0
+  },
+  {
+    "altitude_m": 10000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        -7.598630799610009e-11,
+        -3.628745725963749e-9,
+        2.146048656756521e-11
+      ],
+      "solution": {
+        "alpha": 0.12629731552837772,
+        "command": 0.024988140271074082,
+        "residual": 3.6296046637597837e-9,
+        "throttle": 0.7235004760546402
+      }
+    },
+    "speed_m_s": 240.0
+  },
+  {
+    "altitude_m": 18000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        9.688185645144639e-10,
+        2.6014691953430614e-8,
+        -1.4458489802925754e-9
+      ],
+      "solution": {
+        "alpha": 0.10690687133831858,
+        "command": 0.2571490721729338,
+        "residual": 2.6072845761762344e-8,
+        "throttle": 0.9700719394026704
+      }
+    },
+    "speed_m_s": 600.0
+  },
+  {
+    "altitude_m": 23000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        1.6820284827287976e-9,
+        1.850746430918325e-8,
+        -7.732668512131939e-10
+      ],
+      "solution": {
+        "alpha": 0.09537120749497606,
+        "command": 0.24834315086849867,
+        "residual": 1.8599822488281656e-8,
+        "throttle": 0.970898511496776
+      }
+    },
+    "speed_m_s": 900.0
+  },
+  {
+    "altitude_m": 25000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        1.9532277875536272e-7,
+        1.13917814378013e-6,
+        -1.5668116668074264e-7
+      ],
+      "solution": {
+        "alpha": 0.12107659699253041,
+        "command": 0.3057909824227792,
+        "residual": 1.166373361818375e-6,
+        "throttle": 0.9761414766671694
+      }
+    },
+    "speed_m_s": 950.0
+  },
+  {
+    "altitude_m": 23000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": "InsufficientSpeed",
+      "iterations": 0,
+      "residual": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "solution": null
+    },
+    "speed_m_s": 20.0
+  },
+  {
+    "altitude_m": 25000.0,
+    "fuel_kg": 20000.0,
+    "report": {
+      "failure": "NoDescent",
+      "iterations": 5,
+      "residual": [
+        -0.7082537716896843,
+        0.26330424800549773,
+        -0.03417719543858111
+      ],
+      "solution": null
+    },
+    "speed_m_s": 200.0
+  },
+  {
+    "altitude_m": 1000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": null,
+      "iterations": 4,
+      "residual": [
+        -2.5304589366712173e-11,
+        -1.2080265786241512e-9,
+        1.2922638496692483e-11
+      ],
+      "solution": {
+        "alpha": 0.21952930582070027,
+        "command": 0.014036111282658302,
+        "residual": 1.2083606793880322e-9,
+        "throttle": 0.4834717993931338
+      }
+    },
+    "speed_m_s": 120.0
+  },
+  {
+    "altitude_m": 10000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": null,
+      "iterations": 4,
+      "residual": [
+        -1.3773539281540852e-10,
+        -6.575387513910832e-9,
+        4.710838503090527e-11
+      ],
+      "solution": {
+        "alpha": 0.14672869881800643,
+        "command": 0.02936735025884124,
+        "residual": 6.576998646530855e-9,
+        "throttle": 0.8223617385455504
+      }
+    },
+    "speed_m_s": 240.0
+  },
+  {
+    "altitude_m": 18000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": null,
+      "iterations": 4,
+      "residual": [
+        -2.005532986996655e-11,
+        2.2981486742549013e-10,
+        -3.9880600411373727e-11
+      ],
+      "solution": {
+        "alpha": 0.12576335217958295,
+        "command": 0.320248139965492,
+        "residual": 2.3411012757922377e-10,
+        "throttle": 0.9836062240403257
+      }
+    },
+    "speed_m_s": 600.0
+  },
+  {
+    "altitude_m": 23000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": null,
+      "iterations": 3,
+      "residual": [
+        9.722592490033115e-9,
+        1.215600963887551e-7,
+        -1.596481923137768e-8
+      ],
+      "solution": {
+        "alpha": 0.11574451273901341,
+        "command": 0.29657366707655636,
+        "residual": 1.2298886653620826e-7,
+        "throttle": 0.9821598352937175
+      }
+    },
+    "speed_m_s": 900.0
+  },
+  {
+    "altitude_m": 25000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": null,
+      "iterations": 4,
+      "residual": [
+        3.731404917424715e-9,
+        1.851951583170323e-8,
+        -3.1128298909609527e-9
+      ],
+      "solution": {
+        "alpha": 0.14676462952852215,
+        "command": 0.36379048306154843,
+        "residual": 1.9146424189089403e-8,
+        "throttle": 0.9914034220386689
+      }
+    },
+    "speed_m_s": 950.0
+  },
+  {
+    "altitude_m": 23000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": "InsufficientSpeed",
+      "iterations": 0,
+      "residual": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "solution": null
+    },
+    "speed_m_s": 20.0
+  },
+  {
+    "altitude_m": 25000.0,
+    "fuel_kg": 30000.0,
+    "report": {
+      "failure": "NoDescent",
+      "iterations": 4,
+      "residual": [
+        -0.7448129743905083,
+        0.2826583858106725,
+        -0.040980574201756534
+      ],
+      "solution": null
+    },
+    "speed_m_s": 200.0
+  }
+]

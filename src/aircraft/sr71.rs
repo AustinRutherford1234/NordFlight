@@ -11,6 +11,7 @@ pub struct State {
     pub spike: f64,
     pub nozzles: [f64; 2],
     pub diagnostics: flight::diagnostics::State,
+    pub airframe:flight::plant::State,
 }
 fn move_to(value: &mut f64, target: f64, rate: f64, dt: f64) {
     *value += (target - *value).clamp(-rate * dt, rate * dt);

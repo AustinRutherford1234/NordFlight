@@ -813,9 +813,10 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
     // Integrate the coupled aircraft and structure together, not just the
     // oscillators with frozen aerodynamic loads, at a sufficiently small step.
     // Keep the caller's total simulated duration and environment sample intact.
-    if f.vehicle == Vehicle::Gripen && matches!(f.aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet)
-        && dt.is_finite() && dt > 1. / 240. {
-        let count = (dt * 240.).ceil() as usize;
+    let maximum_step=if f.aircraft==crate::aircraft::Aircraft::Sr71{crate::aircraft::sr71::flight::airframe_config::SPATIAL.maximum_coupled_step_s}else{1./240.};
+    if f.vehicle == Vehicle::Gripen && matches!(f.aircraft,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet|crate::aircraft::Aircraft::Sr71)
+        && dt.is_finite() && dt > maximum_step {
+        let count = (dt / maximum_step).ceil() as usize;
         let h = dt / count as f64;
         for _ in 0..count { simulate_step(f, e, h); }
     } else {
@@ -902,24 +903,12 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         raptor_elastic_incidence(f, b)
     } else { (0., 0., 0.) };
     let evaluate=if sr71{crate::aircraft::sr71::flight::evaluate}else if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::evaluate_raptor}else if f.aircraft==crate::aircraft::Aircraft::Su27{crate::aircraft::su27::evaluate}else{crate::aerodynamics::evaluate};
-    if sr71 {crate::aircraft::sr71::flight::diagnostics::begin(f,crate::aerodynamics::Conditions{alpha,beta,mach:f.mach,speed,density:rho,temperature:temp,flaps:0.,gear:false,airbrake:false,height:f.agl(),rates:f.rates},dt);}
-    let mut coefficients = evaluate(
-        crate::aerodynamics::Conditions {
-            alpha: alpha + elastic_incidence.0,
-            beta: beta + elastic_incidence.1,
-            mach: f.mach,
-            speed,
-            density: rho,
-            temperature: temp,
-            flaps: 0.0, // Moving-panel loads are evaluated separately below.
-            gear: false,
-            airbrake: false,
-            height: f.agl(),
-            rates: f.rates,
-        },
-        &mut f.flow,
-        dt,
-    );
+    let conditions=crate::aerodynamics::Conditions{alpha:alpha+elastic_incidence.0,beta:beta+elastic_incidence.1,mach:f.mach,speed,density:rho,temperature:temp,flaps:0.,gear:false,airbrake:false,height:f.agl(),rates:f.rates};
+    let mut coefficients=if sr71{
+        crate::aircraft::sr71::flight::diagnostics::begin(f,conditions,dt);
+        crate::aircraft::sr71::flight::plant::begin(f,conditions,b,dt);
+        f.systems.sr71.airframe.coefficients
+    }else{evaluate(conditions,&mut f.flow,dt)};
     if f.aircraft == crate::aircraft::Aircraft::F22 {
         // Estimated differential wing lift acts with a spanwise lever arm.
         // This correction vanishes in the rigid limit; the aggregate polar has
@@ -945,9 +934,9 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         coefficients.drag += crate::aircraft::store_drag(f) + f.systems.conversion*0.035;
         coefficients.parasite += crate::aircraft::store_drag(f);
     }
-    if sr71 {coefficients.pitch+=(crate::aircraft::sr71::flight::cg_fraction(f)-crate::aircraft::sr71::flight::config::MASS.moment_reference_mac)*coefficients.lift;}
+
     // Drag follows the actual deployment rather than changing at the G key press.
-    let gear_drag=if sr71{crate::aircraft::sr71::flight::config::AERO.gear_drag*f.gear_extension+crate::aircraft::sr71::flight::config::AERO.door_drag*f.gear_door}else{0.022*f.gear_extension};
+    let gear_drag=if sr71{0.}else{0.022*f.gear_extension};
     let windmill=if sr71{(0..2).filter(|&i|!f.engine||!f.systems.engine_on[i]||(!f.infinite_fuel&&f.fuel<=0.)).count()as f64*crate::aircraft::sr71::flight::config::AERO.windmill_drag_per_engine}else{0.};
     coefficients.parasite += gear_drag+windmill;
     coefficients.drag += gear_drag+windmill;
@@ -988,7 +977,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         };
         (f.fuel - dt * (fuel_rate + f.damage.fuel_leak)).max(0.0)
     };
-    let mut aero = crate::aerodynamics::force(right, air, q * wing_area, coefficients);
+    let mut aero = if sr71 {f.orientation*(f.systems.sr71.airframe.base.force-b.normalize_or_zero()*(q*wing_area*(coefficients.drag-f.systems.sr71.airframe.coefficients.drag)))}else{crate::aerodynamics::force(right, air, q * wing_area, coefficients)};
     let (thrust, engine_moment) = if custom {
         let (body,moment,_) = crate::aircraft::propulsion(f,dt,rho,f.mach);
         f.thrust=body.length();
@@ -1063,20 +1052,20 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     let span = if sr71{crate::aircraft::sr71::flight::SPAN}else{spec.span};
     let chord = if sr71{crate::aircraft::sr71::flight::CHORD}else if custom {spec.area/spec.span}else{3.5};
     let (damage_force, damage_moment) =
-        crate::combat::damage::aero(&f.damage, b, q, coefficients.lift);
+        if sr71{(DVec3::ZERO,DVec3::ZERO)}else{crate::combat::damage::aero(&f.damage, b, q, coefficients.lift)};
     aero += f.orientation * damage_force;
     acc += f.orientation * damage_force / f.mass();
     // F-22 load-command feedback uses the preceding completed accelerometer
     // sample, including moving panels and contact forces. The partial force
     // sum here omits those loads and must not replace that sensor sample.
-    if f.aircraft != crate::aircraft::Aircraft::F22 {
+    if f.aircraft != crate::aircraft::Aircraft::F22 && !sr71 {
         f.g_load = (aero + thrust).dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
     }
-    let natural = DVec3::new(
+    let natural = if sr71 {f.systems.sr71.airframe.base.moment}else{DVec3::new(
         q * wing_area * chord * coefficients.pitch,
         q * wing_area * span * coefficients.yaw,
         q * wing_area * span * coefficients.roll,
-    ) + damage_moment + if f.aircraft == crate::aircraft::Aircraft::F22 {
+    )} + damage_moment + if f.aircraft == crate::aircraft::Aircraft::F22 {
         crate::aircraft::raptor::flight_model::bay_moment(f,q,b)
     } else { DVec3::ZERO };
     let panel_model = crate::control_surfaces::PreparedPanels::new(
@@ -1161,6 +1150,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         crate::aircraft::raptor::flight_model::advance_surfaces(f,q,dt);
         crate::aircraft::actual_panel_loads(f,b,rho)
     };
+    if sr71 {crate::aircraft::sr71::flight::plant::finish(&mut f.systems.sr71.airframe,&panels);}
     let surface_force = f.orientation * panels.force;
     f.panel_attachment = crate::aircraft::attachment(f.aircraft,&f.damage,&panels);
     f.actuator_load = panels
@@ -1180,7 +1170,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         let side_axis = flow.cross(lift_axis).normalize_or_zero();
         f.aero_coeff.lift += panels.force.dot(lift_axis) / (q * wing_area);
         let induced=if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::raptor_induced}else{crate::aerodynamics::induced_drag};
-        let total_induced = if sr71{crate::aircraft::sr71::flight::induced(f.aero_coeff.lift,coefficients.attached,beta,f.agl(),f.mach)}else{induced(
+        let total_induced = if sr71{coefficients.induced}else{induced(
             f.aero_coeff.lift,
             coefficients.attached,
             beta,
@@ -1199,6 +1189,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         f.aero_coeff.yaw = torque.y / (q * wing_area * span);
         f.aero_coeff.roll = torque.z / (q * wing_area * span);
     }
+    if sr71 {let actual=f.systems.sr71.airframe.total_induced_cd;let delta=actual-f.aero_coeff.induced;f.aero_coeff.induced=actual;f.aero_coeff.control_drag-=delta;}
     let angular_acc = if sr71 || f.aircraft == crate::aircraft::Aircraft::F22 {
         raptor_inverse * (torque - f.rates.cross(inertia_tensor * f.rates))
     } else { (torque - f.rates.cross(inertia * f.rates)) / inertia };
@@ -1308,6 +1299,10 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     let body_load = body_accelerometer(specific_acceleration, previous_rotation);
     f.lateral_g = body_load.x;
     f.longitudinal_g = -body_load.z;
+    if sr71 && dt>0. {
+        f.systems.sr71.airframe.last_specific_acceleration=previous_rotation.conjugate()*specific_acceleration;
+        f.systems.sr71.airframe.last_angular_acceleration=(f.rates-previous_rates)/dt;
+    }
     if f.aircraft == crate::aircraft::Aircraft::F22 && dt > 0. {
         let loads = raptor_elastic_loads(f, b, previous_rotation.conjugate() * aero, &panels);
         update_raptor_wing_failure(f, &loads);

@@ -64,6 +64,9 @@ pub const SURFACE_FAILURE: u32 = 128;
 pub const INVALID_LOAD: u32 = 256;
 pub const TRIM_FAILED: u32 = 512;
 pub const OUTSIDE_EVIDENCE: u32 = 1024;
+pub const ELASTIC_OVERLOAD: u32 = 2048;
+pub const INVALID_ELASTIC_STATE: u32 = 4096;
+pub const LOCAL_DATABASE_CLAMP: u32 = 8192;
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct Snapshot {
     pub simulation_time_s: f64,
@@ -97,6 +100,23 @@ pub struct Snapshot {
     pub integrity: f64,
     pub inlet_recovery: f64,
     pub flags: u32,
+    pub element_points_body_m: [[f64; 3]; 30],
+    pub element_forces_body_n: [[f64; 3]; 30],
+    pub actual_element_forces_body_n: [[f64; 3]; 30],
+    pub control_induced_force_body_n: [f64; 3],
+    pub element_alpha_rad: [f64; 30],
+    pub element_attachment: [f64; 30],
+    pub element_ground_pressure: [f64; 30],
+    pub unresolved_airframe_force_body_n: [f64; 3],
+    pub unresolved_airframe_moment_body_nm: [f64; 3],
+    pub elastic_modes: [super::elastic::Mode; 4],
+    pub wing_sections: [[super::elastic::Section; 6]; 2],
+    pub aerodynamic_root_nm: [f64; 2],
+    pub inertial_root_nm: [f64; 2],
+    pub wing_loading_n_m2: [f64; 2],
+    pub aircraft_weight_loading_n_m2: f64,
+    pub elastic_energy_j: f64,
+    pub elastic_damage: [f64; 4],
 }
 #[derive(Clone, Default)]
 pub struct State {
@@ -194,6 +214,26 @@ pub fn capture(f: &mut Flight, loads: StepLoads) {
     {
         flags |= INVALID_LOAD;
     }
+    if sr
+        .airframe
+        .structure
+        .sections
+        .iter()
+        .flatten()
+        .any(|s| s.utilization > 1.)
+    {
+        flags |= ELASTIC_OVERLOAD;
+    }
+    if sr.airframe.local.iter().any(|l| {
+        l.mach > super::database::MACH_AXIS[super::database::MACH_AXIS.len() - 1]
+            || l.beta.abs().to_degrees()
+                > super::database::BETA_DEG[super::database::BETA_DEG.len() - 1]
+    }) {
+        flags |= LOCAL_DATABASE_CLAMP;
+    }
+    if !sr.airframe.structure.valid {
+        flags |= INVALID_ELASTIC_STATE;
+    }
     let c = f.aero_coeff;
     let qs = q * AREA;
     let allocated = c.parasite + c.induced + c.wave + c.control_drag;
@@ -236,6 +276,31 @@ pub fn capture(f: &mut Flight, loads: StepLoads) {
         integrity: f.integrity,
         inlet_recovery: super::engine::recovery(f),
         flags,
+        element_points_body_m: sr.airframe.local.map(|l| l.at.to_array()),
+        element_forces_body_n: sr.airframe.local.map(|l| l.force.to_array()),
+        actual_element_forces_body_n: std::array::from_fn(|i| {
+            sr.airframe.last_loads[i].force.to_array()
+        }),
+        control_induced_force_body_n: sr.airframe.control_induced_force.to_array(),
+        element_alpha_rad: sr.airframe.local.map(|l| l.alpha),
+        element_attachment: sr.airframe.local.map(|l| l.flow.attached),
+        element_ground_pressure: sr.airframe.local.map(|l| l.pressure),
+        unresolved_airframe_force_body_n: (sr.airframe.base.force
+            - sr.airframe.local.iter().map(|l| l.force).sum::<DVec3>())
+        .to_array(),
+        unresolved_airframe_moment_body_nm: (sr.airframe.base.moment
+            - sr.airframe.local.iter().map(|l| l.moment).sum::<DVec3>())
+        .to_array(),
+        elastic_modes: sr.airframe.structure.modes,
+        wing_sections: sr.airframe.structure.sections,
+        aerodynamic_root_nm: sr.airframe.structure.aerodynamic_root_nm,
+        inertial_root_nm: sr.airframe.structure.inertial_root_nm,
+        wing_loading_n_m2: sr.airframe.structure.wing_loading_n_m2,
+        aircraft_weight_loading_n_m2: f.mass() * MU
+            / f.position.length_squared()
+            / super::airframe_config::SPATIAL.estimated_lifting_planform_m2,
+        elastic_energy_j: sr.airframe.structure.energy_j,
+        elastic_damage: sr.airframe.structure.damage,
     };
     let d = &mut f.systems.sr71.diagnostics;
     d.steps += 1;

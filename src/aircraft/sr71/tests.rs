@@ -348,7 +348,9 @@ fn diagnostic_budget_closes_and_reset_clears_failure_history() {
     let d = &f.systems.sr71.diagnostics;
     let s = d.latest;
     assert!(
-        s.flags & ENGINE_OUT != 0 && s.flags & HYDRAULIC_LOSS != 0 && s.flags & FLOW_RESET != 0
+        s.flags & ENGINE_OUT != 0
+            && s.flags & HYDRAULIC_LOSS != 0
+            && d.sticky_flags & FLOW_RESET != 0
     );
     assert_eq!(d.repaired_flow_states, 1);
     assert!(s.flags & INVALID_LOAD == 0);

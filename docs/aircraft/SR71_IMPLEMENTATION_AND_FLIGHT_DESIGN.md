@@ -2,6 +2,10 @@
 
 Date: November 2, 2026
 
+## Distributed airframe update
+
+See [SR71_DISTRIBUTED_AIRFRAME_2026-11-03.md](SR71_DISTRIBUTED_AIRFRAME_2026-11-03.md) for the current 30-element aerodynamic model, landing effects, aeroelastic feedback and wing loading/stress/strain estimates.
+
 ## Refinement and debugging update
 
 See [SR71_AERO_REFINEMENT_2026-11-03.md](SR71_AERO_REFINEMENT_2026-11-03.md) for the current code organization, tuning groups, failure diagnostics and reproducible headless tools.

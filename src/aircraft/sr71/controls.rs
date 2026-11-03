@@ -59,6 +59,13 @@ pub fn control_loads(
     mach: f64,
     command: Option<DVec3>,
 ) -> Loads {
+    if s.airframe.initialized {
+        let angles = command.map(targets).unwrap_or(s.elevons);
+        let fins = command
+            .map(|c| [c.y * CONTROL.rudder_limit_rad; 2])
+            .unwrap_or(s.fins);
+        return super::plant::control_loads(&s.airframe, damage, angles, fins);
+    }
     if !b.is_finite()
         || !rho.is_finite()
         || rho < 0.

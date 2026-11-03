@@ -2,6 +2,10 @@
 
 Date: November 3, 2026. This supersedes the implementation/validation details of the first aero pass where explicitly stated below; the earlier report remains the historical parameter-source record.
 
+## Distributed-airframe follow-up
+
+The subsequent [distributed-airframe pass](SR71_DISTRIBUTED_AIRFRAME_2026-11-03.md) adds the spatial runtime plant, landing effects, structural modes and wing stress/strain diagnostics. The results below describe this earlier refinement milestone.
+
 ## What changed physically
 
 The normal-force circulatory term now uses the incidence-history state. Previously, that state only affected separation while ordinary lift reacted immediately to incidence. Sideslip force now uses the sideslip-history state as well. Incidence history follows the shortest angular difference across the ±π boundary. This avoids feeding a spurious nearly full revolution into the lag state. The existing vortex/separation estimates remain engineering approximations.

@@ -1,9 +1,4 @@
-use super::{
-    aero::{induced, steady},
-    config::*,
-    controls::{control_coefficients, targets},
-    engine::engine,
-};
+use super::{config::*, controls::targets, engine::engine};
 use crate::{
     aerodynamics::{Conditions, FlowState},
     physics::*,
@@ -79,29 +74,24 @@ pub fn solve(mass: f64, fuel: f64, alt: f64, speed: f64) -> TrimReport {
     let residual = |x: DVec3| {
         let mut c = c;
         c.alpha = x.x;
-        let mut a = steady(c);
-        a.pitch += ((MASS.zero_fuel_cg_mac * EMPTY + MASS.fuel_cg_mac * fuel) / (EMPTY + fuel)
-            - MASS.moment_reference_mac)
-            * a.lift;
-        let controls = control_coefficients(
+        let b = DVec3::new(0., -speed * x.x.sin(), -speed * x.x.cos());
+        let cg = (MASS.zero_fuel_cg_mac * EMPTY + MASS.fuel_cg_mac * fuel) / (EMPTY + fuel);
+        let state = super::plant::steady(
+            c,
+            b,
+            cg,
+            &AircraftDamage::default(),
             targets(DVec3::new(x.y, 0., 0.)),
             [0.; 2],
-            c.mach,
-            a.attached,
+            super::landing::Surface::free(),
+            true,
         );
-        let old = a.lift;
-        a.lift += controls.lift;
-        a.drag += controls.drag + induced(a.lift, a.attached, 0., alt, c.mach)
-            - induced(old, a.attached, 0., alt, c.mach);
-        a.pitch += controls.pitch;
-        let b = DVec3::new(0., -speed * x.x.sin(), -speed * x.x.cos());
         let thrust = engine(x.z, c.density, c.mach).0;
-        let force = crate::aerodynamics::force(DVec3::X, b, qs, a)
-            + DVec3::new(0., -INCIDENCE.sin(), -INCIDENCE.cos()) * thrust;
+        let force = state.total.force + DVec3::new(0., -INCIDENCE.sin(), -INCIDENCE.cos()) * thrust;
         DVec3::new(
             (force.y - w * x.x.cos()) / w,
             (force.z + w * x.x.sin()) / w,
-            a.pitch + thrust * MASS.engine_aft_m * INCIDENCE.sin() / (qs * CHORD),
+            (state.total.moment.x + thrust * MASS.engine_aft_m * INCIDENCE.sin()) / (qs * CHORD),
         )
     };
     for iteration in 0..SOLVER.iterations {
@@ -169,6 +159,18 @@ pub fn initialize(f: &mut Flight) {
             f.throttle = t.throttle;
             f.spool = t.throttle;
             f.alpha = t.alpha;
+            let c = condition(t.alpha, f.altitude(), f.airspeed);
+            let b = DVec3::new(0., -f.airspeed * t.alpha.sin(), -f.airspeed * t.alpha.cos());
+            f.systems.sr71.airframe = super::plant::steady(
+                c,
+                b,
+                super::mass::cg_fraction(f),
+                &f.damage,
+                f.systems.sr71.elevons,
+                f.systems.sr71.fins,
+                super::landing::Surface::free(),
+                true,
+            );
             f.flow = FlowState {
                 lag_alpha: t.alpha - INCIDENCE,
                 ..Default::default()

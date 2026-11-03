@@ -1,0 +1,1007 @@
+{
+  "aerodynamics": {
+    "asymmetric_separation_roll": 0.05,
+    "chine_lift_gain": 0.85,
+    "compressibility_exponent": 0.65,
+    "compressibility_gain": 0.144,
+    "control_attached_gain": 0.7,
+    "control_floor": 0.3,
+    "control_mach_loss": 0.2,
+    "convection_factor": 0.9,
+    "door_drag": 0.012,
+    "efficiency": 0.79,
+    "flat_plate_normal_gain": 1.5,
+    "gear_drag": 0.055,
+    "ground_height_scale": 16.0,
+    "hysteresis": 0.045,
+    "incidence_drag": 0.16,
+    "lag_speed_floor_m_s": 25.0,
+    "max_lag_s": 0.6,
+    "maximum_efficiency": 0.82,
+    "min_lag_s": 0.035,
+    "minimum_efficiency": 0.45,
+    "minimum_ground_factor": 0.35,
+    "minimum_reynolds": 10000.0,
+    "parasite_base": 0.0042,
+    "reattachment_time_factor": 3.0,
+    "reynolds_exponent": 2.58,
+    "roll_yaw_coupling": 0.06,
+    "separated_drag": 1.55,
+    "separated_pitch": 0.22,
+    "separation_efficiency_loss": 0.15,
+    "separation_onset": 0.43,
+    "separation_time_factor": 1.1,
+    "separation_width_after": 0.12,
+    "separation_width_before": 0.04,
+    "side_yaw_damping": 0.12,
+    "sideslip_drag": 0.2,
+    "sideslip_time_factor": 1.4,
+    "skin_friction_gain": 0.455,
+    "slip_efficiency_loss": 0.1,
+    "supersonic_chine_loss": 0.55,
+    "supersonic_induced_gain": 0.2,
+    "supersonic_onset_reduction": 0.1,
+    "supersonic_wave": 0.009,
+    "vortex_time_factor": 2.0,
+    "vortex_transient_gain": 0.35,
+    "vortex_transient_limit": 0.12,
+    "wave_center_mach": 1.04,
+    "wave_peak": 0.018,
+    "wave_width_mach": 0.19,
+    "wetted_area_ratio": 4.2,
+    "windmill_drag_per_engine": 0.004,
+    "yaw_roll_coupling": 0.015
+  },
+  "airframe": {
+    "elastic": {
+      "bend_soft_limit_m": 0.8,
+      "bending_damping": 0.12,
+      "compressive_limit_pa": 550000000.0,
+      "fin_bend_hz": 9.0,
+      "fin_bending_mass_kg": 55.0,
+      "fin_torsion_inertia_kg_m2": 75.0,
+      "fin_twist_hz": 16.0,
+      "minimum_stiffness_fraction": 0.15,
+      "overload_damage_rate": 0.08,
+      "section_taper": 0.9,
+      "shear_limit_pa": 350000000.0,
+      "shear_modulus_pa": 42000000000.0,
+      "tensile_limit_pa": 650000000.0,
+      "twist_damping": 0.14,
+      "twist_soft_limit_rad": 0.15,
+      "wing_bending_mass_kg": 420.0,
+      "wing_edge_outer_fiber_m": 1.0,
+      "wing_edge_section_m3": 0.004,
+      "wing_outer_fiber_m": 0.22,
+      "wing_polar_second_moment_m4": 0.00099,
+      "wing_root_section_m3": 0.0025,
+      "wing_root_torsion_m3": 0.0045,
+      "wing_shear_area_m2": 0.045,
+      "wing_torsion_inertia_kg_m2": 650.0,
+      "young_modulus_pa": 110000000000.0
+    },
+    "landing": {
+      "door_drag": 0.012,
+      "gear_drag": 0.055,
+      "gear_pitch_cm": -0.003,
+      "height_span_scale": 0.3,
+      "low_speed_mach_end": 0.7,
+      "maximum_lift_gain": 0.16,
+      "maximum_nose_down_cm": 0.008,
+      "minimum_induced_factor": 0.4,
+      "pressure_time_s": 0.14,
+      "sink_lift_gain": 0.35,
+      "sink_ratio_limit": 0.08
+    },
+    "provenance": "Engineering estimates, not measured SR-71 structure or high-alpha database",
+    "spatial": {
+      "body_drag_share": 0.2,
+      "body_lift_share": 0.08,
+      "body_side_share": 0.2,
+      "chine_drag_share": 0.1,
+      "chine_lift_share": 0.24,
+      "estimated_lifting_planform_m2": 167.2,
+      "fin_side_share": 0.7,
+      "local_speed_floor": 25.0,
+      "maximum_coupled_step_s": 0.004166666666666667,
+      "nacelle_drag_share": 0.28,
+      "nacelle_lift_share": 0.06,
+      "nacelle_side_share": 0.1,
+      "reynolds_lift_exponent": 0.012,
+      "reynolds_reference": 30000000.0,
+      "wing_drag_share": 0.42,
+      "wing_lift_share": 0.62
+    },
+    "unsteady": {
+      "added_mass_gain": 0.08,
+      "added_mass_limit": 0.12,
+      "buffet_gain": 0.012,
+      "buffet_strouhal": 0.12,
+      "chine_downwash": 0.025,
+      "dynamic_stall_delay": 0.7,
+      "fast_time": 0.55,
+      "fast_weight": 0.65,
+      "pressure_time": 0.8,
+      "recovery_time": 5.0,
+      "separation_time": 2.0,
+      "slow_time": 2.8,
+      "slow_weight": 0.35,
+      "stall_hysteresis_rad": 0.045,
+      "vortex_cp_travel": 0.35,
+      "vortex_gain": 0.6,
+      "vortex_limit": 0.32,
+      "vortex_time": 3.0,
+      "wake_time": 1.4
+    }
+  },
+  "area_m2": 149.1093792,
+  "chord_m": 11.490960000000001,
+  "controls": {
+    "acceleration_limits": [
+      0.25,
+      0.2,
+      0.6
+    ],
+    "alpha_limit_gain": 1.2,
+    "alpha_limit_rad": 0.32,
+    "alpha_limit_reduction": 0.13,
+    "elevon_rate_rad_s": 0.5235987755982988,
+    "elevon_up_rad": 0.6108652381980153,
+    "hydraulic_floor": 0.12,
+    "inner_down_rad": 0.3490658503988659,
+    "inner_weight": 0.6,
+    "load_trim_gain": 0.025,
+    "load_trim_rate_limit": 0.04,
+    "low_mach_pitch_rate": 0.2,
+    "low_mach_roll_rate": 0.65,
+    "neutral_deadband": 0.025,
+    "outer_down_rad": 0.6108652381980153,
+    "outer_rig_rad": 0.05235987755982988,
+    "pitch_drag": 0.035,
+    "pitch_rate_reduction": 0.13,
+    "rate_gain": 1.5,
+    "roll_drag": 0.025,
+    "roll_rate_reduction": 0.4,
+    "rudder_limit_rad": 0.3490658503988659,
+    "rudder_rate_rad_s": 0.5759586531581288,
+    "sideslip_gain": 0.45,
+    "yaw_drag": 0.03,
+    "yaw_rate": 0.1
+  },
+  "database": {
+    "axes": {
+      "alpha_deg": [
+        -180.0,
+        -150.0,
+        -120.0,
+        -90.0,
+        -60.0,
+        -45.0,
+        -30.0,
+        -22.0,
+        -18.0,
+        -14.0,
+        -10.0,
+        -5.0,
+        0.0,
+        5.0,
+        10.0,
+        14.0,
+        18.0,
+        22.0,
+        30.0,
+        45.0,
+        60.0,
+        90.0,
+        120.0,
+        150.0,
+        180.0
+      ],
+      "beta_deg": [
+        -45.0,
+        -25.0,
+        -10.0,
+        0.0,
+        10.0,
+        25.0,
+        45.0
+      ],
+      "control_deg": [
+        -35.0,
+        -25.0,
+        -10.0,
+        0.0,
+        10.0,
+        20.0,
+        35.0
+      ],
+      "mach": [
+        0.0,
+        0.4,
+        0.6,
+        0.9,
+        1.0,
+        1.1,
+        1.6,
+        2.0,
+        2.5,
+        3.0,
+        3.5
+      ]
+    },
+    "interpolation": "bounded trilinear; value-continuous, not derivative-continuous",
+    "reynolds": "analytic skin friction/local lift correction, not another measured table dimension",
+    "schema": 1,
+    "source": "NASA/TP-2002-210718 baseline small-disturbance trends; nonlinear vertices, coupling and control saturation are engineering estimates",
+    "vertices": 1925
+  },
+  "elements": [
+    {
+      "assembly": 0,
+      "at_m": [
+        -1.6,
+        0.15,
+        3.4499999999999997
+      ],
+      "chord_m": 12.166666666666666,
+      "drag_share": 0.0483,
+      "kind": "Wing",
+      "normal_share": 0.0713,
+      "side_share": 0.0,
+      "span_fraction": 0.08333333333333333
+    },
+    {
+      "assembly": 0,
+      "at_m": [
+        -2.8,
+        0.15,
+        4.75
+      ],
+      "chord_m": 10.5,
+      "drag_share": 0.0462,
+      "kind": "Wing",
+      "normal_share": 0.0682,
+      "side_share": 0.0,
+      "span_fraction": 0.25
+    },
+    {
+      "assembly": 0,
+      "at_m": [
+        -4.0,
+        0.15,
+        6.05
+      ],
+      "chord_m": 8.833333333333332,
+      "drag_share": 0.042,
+      "kind": "Wing",
+      "normal_share": 0.062,
+      "side_share": 0.0,
+      "span_fraction": 0.4166666666666667
+    },
+    {
+      "assembly": 0,
+      "at_m": [
+        -5.2,
+        0.15,
+        7.35
+      ],
+      "chord_m": 7.166666666666666,
+      "drag_share": 0.0336,
+      "kind": "Wing",
+      "normal_share": 0.0496,
+      "side_share": 0.0,
+      "span_fraction": 0.5833333333333334
+    },
+    {
+      "assembly": 0,
+      "at_m": [
+        -6.4,
+        0.15,
+        8.649999999999999
+      ],
+      "chord_m": 5.5,
+      "drag_share": 0.025199999999999997,
+      "kind": "Wing",
+      "normal_share": 0.0372,
+      "side_share": 0.0,
+      "span_fraction": 0.75
+    },
+    {
+      "assembly": 0,
+      "at_m": [
+        -7.6,
+        0.15,
+        9.95
+      ],
+      "chord_m": 3.833333333333334,
+      "drag_share": 0.014700000000000001,
+      "kind": "Wing",
+      "normal_share": 0.0217,
+      "side_share": 0.0,
+      "span_fraction": 0.9166666666666666
+    },
+    {
+      "assembly": 1,
+      "at_m": [
+        1.6,
+        0.15,
+        3.4499999999999997
+      ],
+      "chord_m": 12.166666666666666,
+      "drag_share": 0.0483,
+      "kind": "Wing",
+      "normal_share": 0.0713,
+      "side_share": 0.0,
+      "span_fraction": 0.08333333333333333
+    },
+    {
+      "assembly": 1,
+      "at_m": [
+        2.8,
+        0.15,
+        4.75
+      ],
+      "chord_m": 10.5,
+      "drag_share": 0.0462,
+      "kind": "Wing",
+      "normal_share": 0.0682,
+      "side_share": 0.0,
+      "span_fraction": 0.25
+    },
+    {
+      "assembly": 1,
+      "at_m": [
+        4.0,
+        0.15,
+        6.05
+      ],
+      "chord_m": 8.833333333333332,
+      "drag_share": 0.042,
+      "kind": "Wing",
+      "normal_share": 0.062,
+      "side_share": 0.0,
+      "span_fraction": 0.4166666666666667
+    },
+    {
+      "assembly": 1,
+      "at_m": [
+        5.2,
+        0.15,
+        7.35
+      ],
+      "chord_m": 7.166666666666666,
+      "drag_share": 0.0336,
+      "kind": "Wing",
+      "normal_share": 0.0496,
+      "side_share": 0.0,
+      "span_fraction": 0.5833333333333334
+    },
+    {
+      "assembly": 1,
+      "at_m": [
+        6.4,
+        0.15,
+        8.649999999999999
+      ],
+      "chord_m": 5.5,
+      "drag_share": 0.025199999999999997,
+      "kind": "Wing",
+      "normal_share": 0.0372,
+      "side_share": 0.0,
+      "span_fraction": 0.75
+    },
+    {
+      "assembly": 1,
+      "at_m": [
+        7.6,
+        0.15,
+        9.95
+      ],
+      "chord_m": 3.833333333333334,
+      "drag_share": 0.014700000000000001,
+      "kind": "Wing",
+      "normal_share": 0.0217,
+      "side_share": 0.0,
+      "span_fraction": 0.9166666666666666
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        -0.8,
+        0.1,
+        -10.0
+      ],
+      "chord_m": 5.0,
+      "drag_share": 0.016666666666666666,
+      "kind": "Chine",
+      "normal_share": 0.04,
+      "side_share": 0.0,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        -1.05,
+        0.1,
+        -6.0
+      ],
+      "chord_m": 5.0,
+      "drag_share": 0.016666666666666666,
+      "kind": "Chine",
+      "normal_share": 0.04,
+      "side_share": 0.0,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        -1.3,
+        0.1,
+        -2.0
+      ],
+      "chord_m": 5.0,
+      "drag_share": 0.016666666666666666,
+      "kind": "Chine",
+      "normal_share": 0.04,
+      "side_share": 0.0,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        0.8,
+        0.1,
+        -10.0
+      ],
+      "chord_m": 5.0,
+      "drag_share": 0.016666666666666666,
+      "kind": "Chine",
+      "normal_share": 0.04,
+      "side_share": 0.0,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        1.05,
+        0.1,
+        -6.0
+      ],
+      "chord_m": 5.0,
+      "drag_share": 0.016666666666666666,
+      "kind": "Chine",
+      "normal_share": 0.04,
+      "side_share": 0.0,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        1.3,
+        0.1,
+        -2.0
+      ],
+      "chord_m": 5.0,
+      "drag_share": 0.016666666666666666,
+      "kind": "Chine",
+      "normal_share": 0.04,
+      "side_share": 0.0,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        0.0,
+        0.0,
+        -11.0
+      ],
+      "chord_m": 7.0,
+      "drag_share": 0.05,
+      "kind": "Body",
+      "normal_share": 0.02,
+      "side_share": 0.05,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        0.0,
+        0.0,
+        -4.0
+      ],
+      "chord_m": 7.0,
+      "drag_share": 0.05,
+      "kind": "Body",
+      "normal_share": 0.02,
+      "side_share": 0.05,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        0.0,
+        0.0,
+        3.0
+      ],
+      "chord_m": 7.0,
+      "drag_share": 0.05,
+      "kind": "Body",
+      "normal_share": 0.02,
+      "side_share": 0.05,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        0.0,
+        0.0,
+        10.0
+      ],
+      "chord_m": 7.0,
+      "drag_share": 0.05,
+      "kind": "Body",
+      "normal_share": 0.02,
+      "side_share": 0.05,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        -4.3,
+        0.2,
+        2.0
+      ],
+      "chord_m": 8.0,
+      "drag_share": 0.07,
+      "kind": "Nacelle",
+      "normal_share": 0.015,
+      "side_share": 0.025,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        -4.3,
+        0.2,
+        10.0
+      ],
+      "chord_m": 8.0,
+      "drag_share": 0.07,
+      "kind": "Nacelle",
+      "normal_share": 0.015,
+      "side_share": 0.025,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        4.3,
+        0.2,
+        2.0
+      ],
+      "chord_m": 8.0,
+      "drag_share": 0.07,
+      "kind": "Nacelle",
+      "normal_share": 0.015,
+      "side_share": 0.025,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": -1,
+      "at_m": [
+        4.3,
+        0.2,
+        10.0
+      ],
+      "chord_m": 8.0,
+      "drag_share": 0.07,
+      "kind": "Nacelle",
+      "normal_share": 0.015,
+      "side_share": 0.025,
+      "span_fraction": 0.0
+    },
+    {
+      "assembly": 2,
+      "at_m": [
+        -3.8625,
+        1.88,
+        10.65
+      ],
+      "chord_m": 3.8,
+      "drag_share": 0.0,
+      "kind": "Fin",
+      "normal_share": 0.0,
+      "side_share": 0.175,
+      "span_fraction": 0.25
+    },
+    {
+      "assembly": 2,
+      "at_m": [
+        -3.5875,
+        3.08,
+        11.15
+      ],
+      "chord_m": 3.8,
+      "drag_share": 0.0,
+      "kind": "Fin",
+      "normal_share": 0.0,
+      "side_share": 0.175,
+      "span_fraction": 0.75
+    },
+    {
+      "assembly": 3,
+      "at_m": [
+        3.8625,
+        1.88,
+        10.65
+      ],
+      "chord_m": 3.8,
+      "drag_share": 0.0,
+      "kind": "Fin",
+      "normal_share": 0.0,
+      "side_share": 0.175,
+      "span_fraction": 0.25
+    },
+    {
+      "assembly": 3,
+      "at_m": [
+        3.5875,
+        3.08,
+        11.15
+      ],
+      "chord_m": 3.8,
+      "drag_share": 0.0,
+      "kind": "Fin",
+      "normal_share": 0.0,
+      "side_share": 0.175,
+      "span_fraction": 0.75
+    }
+  ],
+  "empty_kg": 27545.757445360003,
+  "engine": {
+    "angular_alpha_loss": 0.28,
+    "angular_beta_loss": 0.3,
+    "burner_threshold": 0.88,
+    "burner_tsfc_increment": 0.000021,
+    "density_exponent": 0.62,
+    "dry_factor": [
+      1.0,
+      0.94,
+      0.86,
+      0.8,
+      0.72,
+      0.66,
+      0.56,
+      0.45,
+      0.25
+    ],
+    "dry_power_exponent": 1.35,
+    "dry_tsfc_kg_n_s": 0.000023,
+    "mach": [
+      0.0,
+      0.6,
+      0.9,
+      1.1,
+      1.6,
+      2.0,
+      2.5,
+      3.2,
+      3.6
+    ],
+    "minimum_recovery": 0.35,
+    "reference_density": 1.225,
+    "spike_mach_interval": 1.6,
+    "spike_mismatch_loss": 0.25,
+    "spike_start_mach": 1.6,
+    "spike_travel_m": 0.66,
+    "static_dry_n": 180000.0,
+    "static_wet_n": 289134.0,
+    "wet_factor": [
+      1.0,
+      0.96,
+      0.94,
+      0.99,
+      1.18,
+      1.5,
+      2.0,
+      2.65,
+      2.15
+    ]
+  },
+  "evidence_mach_range": [
+    0.4,
+    3.0
+  ],
+  "fuel_capacity_kg": 36287.3896,
+  "incidence_rad": 0.020943951023931952,
+  "mass": {
+    "engine_aft_m": 12.4,
+    "engine_lateral_m": 4.9,
+    "fuel_cg_mac": 0.235,
+    "fuel_inertia_m2": [
+      22.0,
+      31.0,
+      9.0
+    ],
+    "moment_reference_mac": 0.25,
+    "pitch_inertia": 954850.0,
+    "product_inertia": 19200.0,
+    "roll_inertia": 220660.0,
+    "slug_ft2_to_kg_m2": 1.3558179483,
+    "yaw_inertia": 1172039.0,
+    "zero_fuel_cg_mac": 0.201
+  },
+  "regimes": {
+    "authority_mach": [
+      0.8,
+      2.5
+    ],
+    "backtracking_ratio": 0.5,
+    "backtracking_steps": 12,
+    "bank_cos_floor": 0.4,
+    "bank_limit_rad": 1.2,
+    "canopy_rate_s": 0.3125,
+    "coordination_speed_floor_m_s": 70.0,
+    "induced_rise_mach": [
+      0.95,
+      2.5
+    ],
+    "inlet_alpha_rad": [
+      0.16,
+      0.5
+    ],
+    "inlet_beta_rad": [
+      0.07,
+      0.3
+    ],
+    "inlet_mismatch_mach": [
+      1.5,
+      2.5
+    ],
+    "minimum_temperature_k": 150.0,
+    "nozzle_rate_s": 0.5,
+    "pitch_damping_normalized_limit": 0.4,
+    "pitch_rate_normalized_limit": 0.3,
+    "spike_rate_m_s": 0.12,
+    "sutherland_k": 110.4,
+    "trim_initial": [
+      0.08,
+      0.0,
+      0.8
+    ],
+    "trim_max": [
+      0.48,
+      1.0,
+      1.0
+    ],
+    "trim_min": [
+      -0.1,
+      -1.0,
+      0.01
+    ],
+    "viscosity_reference_k": 273.15,
+    "viscosity_reference_pa_s": 0.00001716,
+    "vortex_alpha_rad": [
+      0.1,
+      0.3
+    ],
+    "wave_rise_mach": [
+      0.95,
+      1.6
+    ]
+  },
+  "schema": 2,
+  "solver": {
+    "determinant_floor": 1e-12,
+    "difference_step": 0.0001,
+    "iterations": 50,
+    "max_newton_step": 0.15,
+    "minimum_trim_speed_m_s": 35.0,
+    "residual_tolerance": 0.00001,
+    "state_reset_attached": 1.0,
+    "trace_period_s": 0.1
+  },
+  "source": "NASA/TP-2002-210718 baseline graph readings; nonlinear, drag, engine and fuel distribution are estimates",
+  "span_m": 17.28216,
+  "tables": {
+    "CLB": [
+      -0.0009,
+      -0.0009,
+      -0.0007,
+      -0.0011,
+      -0.001,
+      -0.0009,
+      -0.0006,
+      -0.0004,
+      -0.0003
+    ],
+    "CLDA": [
+      0.0018,
+      0.0018,
+      0.0015,
+      0.0007,
+      0.0005,
+      0.00045,
+      0.0004,
+      0.00035,
+      0.0003
+    ],
+    "CLP": [
+      -0.16,
+      -0.16,
+      -0.18,
+      -0.19,
+      -0.16,
+      -0.12,
+      -0.1,
+      -0.09,
+      -0.08
+    ],
+    "CMA": [
+      0.001,
+      0.001,
+      0.0002,
+      -0.0027,
+      -0.0025,
+      -0.0012,
+      -0.001,
+      -0.0005,
+      -0.0004
+    ],
+    "CMB": [
+      0.003,
+      0.003,
+      0.004,
+      0.01,
+      0.005,
+      0.003,
+      0.002,
+      0.001,
+      0.001
+    ],
+    "CMDE": [
+      -0.005,
+      -0.005,
+      -0.0044,
+      -0.0021,
+      -0.00165,
+      -0.0013,
+      -0.0011,
+      -0.001,
+      -0.0009
+    ],
+    "CMQ": [
+      -1.8,
+      -1.8,
+      -2.7,
+      -2.6,
+      -2.1,
+      -1.8,
+      -0.9,
+      -0.9,
+      -0.9
+    ],
+    "CNA": [
+      0.042,
+      0.042,
+      0.049,
+      0.044,
+      0.033,
+      0.027,
+      0.0255,
+      0.025,
+      0.023
+    ],
+    "CNB": [
+      -0.015,
+      -0.015,
+      -0.025,
+      -0.02,
+      -0.01,
+      0.004,
+      0.02,
+      0.03,
+      0.03
+    ],
+    "CNBETA": [
+      0.0014,
+      0.0014,
+      0.0017,
+      0.0019,
+      0.0009,
+      0.001,
+      0.0006,
+      0.0005,
+      0.0004
+    ],
+    "CNDA": [
+      0.00005,
+      0.00005,
+      0.0001,
+      0.00005,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CNDE": [
+      0.004,
+      0.004,
+      0.0015,
+      -0.0004,
+      0.0,
+      0.0003,
+      0.0003,
+      0.0003,
+      0.0003
+    ],
+    "CNDR": [
+      -0.0011,
+      -0.0011,
+      -0.0015,
+      -0.0014,
+      -0.0009,
+      -0.0007,
+      -0.0005,
+      -0.00035,
+      -0.0003
+    ],
+    "CNQ": [
+      -9.0,
+      -9.0,
+      -22.0,
+      -22.0,
+      -20.0,
+      -21.0,
+      -28.0,
+      -35.0,
+      -35.0
+    ],
+    "CNR": [
+      -0.13,
+      -0.13,
+      -0.13,
+      -0.12,
+      -0.1,
+      -0.09,
+      -0.08,
+      -0.07,
+      -0.06
+    ],
+    "CYB": [
+      -0.007,
+      -0.007,
+      -0.008,
+      -0.0085,
+      -0.006,
+      -0.0065,
+      -0.0058,
+      -0.006,
+      -0.006
+    ],
+    "CYDR": [
+      0.003,
+      0.003,
+      0.0038,
+      0.0035,
+      0.0024,
+      0.002,
+      0.0017,
+      0.0013,
+      0.0011
+    ],
+    "mach": [
+      0.0,
+      0.6,
+      0.9,
+      1.1,
+      1.6,
+      2.0,
+      2.5,
+      3.0,
+      3.5
+    ]
+  },
+  "units": "SI except source tables per degree; inertia baseline slug ft2 converted at use"
+}
