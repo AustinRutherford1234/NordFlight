@@ -17,3 +17,13 @@
 Three packaged-app views (top, side, front) captured in 44.49 seconds of the approved two-minute window; existing flights restored by the capture handler. Images inspected: static aircraft is visible and selected, but the initial orbit distance crops the large airframe. SR-71-only default orbit distance was doubled and the app rebuilt/signature checked. Corrected framing has not yet been recaptured. Geometry remains a rough authored preview. Local evidence: `tests/sr71-visuals/`.
 
 A subsequent search identified manilov.ap's CC BY 4.0 SR-71, 31.4k triangles, with GLB download options: https://sketchfab.com/3d-models/sr71-908985d8ec544638bcd661bc315597ad . Browser download was attempted but no retrievable file was obtained; this online model is not installed.
+
+## Imported user-supplied model
+
+The user supplied `/Users/Austin/Downloads/sr71.glb`; source copied byte-for-byte to `assets/aircraft/sr71/source.glb` (SHA-256 `2506ee33cbef686afc49f033f114e4777447f38d75371328a03d98ea3edade01`). Reproducible Blender preparation produces `static.glb`, 31,413 triangles, 24 textures, no animation. Material consolidation reduces 75 source material slots to 26 without decimation or texture resizing. CC BY 4.0 author/source/modification attribution is bundled with the asset.
+
+The focused imported-asset test passed on the final normalized model: embedded images, valid GLB, no animations, 32.73 m length, approximately 17.03 m span and tyre-bottom registration. The previous full 819-pass suite predates this asset replacement; it is not claimed as a fresh full-suite result for the import.
+
+Native imported top/side/front captures exposed reversed facing after Blender/glTF axis conversion, plus an orbit-camera path missed by the earlier distance change. Both corrected. The final front capture verifies forward-facing orientation and uncropped framing. Earlier top/side captures are inspection history and predate these corrections. Final imported gear deployment/contact matching was not exhaustively reviewed. Cumulative approved live runtime: 108.60 seconds, restoration handler completed. No performance benchmark or calibrated flight test was performed.
+
+Final packaged app rebuilt successfully (22.93 s); strict deep codesign verification succeeded. Executable SHA-256: `77d5104d5aaed300ccbd25778d6646927ee5af001532cf241fa595478bcb0b53`. Evidence: `tests/sr71-visuals/imported-front.png`, source logs and review.json. Capture script: `scripts/sr71/capture.py` (requires live-test approval; tracks cumulative runtime). Flight model, cockpit and collision remain provisional.

@@ -2,7 +2,11 @@
 
 Date: November 2, 2026
 
-## 1. Decision and scope
+## Current asset update
+
+The procedural first pass has been replaced by the user-supplied **manilov.ap Sr71** model under CC BY 4.0. The installed static GLB has 31,413 triangles, 24 embedded textures and no animations. It is uniformly scaled to 32.73 m long (17.03 m span), with game-forward alignment and tyre-bottom registration. Source and attribution are in `assets/aircraft/sr71/`; reproducible conversion is in `scripts/sr71/prepare.py`. Its fixed gear remains deployed. No dedicated physics or cockpit was added. The sections below retain the initial integration analysis and future flight-design plan; original procedural geometry described there is superseded by this imported asset.
+
+## 1. Initial decision and scope
 
 The first delivery adds an original, code-generated static SR-71A visual preview to the existing aircraft selector. It is not a calibrated Blackbird simulation. Select **F6 → SR-71A BLACKBIRD (STATIC PREVIEW)** in a non-carrier flight. The existing carrier restriction remains Hornet-only. Use external views to inspect this milestone; there is no bespoke SR-71 cockpit yet.
 

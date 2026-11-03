@@ -958,7 +958,10 @@ pub fn setup(
         let root = c
             .spawn((Root(a), Transform::default(), Visibility::Hidden))
             .id();
-        if a==Aircraft::Sr71 {sr71::setup(&mut c,&mut meshes,&mut mats,root);continue;}
+        if a==Aircraft::Sr71 {
+            if let Some(server)=asset_server.as_deref(){sr71::setup(&mut c,server,root);}
+            continue;
+        }
         let spec = a.spec();
         if a == Aircraft::Hornet {
             if let Some(server) = asset_server.as_deref() {
