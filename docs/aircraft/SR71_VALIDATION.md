@@ -11,3 +11,9 @@
 ## Packaged app
 
 `./build-mac.sh dev` succeeded (49.67 seconds). Strict deep signature verification succeeded. Packaged executable SHA-256: `1458e84cfa1aa21d92b8b742973e38b07634e12695707269b3a15bf3b667befd`.
+
+## Approved native visual review
+
+Three packaged-app views (top, side, front) captured in 44.49 seconds of the approved two-minute window; existing flights restored by the capture handler. Images inspected: static aircraft is visible and selected, but the initial orbit distance crops the large airframe. SR-71-only default orbit distance was doubled and the app rebuilt/signature checked. Corrected framing has not yet been recaptured. Geometry remains a rough authored preview. Local evidence: `tests/sr71-visuals/`.
+
+A subsequent search identified manilov.ap's CC BY 4.0 SR-71, 31.4k triangles, with GLB download options: https://sketchfab.com/3d-models/sr71-908985d8ec544638bcd661bc315597ad . Browser download was attempted but no retrievable file was obtained; this online model is not installed.

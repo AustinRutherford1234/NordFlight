@@ -2599,7 +2599,7 @@ fn update_camera(
     };
     if index == 0 {
         let center = pos;
-        p = center + look * (p - center) * v.zoom;
+        p = center + look * (p - center) * v.zoom * if f.vehicle==Vehicle::Gripen && f.aircraft==aircraft::Aircraft::Sr71 {2.0}else{1.0};
     }
     if f.crashed && f.vehicle==Vehicle::Gripen && f.aircraft==aircraft::Aircraft::Hornet {
         if let Some((center,distance))=wreck.as_ref().and_then(|s|s.framing()) {
