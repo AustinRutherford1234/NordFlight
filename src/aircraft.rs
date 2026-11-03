@@ -158,7 +158,7 @@ impl Aircraft {
         }
     }
     pub fn engine_positions(self) -> [DVec3; 2] {
-        if self==Self::Sr71 {return [DVec3::new(-4.9,0.,12.4),DVec3::new(4.9,0.,12.4)];}
+        if self==Self::Sr71 {return [DVec3::new(-sr71::flight::config::MASS.engine_lateral_m,0.,sr71::flight::config::MASS.engine_aft_m),DVec3::new(sr71::flight::config::MASS.engine_lateral_m,0.,sr71::flight::config::MASS.engine_aft_m)];}
         let s = self.spec();
         let x = if s.engines == 2 {
             if self == Self::Su27 { 1.45 } else { 0.93 }

@@ -1,5 +1,9 @@
 # SR-71A aerodynamic model — November 2, 2026
 
+## Follow-up refinement
+
+See [SR71_AERO_REFINEMENT_2026-11-03.md](SR71_AERO_REFINEMENT_2026-11-03.md) for the subsequent module split, centralized tuning, flow-history changes, corrected neutral trim, failure diagnostics and newer validation. The measured results below describe the first delivery.
+
 ## Scope and fidelity
 
 The SR-71 now has an aircraft-specific reduced-order aerodynamic and installed-propulsion model inside the existing double-precision, six-degree-of-freedom flight loop. The imported model's rate-limited elevons and rudders generate the control loads; their animation is no longer disconnected from the plant. This is a public-data-informed simulation, not a reproduction of the proprietary Blackbird aerodynamic database, inlet control system, or stability augmentation system.

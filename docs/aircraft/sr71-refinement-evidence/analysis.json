@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "issues": [],
+  "flight_cases": 21,
+  "snapshot_samples": 12600,
+  "max_force_closure_n": 4.799926691741898e-10,
+  "nominal_convergence": {
+    "neutral": [
+      {
+        "hz": 60,
+        "altitude_difference_m": 0.09084510803222656,
+        "relative_mach_difference": 3.4194449907556743e-06
+      },
+      {
+        "hz": 120,
+        "altitude_difference_m": 0.03028262499719858,
+        "relative_mach_difference": 1.1405744203311157e-06
+      }
+    ],
+    "doublet": [
+      {
+        "hz": 60,
+        "altitude_difference_m": 0.10064658708870411,
+        "relative_mach_difference": 1.8987595547521735e-06
+      },
+      {
+        "hz": 120,
+        "altitude_difference_m": 0.018300152383744717,
+        "relative_mach_difference": 3.768098968737259e-07
+      }
+    ]
+  },
+  "note": "Fault-case aircraft losses are reported, not treated as numerical failures."
+}

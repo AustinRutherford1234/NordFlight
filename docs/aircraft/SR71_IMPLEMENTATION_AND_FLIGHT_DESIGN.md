@@ -2,6 +2,10 @@
 
 Date: November 2, 2026
 
+## Refinement and debugging update
+
+See [SR71_AERO_REFINEMENT_2026-11-03.md](SR71_AERO_REFINEMENT_2026-11-03.md) for the current code organization, tuning groups, failure diagnostics and reproducible headless tools.
+
 ## Aerodynamic update
 
 A dedicated SR-71 reduced-order aerodynamic and propulsion plant now replaces the shared fighter coefficients. See [SR71_AERO_MODEL_2026-11-02.md](SR71_AERO_MODEL_2026-11-02.md) for physics, sources, parameter uncertainty and validation boundaries. Earlier static-preview claims below are historical.

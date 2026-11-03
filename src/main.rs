@@ -241,6 +241,10 @@ struct UiFont(Handle<Font>);
 enum FlightStage { Controls, Simulation, World, Camera, Presentation, Interface, Capture }
 fn main() {
     if std::env::args().any(|a|a=="--export-f22-nozzle"){aircraft::visual::raptor_detail::export_nozzle_preview();return;}
+    if std::env::args().any(|a|a=="--study-sr71"){
+        let output=std::env::args().find_map(|a|a.strip_prefix("--sr71-output=").map(str::to_owned)).unwrap_or_else(||"tests/sr71-aero-study".into());
+        if let Err(e)=aircraft::sr71::flight::study::run(std::path::Path::new(&output)){eprintln!("SR-71 study failed: {e}");std::process::exit(1);}return;
+    }
     if std::env::args().any(|a|a=="--study-f22"){aircraft::raptor::study();return;}
     if std::env::args().any(|a|a=="--study-f22-fbw"){aircraft::raptor::fbw::study();return;}
     if std::env::args().any(|a|a=="--study-f22-roll"){aircraft::raptor::roll_study();return;}

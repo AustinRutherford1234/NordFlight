@@ -902,6 +902,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         raptor_elastic_incidence(f, b)
     } else { (0., 0., 0.) };
     let evaluate=if sr71{crate::aircraft::sr71::flight::evaluate}else if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::evaluate_raptor}else if f.aircraft==crate::aircraft::Aircraft::Su27{crate::aircraft::su27::evaluate}else{crate::aerodynamics::evaluate};
+    if sr71 {crate::aircraft::sr71::flight::diagnostics::begin(f,crate::aerodynamics::Conditions{alpha,beta,mach:f.mach,speed,density:rho,temperature:temp,flaps:0.,gear:false,airbrake:false,height:f.agl(),rates:f.rates},dt);}
     let mut coefficients = evaluate(
         crate::aerodynamics::Conditions {
             alpha: alpha + elastic_incidence.0,
@@ -944,10 +945,10 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         coefficients.drag += crate::aircraft::store_drag(f) + f.systems.conversion*0.035;
         coefficients.parasite += crate::aircraft::store_drag(f);
     }
-    if sr71 {coefficients.pitch+=(crate::aircraft::sr71::flight::cg_fraction(f)-0.25)*coefficients.lift;}
+    if sr71 {coefficients.pitch+=(crate::aircraft::sr71::flight::cg_fraction(f)-crate::aircraft::sr71::flight::config::MASS.moment_reference_mac)*coefficients.lift;}
     // Drag follows the actual deployment rather than changing at the G key press.
-    let gear_drag=if sr71{0.055*f.gear_extension+0.012*f.gear_door}else{0.022*f.gear_extension};
-    let windmill=if sr71{(0..2).filter(|&i|!f.engine||!f.systems.engine_on[i]||(!f.infinite_fuel&&f.fuel<=0.)).count()as f64*0.004}else{0.};
+    let gear_drag=if sr71{crate::aircraft::sr71::flight::config::AERO.gear_drag*f.gear_extension+crate::aircraft::sr71::flight::config::AERO.door_drag*f.gear_door}else{0.022*f.gear_extension};
+    let windmill=if sr71{(0..2).filter(|&i|!f.engine||!f.systems.engine_on[i]||(!f.infinite_fuel&&f.fuel<=0.)).count()as f64*crate::aircraft::sr71::flight::config::AERO.windmill_drag_per_engine}else{0.};
     coefficients.parasite += gear_drag+windmill;
     coefficients.drag += gear_drag+windmill;
     let battle_drag = 0.012 * (1.0 - f.damage.surfaces.iter().take(crate::aircraft::count(f.aircraft)).sum::<f64>() / crate::aircraft::count(f.aircraft) as f64)
@@ -1132,7 +1133,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
                 +f.rates.cross(inertia_tensor*f.rates)-natural-panel_bias-vector_bias;
             crate::aircraft::raptor::fbw::allocate(response,raptor_inverse*moment)
         } else {
-            let moment=if sr71 {inertia_tensor*((target-f.rates)*1.5).clamp(DVec3::new(-0.25,-0.2,-0.6),DVec3::new(0.25,0.2,0.6))}else if f.aircraft==crate::aircraft::Aircraft::F22 { inertia_tensor*((target-f.rates)*5.) }
+            let moment=if sr71 {inertia_tensor*crate::aircraft::sr71::flight::tracking_acceleration(f.rates,target)}else if f.aircraft==crate::aircraft::Aircraft::F22 { inertia_tensor*((target-f.rates)*5.) }
                 else { (target-f.rates)*5.*inertia };
             crate::control_surfaces::allocate(jacobian,moment-natural-panel_bias-vector_bias)
         }
@@ -1202,6 +1203,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         raptor_inverse * (torque - f.rates.cross(inertia_tensor * f.rates))
     } else { (torque - f.rates.cross(inertia * f.rates)) / inertia };
     f.g_load = (aero + thrust).dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);
+    if sr71 {crate::aircraft::sr71::flight::diagnostics::capture(f,crate::aircraft::sr71::flight::diagnostics::StepLoads{dt,air_body:b,dynamic_pressure:q,aerodynamic_world:aero,thrust_world:thrust,controls_body:panels.force,damage_body:damage_force,natural_moment:natural,control_moment:panels.moment,damage_moment,engine_moment,total_moment:torque,inertia:inertia_tensor,angular_acceleration:angular_acc});}
     f.rates += angular_acc * dt;
     f.orientation = (f.orientation * DQuat::from_scaled_axis(f.rates * dt)).normalize();
     if f.aircraft == crate::aircraft::Aircraft::F22 {
