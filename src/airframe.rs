@@ -624,9 +624,9 @@ fn clip_span(points: &[DVec3], side: f64, bound: f64, keep_outboard: bool) -> Ve
 
 pub fn aircraft_hulls(a:crate::aircraft::Aircraft)-> &'static [Hull]{
     use crate::aircraft::Aircraft;
-    static FLEET:OnceLock<[Vec<Hull>;4]>=OnceLock::new();
+    static FLEET:OnceLock<[Vec<Hull>;5]>=OnceLock::new();
     if a==Aircraft::Gripen{return hulls(Vehicle::Gripen);}
-    let all=FLEET.get_or_init(||[Aircraft::Su27,Aircraft::F35B,Aircraft::F22,Aircraft::Hornet].map(|a|{
+    let all=FLEET.get_or_init(||[Aircraft::Su27,Aircraft::F35B,Aircraft::F22,Aircraft::Hornet,Aircraft::Sr71].map(|a|{
         let mut h=Vec::new();
         let sections=crate::aircraft::visual::sections(a);
         for p in sections.windows(2){

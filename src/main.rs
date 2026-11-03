@@ -2271,7 +2271,7 @@ fn input(
             f.systems.hornet_wing_target = !f.systems.hornet_wing_target;
         } else { f.status = "WING FOLD: PARK AIRCRAFT FIRST".into(); }
     }
-    if keys.just_pressed(KeyCode::KeyF) && !(hornet && alt) {
+    if keys.just_pressed(KeyCode::KeyF) && f.aircraft!=aircraft::Aircraft::Sr71 && !(hornet && alt) {
         f.flaps = if f.flaps < 0.2 {
             0.55
         } else if f.flaps < 0.8 {
@@ -2280,7 +2280,7 @@ fn input(
             0.0
         };
     }
-    if keys.just_pressed(KeyCode::KeyY) && (f.aircraft!=aircraft::Aircraft::F35B || keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) {
+    if keys.just_pressed(KeyCode::KeyY) && f.aircraft!=aircraft::Aircraft::Sr71 && (f.aircraft!=aircraft::Aircraft::F35B || keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) {
         f.airbrake = !f.airbrake;
     }
     if keys.just_pressed(KeyCode::KeyN) && !(f.carrier.defense && (keys.pressed(KeyCode::ShiftLeft)||keys.pressed(KeyCode::ShiftRight))) {
@@ -2290,7 +2290,7 @@ fn input(
         f.assist = !f.assist;
     }
     if keys.just_pressed(KeyCode::F6) && (keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight)) {
-        if f.aircraft==aircraft::Aircraft::Hornet {f.autopilot=false;}else{f.autopilot = !f.autopilot;}
+        if matches!(f.aircraft,aircraft::Aircraft::Hornet|aircraft::Aircraft::Sr71) {f.autopilot=false;}else{f.autopilot = !f.autopilot;}
     }
     if keys.just_pressed(KeyCode::Digit1) {
         f.battery = !f.battery;

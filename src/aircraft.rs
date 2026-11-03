@@ -125,7 +125,7 @@ impl Aircraft {
                 gun_interval: 0.02,
                 ammo: [2, 6],
             },
-            Self::Sr71 => Spec {length:32.73,span:16.94,area:167.2,empty:30600.,fuel:20000.,dry:180000.,wet:289134.,engines:2,inertia:DVec3::new(1800000.,2300000.,450000.),g:2.5,alpha:0.35,limit_mach:3.2,gun:0,gun_interval:0.02,ammo:[0,0]},
+            Self::Sr71 => Spec {length:32.73,span:16.94,area:sr71::flight::AREA,empty:sr71::flight::EMPTY,fuel:sr71::flight::FUEL,dry:180000.,wet:289134.,engines:2,inertia:DVec3::new(1294612.,1589058.,299067.),g:2.5,alpha:0.35,limit_mach:3.2,gun:0,gun_interval:0.02,ammo:[0,0]},
             Self::Hornet => Spec {
                 length: 18.31,
                 span: 13.62,
@@ -486,7 +486,7 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
             f.position = f.up()
                 * (RADIUS + crate::physics::terrain_height(f.position.x, f.position.z).max(0.) + h);
         }
-        if !f.landed {
+        if !f.landed && aircraft!=Aircraft::Sr71 {
             f.velocity *= 1.25;
         }
         f.airspeed = (f.velocity - f.wind).length();
@@ -497,6 +497,7 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
             0.
         };
     }
+    if aircraft==Aircraft::Sr71 {sr71::flight::initialize(f);}
     if aircraft==Aircraft::Hornet&&!f.landed {
         let gamma=(f.vertical_speed()/f.airspeed.max(1.)).clamp(-0.3,0.3).asin();
         if let Some(trim)=hornet::trim::solve(f,f.altitude(),f.airspeed,gamma,0.) {
@@ -571,6 +572,7 @@ fn store_unit_mass(a:Aircraft,i:usize)->f64{if matches!(a,Aircraft::F22|Aircraft
 pub fn jet_output(a: Aircraft, power: f64, rho: f64, mach: f64) -> (f64, f64) {
     if a == Aircraft::F22 { return raptor::flight_model::engine(power, rho, mach); }
     if a == Aircraft::Su27 { return su27::engine(power,rho,mach); }
+    if a == Aircraft::Sr71 { return sr71::flight::engine(power,rho,mach); }
     let s = a.spec();
     let lapse = (rho / 1.225).max(0.).powf(0.62) * (1. + 0.32 * mach * mach)
         / (1. + 0.16 * mach * mach * mach);
@@ -581,6 +583,7 @@ pub fn jet_output(a: Aircraft, power: f64, rho: f64, mach: f64) -> (f64, f64) {
 }
 pub fn mass_center(f: &Flight) -> DVec3 {
     if f.aircraft == Aircraft::F22 { return raptor::flight_model::center(f); }
+    if f.aircraft == Aircraft::Sr71 {return DVec3::ZERO;}
     if f.aircraft == Aircraft::Gripen {
         return DVec3::ZERO;
     }
@@ -851,7 +854,7 @@ pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3
     let burner = (s.wet - s.dry) * ((f.spool - 0.88) / 0.12).clamp(0., 1.) * (1. - conv);
     let installed = if f.aircraft == Aircraft::F22 {
         raptor::flight_model::installed_at(f, rho, mach).0
-    } else if f.aircraft==Aircraft::Su27 {su27::engine(f.spool,rho,mach).0} else { ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse };
+    } else if f.aircraft==Aircraft::Sr71 {sr71::flight::installed(f,rho,mach).0} else if f.aircraft==Aircraft::Su27 {su27::engine(f.spool,rho,mach).0} else { ((dry + burner) * (1. - conv) + s.wet * f.spool * conv) * lapse };
     let running = f.engine && (f.fuel > 0. || f.infinite_fuel);
     let mut force = DVec3::ZERO;
     let mut moment = DVec3::ZERO;
@@ -879,7 +882,7 @@ pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3
             } else {
                 0.
             };
-        let dir = DVec3::new(0., f.systems.nozzle[i].sin(), -f.systems.nozzle[i].cos());
+        let dir = if f.aircraft==Aircraft::Sr71 {DVec3::new(0.,-sr71::flight::INCIDENCE.sin(),-sr71::flight::INCIDENCE.cos())}else{DVec3::new(0., f.systems.nozzle[i].sin(), -f.systems.nozzle[i].cos())};
         let mut thrust = dir * power;
         let fan_share = pos.z / (pos.z + 2.6);
         if f.aircraft == Aircraft::F35B {

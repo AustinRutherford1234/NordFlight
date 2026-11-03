@@ -2,6 +2,10 @@
 
 Date: November 2, 2026
 
+## Aerodynamic update
+
+A dedicated SR-71 reduced-order aerodynamic and propulsion plant now replaces the shared fighter coefficients. See [SR71_AERO_MODEL_2026-11-02.md](SR71_AERO_MODEL_2026-11-02.md) for physics, sources, parameter uncertainty and validation boundaries. Earlier static-preview claims below are historical.
+
 ## Animation update
 
 The static integration has been superseded by the articulated model and actuator pass. See [SR71_ANIMATION_PASS_2026-11-02.md](SR71_ANIMATION_PASS_2026-11-02.md) for mechanisms, standalone Blender review, validation and remaining limits. Historical static-preview descriptions below are retained as the original milestone record.

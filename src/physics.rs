@@ -841,6 +841,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     if f.ai_bomber{crate::aircraft::tu160::step(f,e,dt);return;}
     if f.vehicle==Vehicle::Gripen && f.aircraft==crate::aircraft::Aircraft::Hornet {crate::aircraft::hornet::step(f,e,dt);return;}
     let spec = f.aircraft.spec();
+    let sr71=f.aircraft==crate::aircraft::Aircraft::Sr71;
     let custom = f.aircraft != crate::aircraft::Aircraft::Gripen;
     let wing_area = spec.area;
     let previous = f.position;
@@ -900,7 +901,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     let elastic_incidence = if f.aircraft == crate::aircraft::Aircraft::F22 {
         raptor_elastic_incidence(f, b)
     } else { (0., 0., 0.) };
-    let evaluate=if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::evaluate_raptor}else if f.aircraft==crate::aircraft::Aircraft::Su27{crate::aircraft::su27::evaluate}else{crate::aerodynamics::evaluate};
+    let evaluate=if sr71{crate::aircraft::sr71::flight::evaluate}else if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::evaluate_raptor}else if f.aircraft==crate::aircraft::Aircraft::Su27{crate::aircraft::su27::evaluate}else{crate::aerodynamics::evaluate};
     let mut coefficients = evaluate(
         crate::aerodynamics::Conditions {
             alpha: alpha + elastic_incidence.0,
@@ -937,15 +938,18 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         // recovery torque after the inertial pitch-up. Keep this distinct from
         // the low-incidence static margin, rather than imposing an angle cap.
         let (static_margin,damping,post_stall)=if f.aircraft==crate::aircraft::Aircraft::Su27{(0.025,2.+7.*blend*blend*(3.-2.*blend),0.08+0.20*break_blend*break_blend*(3.-2.*break_blend))}else if f.aircraft==crate::aircraft::Aircraft::F22{(0.035,5.5,0.075)}else{(0.075,8.,0.13)};
-        if f.aircraft != crate::aircraft::Aircraft::F22 {
+        if f.aircraft != crate::aircraft::Aircraft::F22 && !sr71 {
             coefficients.pitch=0.004-static_margin*alpha.sin()-post_stall*(1.-f.flow.attached)*alpha.sin()-damping*f.rates.x*c/(2.*speed.max(15.));
         }
         coefficients.drag += crate::aircraft::store_drag(f) + f.systems.conversion*0.035;
         coefficients.parasite += crate::aircraft::store_drag(f);
     }
+    if sr71 {coefficients.pitch+=(crate::aircraft::sr71::flight::cg_fraction(f)-0.25)*coefficients.lift;}
     // Drag follows the actual deployment rather than changing at the G key press.
-    coefficients.parasite += 0.022 * f.gear_extension;
-    coefficients.drag += 0.022 * f.gear_extension;
+    let gear_drag=if sr71{0.055*f.gear_extension+0.012*f.gear_door}else{0.022*f.gear_extension};
+    let windmill=if sr71{(0..2).filter(|&i|!f.engine||!f.systems.engine_on[i]||(!f.infinite_fuel&&f.fuel<=0.)).count()as f64*0.004}else{0.};
+    coefficients.parasite += gear_drag+windmill;
+    coefficients.drag += gear_drag+windmill;
     let battle_drag = 0.012 * (1.0 - f.damage.surfaces.iter().take(crate::aircraft::count(f.aircraft)).sum::<f64>() / crate::aircraft::count(f.aircraft) as f64)
         + 0.008 * (1.0 - f.damage.engine)
         + 0.003
@@ -974,7 +978,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     f.fuel = if f.infinite_fuel {
         f.fuel
     } else {
-        let fuel_rate = if f.aircraft == crate::aircraft::Aircraft::F22 {
+        let fuel_rate = if sr71 {crate::aircraft::sr71::flight::fuel_flow(f)}else if f.aircraft == crate::aircraft::Aircraft::F22 {
             crate::aircraft::raptor::flight_model::fuel_flow(f)
         } else if f.thrust > 0.0 {
             f.thrust * 0.000019 + burner * 0.000035
@@ -1051,12 +1055,12 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     // Aerodynamic moments with rate derivatives, servo dynamics and rigid-body Euler terms.
     // Body axes: +X right (pitch), +Y up (yaw), -Z forward (roll).
     let inertia = spec.inertia * (f.mass() / (spec.empty + if custom {spec.fuel*0.6}else{1500.}));
-    let inertia_tensor = if f.aircraft == crate::aircraft::Aircraft::F22 {
+    let inertia_tensor = if sr71 {crate::aircraft::sr71::flight::inertia(f)}else if f.aircraft == crate::aircraft::Aircraft::F22 {
         crate::aircraft::raptor::flight_model::inertia(f)
     } else { DMat3::from_diagonal(inertia) };
-    let raptor_inverse = if f.aircraft == crate::aircraft::Aircraft::F22 { inertia_tensor.inverse() } else { DMat3::ZERO };
-    let span = spec.span;
-    let chord = if custom {spec.area/spec.span}else{3.5};
+    let raptor_inverse = if sr71 || f.aircraft == crate::aircraft::Aircraft::F22 { inertia_tensor.inverse() } else { DMat3::ZERO };
+    let span = if sr71{crate::aircraft::sr71::flight::SPAN}else{spec.span};
+    let chord = if sr71{crate::aircraft::sr71::flight::CHORD}else if custom {spec.area/spec.span}else{3.5};
     let (damage_force, damage_moment) =
         crate::combat::damage::aero(&f.damage, b, q, coefficients.lift);
     aero += f.orientation * damage_force;
@@ -1084,6 +1088,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     );
     let elastic_shape = f.structure;
     let panel_loads = |actuator| {
+        if sr71 {return crate::aircraft::sr71::flight::control_loads(&f.systems.sr71,&f.damage,f.flow.attached,b,rho,f.mach,Some(actuator));}
         if f.aircraft == crate::aircraft::Aircraft::F22 {
             return crate::aircraft::panel_loads_structural(f.aircraft,b,f.rates,rho,f.mach,actuator,f.flaps,f.airbrake,&f.damage,&elastic_shape);
         }
@@ -1095,12 +1100,12 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     };
     let neutral_panels = panel_loads(DVec3::ZERO);
     // Match fly-by-wire authority to the actual surface model, including flap trim.
-    let target = if f.aircraft==crate::aircraft::Aircraft::F22 && f.assist && !f.landed {
+    let target = if sr71&&f.assist&&!f.landed {crate::aircraft::sr71::flight::target_rates(f,command)}else if f.aircraft==crate::aircraft::Aircraft::F22 && f.assist && !f.landed {
         crate::aircraft::raptor::target_rates(f,command)
     }else if f.aircraft==crate::aircraft::Aircraft::Su27 && f.assist && !f.landed {crate::aircraft::su27::target_rates(f,command)}else{DVec3::new(command.x * 0.65, command.y * 0.38, -command.z * 1.55)};
     let request = if f.assist && f.damage.avionics > 0.25 {
         let airborne_raptor=f.aircraft==crate::aircraft::Aircraft::F22 && !f.landed;
-        let nonlinear_center=airborne_raptor || (f.aircraft==crate::aircraft::Aircraft::Su27 && !f.landed);
+        let nonlinear_center=sr71 || airborne_raptor || (f.aircraft==crate::aircraft::Aircraft::Su27 && !f.landed);
         let center=if nonlinear_center {f.surface} else {DVec3::ZERO};
         // Large deflections and separated flow change every coupled
         // derivative. Probe the current state once for all three axes.
@@ -1120,23 +1125,24 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
             panel_bias.z=panel_loads(f.surface).moment.z-(panel_matrix*f.surface).z;
         }
         let jacobian = panel_matrix+vector;
-        let vector_bias=if f.aircraft==crate::aircraft::Aircraft::F22{engine_moment-vector*crate::aircraft::raptor::flight_model::nozzle_command(f)}else{DVec3::ZERO};
+        let vector_bias=if sr71{engine_moment}else if f.aircraft==crate::aircraft::Aircraft::F22{engine_moment-vector*crate::aircraft::raptor::flight_model::nozzle_command(f)}else{DVec3::ZERO};
         if airborne_raptor {
             let response=raptor_inverse*jacobian;
             let moment=inertia_tensor*crate::aircraft::raptor::fbw::tracking_acceleration(f.rates,target,response)
                 +f.rates.cross(inertia_tensor*f.rates)-natural-panel_bias-vector_bias;
             crate::aircraft::raptor::fbw::allocate(response,raptor_inverse*moment)
         } else {
-            let moment=if f.aircraft==crate::aircraft::Aircraft::F22 { inertia_tensor*((target-f.rates)*5.) }
+            let moment=if sr71 {inertia_tensor*((target-f.rates)*1.5).clamp(DVec3::new(-0.25,-0.2,-0.6),DVec3::new(0.25,0.2,0.6))}else if f.aircraft==crate::aircraft::Aircraft::F22 { inertia_tensor*((target-f.rates)*5.) }
                 else { (target-f.rates)*5.*inertia };
             crate::control_surfaces::allocate(jacobian,moment-natural-panel_bias-vector_bias)
         }
     } else {
-        DVec3::new(command.x, command.y, -command.z)
+        if sr71 {command}else{DVec3::new(command.x, command.y, -command.z)}
     };
     let request = if f.battery { request } else { DVec3::ZERO };
     let request = request.clamp(DVec3::splat(-1.0), DVec3::splat(1.0));
-    if f.aircraft != crate::aircraft::Aircraft::F22 && f.damage.hydraulics > 0.12 {
+    if sr71 {f.surface=request;}
+    if f.aircraft != crate::aircraft::Aircraft::F22 && !sr71 && f.damage.hydraulics > 0.12 {
         f.surface = crate::control_surfaces::advance_actuator(
             f.surface,
             request,
@@ -1144,7 +1150,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
             dt * f.damage.hydraulics,
         );
     }
-    let legacy_panels = if f.aircraft == crate::aircraft::Aircraft::F22 { None }
+    let legacy_panels = if sr71 {Some(crate::aircraft::sr71::flight::control_loads(&f.systems.sr71,&f.damage,f.flow.attached,b,rho,f.mach,None))}else if f.aircraft == crate::aircraft::Aircraft::F22 { None }
         else { Some(panel_loads(f.surface)) };
     let panels = if let Some(panels) = legacy_panels { panels } else {
         f.systems.raptor.command = request;
@@ -1173,12 +1179,12 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         let side_axis = flow.cross(lift_axis).normalize_or_zero();
         f.aero_coeff.lift += panels.force.dot(lift_axis) / (q * wing_area);
         let induced=if f.aircraft==crate::aircraft::Aircraft::F22{crate::aerodynamics::raptor_induced}else{crate::aerodynamics::induced_drag};
-        let total_induced = induced(
+        let total_induced = if sr71{crate::aircraft::sr71::flight::induced(f.aero_coeff.lift,coefficients.attached,beta,f.agl(),f.mach)}else{induced(
             f.aero_coeff.lift,
             coefficients.attached,
             beta,
             f.agl(),
-        );
+        )};
         let induced_delta = total_induced - coefficients.induced;
         let induced_force = -air.normalize_or_zero() * (q * wing_area * induced_delta);
         aero += induced_force;
@@ -1192,7 +1198,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
         f.aero_coeff.yaw = torque.y / (q * wing_area * span);
         f.aero_coeff.roll = torque.z / (q * wing_area * span);
     }
-    let angular_acc = if f.aircraft == crate::aircraft::Aircraft::F22 {
+    let angular_acc = if sr71 || f.aircraft == crate::aircraft::Aircraft::F22 {
         raptor_inverse * (torque - f.rates.cross(inertia_tensor * f.rates))
     } else { (torque - f.rates.cross(inertia * f.rates)) / inertia };
     f.g_load = (aero + thrust).dot(f.orientation * DVec3::Y) / (f.mass() * 9.80665);

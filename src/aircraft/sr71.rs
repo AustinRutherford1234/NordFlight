@@ -1,4 +1,5 @@
-//! SR-71 visual actuator state; the provisional shared flight model is unchanged.
+//! SR-71 actuator state and dedicated aerodynamic plant.
+pub mod flight;
 use crate::physics::*;
 use bevy::math::DVec3;
 #[derive(Clone,Default)]
@@ -15,11 +16,9 @@ pub fn advance(f:&mut Flight,dt:f64,mach:f64){
     if dt<=0.||!dt.is_finite(){return;}
     let authority=((f.damage.hydraulics-0.12)/0.88).clamp(0.,1.);
     let commands=f.surface;let state=&mut f.systems.sr71;
-    for i in 0..4 {
-        let side=if i%2==0 {1.}else{-1.};
-        move_to(&mut state.elevons[i],(-commands.x+side*commands.z).clamp(-1.,1.)*0.35,0.75*authority,dt);
-    }
-    for i in 0..2 {move_to(&mut state.fins[i],-commands.y.clamp(-1.,1.)*0.30,0.65*authority,dt);}
+    let targets=flight::targets(commands);
+    for i in 0..4 {move_to(&mut state.elevons[i],targets[i],30_f64.to_radians()*authority,dt);}
+    for i in 0..2 {move_to(&mut state.fins[i],commands.y.clamp(-1.,1.)*20_f64.to_radians(),33_f64.to_radians()*authority,dt);}
     move_to(&mut state.canopy,if state.canopy_command{1.}else{0.},1./3.2*authority,dt);
     // Representative spike travel; a dedicated intake/engine model is future work.
     let target=0.66*((mach-1.6)/1.6).clamp(0.,1.);
