@@ -2436,6 +2436,7 @@ mod tests {
             let mut c = Combat::default();
             c.start(&f, 1);
             c.lock = Weapon::Heat.lock_time();
+            if a==crate::aircraft::Aircraft::Sr71 {assert!(!c.fire(&f));assert!(c.missiles.is_empty());continue;}
             assert!(c.fire(&f));
             assert_eq!(c.missiles[0].gnc.aim9x, matches!(a,crate::aircraft::Aircraft::F22|crate::aircraft::Aircraft::Hornet));
             c.targets[0].position = f.position + f.orientation * DVec3::new(1500.0, 0.0, -1500.0);

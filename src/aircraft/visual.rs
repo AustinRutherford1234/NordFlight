@@ -2,6 +2,7 @@
 use super::*;
 use bevy::{asset::RenderAssetUsages, mesh::Indices, render::render_resource::PrimitiveTopology};
 mod raptor_mesh;
+mod sr71;
 pub(crate) mod hornet_stores;
 mod raptor_intake;
 mod raptor_finish;
@@ -952,10 +953,12 @@ pub fn setup(
         Aircraft::F35B,
         Aircraft::F22,
         Aircraft::Hornet,
+        Aircraft::Sr71,
     ] {
         let root = c
             .spawn((Root(a), Transform::default(), Visibility::Hidden))
             .id();
+        if a==Aircraft::Sr71 {sr71::setup(&mut c,&mut meshes,&mut mats,root);continue;}
         let spec = a.spec();
         if a == Aircraft::Hornet {
             if let Some(server) = asset_server.as_deref() {

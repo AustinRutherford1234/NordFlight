@@ -177,6 +177,7 @@ pub fn controls(
             Aircraft::Hornet => {
                 "Twin engines / carrier-style high-lift wing and stabilators / external stores"
             }
+            Aircraft::Sr71 => {"Static visual preview / fixed gear / provisional generic physics / unarmed / runway use only"}
             Aircraft::Gripen => {
                 "Original canard-delta aircraft / existing flight model and cockpit"
             }

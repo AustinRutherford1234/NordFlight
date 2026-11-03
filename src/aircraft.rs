@@ -19,14 +19,16 @@ pub enum Aircraft {
     F35B,
     F22,
     Hornet,
+    Sr71,
 }
 impl Aircraft {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Gripen,
         Self::Su27,
         Self::F35B,
         Self::F22,
         Self::Hornet,
+        Self::Sr71,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -35,6 +37,7 @@ impl Aircraft {
             Self::F35B => "F-35B LIGHTNING II",
             Self::F22 => "F-22A RAPTOR",
             Self::Hornet => "F/A-18F SUPER HORNET",
+            Self::Sr71 => "SR-71A BLACKBIRD (STATIC PREVIEW)",
         }
     }
     pub fn slug(self) -> &'static str {
@@ -44,6 +47,7 @@ impl Aircraft {
             Self::F35B => "f35b",
             Self::F22 => "f22",
             Self::Hornet => "fa18f",
+            Self::Sr71 => "sr71",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -120,6 +124,7 @@ impl Aircraft {
                 gun_interval: 0.02,
                 ammo: [2, 6],
             },
+            Self::Sr71 => Spec {length:32.73,span:16.94,area:167.2,empty:30600.,fuel:20000.,dry:180000.,wet:289134.,engines:2,inertia:DVec3::new(1800000.,2300000.,450000.),g:2.5,alpha:0.35,limit_mach:3.2,gun:0,gun_interval:0.02,ammo:[0,0]},
             Self::Hornet => Spec {
                 length: 18.31,
                 span: 13.62,
@@ -152,6 +157,7 @@ impl Aircraft {
         }
     }
     pub fn engine_positions(self) -> [DVec3; 2] {
+        if self==Self::Sr71 {return [DVec3::new(-4.9,0.,12.4),DVec3::new(4.9,0.,12.4)];}
         let s = self.spec();
         let x = if s.engines == 2 {
             if self == Self::Su27 { 1.45 } else { 0.93 }
@@ -658,6 +664,7 @@ pub fn launch_station(f: &Flight, kind: crate::combat::Weapon, ammo: [u8; 2]) ->
 pub fn gun_origin(a: Aircraft) -> DVec3 {
     let l = a.spec().length;
     match a {
+        Aircraft::Sr71 => DVec3::ZERO,
         Aircraft::Gripen => DVec3::new(0.4, -0.1, -6.),
         Aircraft::Su27 => DVec3::new(-0.88, 0.10, -l * 0.25),
         Aircraft::F35B => DVec3::new(0., -0.85, -0.6),
@@ -670,6 +677,7 @@ pub fn gun_name(a: Aircraft) -> &'static str {
         Aircraft::Su27 => "GSH-30-1 / 30MM",
         Aircraft::F35B => "GAU-22/A POD / 25MM",
         Aircraft::F22 | Aircraft::Hornet => "M61A2 / 20MM",
+        Aircraft::Sr71 => "UNARMED",
         Aircraft::Gripen => "BK-27 / 27MM",
     }
 }
