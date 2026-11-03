@@ -2,7 +2,7 @@
 use super::*;
 use bevy::{asset::RenderAssetUsages, mesh::Indices, render::render_resource::PrimitiveTopology};
 mod raptor_mesh;
-mod sr71;
+pub mod sr71;
 pub(crate) mod hornet_stores;
 mod raptor_intake;
 mod raptor_finish;
@@ -925,6 +925,11 @@ pub fn gear_mount(a: Aircraft, i: usize) -> DVec3 {
     )
 }
 pub fn gear_pose(f: &Flight, i: usize, compressed: bool) -> (DVec3, DVec3, bevy::math::DQuat) {
+    if f.aircraft==Aircraft::Sr71 {
+        let at=super::sr71::mount(i);let q=super::sr71::gear_rotation(f.gear_extension,i);
+        let end=at+q*(super::sr71::wheel(i)-at+DVec3::Y*if compressed{f.gear_compression[i]}else{0.});
+        return (at,end,q);
+    }
     let at = gear_mount(f.aircraft, i);
     let length = if i == 0 { 1.40 } else { 1.45 };
     let q =

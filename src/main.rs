@@ -1541,7 +1541,7 @@ fn main() {
                 )
                     .chain().in_set(FlightStage::Camera),
                 (
-                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,(carrier::visual,carrier::deflector::update).chain(),carrier::escorts::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
+                    (gear::update,aircraft::visual::update,aircraft::visual::hornet_stores::update,aircraft::visual::sr71::bind,aircraft::visual::sr71::update,aircraft::visual::hornet::update,aircraft::visual::hornet::attach_lights,aircraft::visual::hornet::exhaust,aircraft::visual::hornet::heat_haze,(carrier::visual,carrier::deflector::update).chain(),carrier::escorts::update,aircraft::visual::raptor_bay::update,aircraft::visual::raptor_main_bay::update,aircraft::visual::raptor_detail::update,aircraft::visual::gauges).chain(),
                     aircraft_detail::update,
                     skin_damage::update,
                     (combat::render, combat::aim9x::animate, combat::radar_visual::animate),
@@ -2256,6 +2256,10 @@ fn input(
         if alt && keys.just_pressed(KeyCode::Delete) {f.hornet.hud.radar_alt=!f.hornet.hud.radar_alt;}
         if alt && keys.just_pressed(KeyCode::PageUp) {f.hornet.hud.brightness=(f.hornet.hud.brightness+0.1).min(1.);}
         if alt && keys.just_pressed(KeyCode::PageDown) {f.hornet.hud.brightness=(f.hornet.hud.brightness-0.1).max(0.1);}
+    }
+    if f.aircraft==aircraft::Aircraft::Sr71 && f.vehicle==Vehicle::Gripen && alt && keys.just_pressed(KeyCode::KeyO) {
+        if f.systems.sr71.canopy_command || (f.landed && f.velocity.length()<3.) {f.systems.sr71.canopy_command=!f.systems.sr71.canopy_command;}
+        else {f.status="CANOPY: PARK AIRCRAFT FIRST".into();}
     }
     if hornet && alt && keys.just_pressed(KeyCode::KeyO) {
         if f.systems.hornet_canopy_target || (f.landed && f.velocity.length() < 3.) {

@@ -2,6 +2,10 @@
 
 Date: November 2, 2026
 
+## Animation update
+
+The static integration has been superseded by the articulated model and actuator pass. See [SR71_ANIMATION_PASS_2026-11-02.md](SR71_ANIMATION_PASS_2026-11-02.md) for mechanisms, standalone Blender review, validation and remaining limits. Historical static-preview descriptions below are retained as the original milestone record.
+
 ## Current asset update
 
 The procedural first pass has been replaced by the user-supplied **manilov.ap Sr71** model under CC BY 4.0. The installed static GLB has 31,413 triangles, 24 embedded textures and no animations. It is uniformly scaled to 32.73 m long (17.03 m span), with game-forward alignment and tyre-bottom registration. Source and attribution are in `assets/aircraft/sr71/`; reproducible conversion is in `scripts/sr71/prepare.py`. Its fixed gear remains deployed. No dedicated physics or cockpit was added. The sections below retain the initial integration analysis and future flight-design plan; original procedural geometry described there is superseded by this imported asset.

@@ -1,0 +1,1140 @@
+{
+  "version": 1,
+  "pivots": [
+    {
+      "name": "Sr71GearNose",
+      "kind": "gear",
+      "index": 0,
+      "at": [
+        0,
+        0.0,
+        -5.52
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 1.5707963267948966,
+      "rest_translation": [
+        0.0,
+        0.0,
+        -5.519999980926514
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71GearLeft",
+      "kind": "gear",
+      "index": 1,
+      "at": [
+        -2.56,
+        0.21,
+        6.27
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 1.5707963267948966,
+      "rest_translation": [
+        -2.559999942779541,
+        0.20999999344348907,
+        6.269999980926514
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71GearRight",
+      "kind": "gear",
+      "index": 2,
+      "at": [
+        2.56,
+        0.21,
+        6.27
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": -1.5707963267948966,
+      "rest_translation": [
+        2.559999942779541,
+        0.20999999344348907,
+        6.269999980926514
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel1_0",
+      "kind": "wheel",
+      "index": 1,
+      "at": [
+        -2.326112985610962,
+        -1.6306011080741882,
+        6.268840551376343
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        0.2338869571685791,
+        -1.8406012058258057,
+        -0.0011591911315917969
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel1_1",
+      "kind": "wheel",
+      "index": 1,
+      "at": [
+        -2.560185194015503,
+        -1.6306010484695435,
+        6.268886566162109
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -0.00018525123596191406,
+        -1.8406010866165161,
+        -0.0011134147644042969
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel1_2",
+      "kind": "wheel",
+      "index": 1,
+      "at": [
+        -2.7986866235733032,
+        -1.6306010484695435,
+        6.268933057785034
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -0.23868656158447266,
+        -1.8406010866165161,
+        -0.0010666847229003906
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel2_0",
+      "kind": "wheel",
+      "index": 2,
+      "at": [
+        2.323717713356018,
+        -1.6306012272834778,
+        6.267930269241333
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -0.2362823486328125,
+        -1.8406012058258057,
+        -0.0020699501037597656
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel2_1",
+      "kind": "wheel",
+      "index": 2,
+      "at": [
+        2.5577898025512695,
+        -1.6306012272834778,
+        6.267884731292725
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -0.0022101402282714844,
+        -1.8406012058258057,
+        -0.0021152496337890625
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel2_2",
+      "kind": "wheel",
+      "index": 2,
+      "at": [
+        2.7962909936904907,
+        -1.6306012272834778,
+        6.2678375244140625
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        0.23629093170166016,
+        -1.8406012058258057,
+        -0.002162456512451172
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel0_0",
+      "kind": "wheel",
+      "index": 0,
+      "at": [
+        -0.1560315228998661,
+        -1.7146922945976257,
+        -5.522457838058472
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -0.1560315191745758,
+        -0.6646924018859863,
+        -0.0024580955505371094
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Wheel0_1",
+      "kind": "wheel",
+      "index": 0,
+      "at": [
+        0.15026580169796944,
+        -1.7146922945976257,
+        -5.522517919540405
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        0.15026579797267914,
+        -0.6646924018859863,
+        -0.002518177032470703
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71NoseSteering",
+      "kind": "steering",
+      "index": 0,
+      "at": [
+        0,
+        -1.05,
+        -5.52
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        0.0,
+        -1.0499999523162842,
+        -0.0
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Oleo1",
+      "kind": "oleo",
+      "index": 1,
+      "at": [
+        -2.56,
+        0.21,
+        6.27
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71Oleo2",
+      "kind": "oleo",
+      "index": 2,
+      "at": [
+        2.56,
+        0.21,
+        6.27
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorNoseL",
+      "kind": "door",
+      "index": 0,
+      "at": [
+        -0.465,
+        -0.43277580706278485,
+        -6.475
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": -1.53588974175501,
+      "rest_translation": [
+        -0.4650000035762787,
+        -0.4327757954597473,
+        -6.474999904632568
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorNoseR",
+      "kind": "door",
+      "index": 0,
+      "at": [
+        0.465,
+        -0.4302292025883992,
+        -6.475
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 1.53588974175501,
+      "rest_translation": [
+        0.4650000035762787,
+        -0.43022921681404114,
+        -6.474999904632568
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorMainOuterL",
+      "kind": "door",
+      "index": 1,
+      "at": [
+        -2.94,
+        -0.013234432942939522,
+        6.285
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": -1.6057029118347832,
+      "rest_translation": [
+        -2.940000057220459,
+        -0.01323443278670311,
+        6.284999847412109
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorMainOuterR",
+      "kind": "door",
+      "index": 2,
+      "at": [
+        2.94,
+        -0.013216316020849977,
+        6.285
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 1.6057029118347832,
+      "rest_translation": [
+        2.940000057220459,
+        -0.013216315768659115,
+        6.284999847412109
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorMainInnerL",
+      "kind": "door",
+      "index": 1,
+      "at": [
+        -0.065,
+        -0.5059809818845806,
+        6.285
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 1.6057029118347832,
+      "rest_translation": [
+        -0.06499999761581421,
+        -0.5059809684753418,
+        6.284999847412109
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorMainInnerR",
+      "kind": "door",
+      "index": 2,
+      "at": [
+        0.065,
+        -0.5058978366562814,
+        6.285
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": -1.6057029118347832,
+      "rest_translation": [
+        0.06499999761581421,
+        -0.5058978199958801,
+        6.284999847412109
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71DoorNoseAft",
+      "kind": "door",
+      "index": 0,
+      "at": [
+        0,
+        -0.5134693044026692,
+        -4.36
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": -1.1868238913561442,
+      "rest_translation": [
+        0.0,
+        -0.5134692788124084,
+        -4.360000133514404
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71CanopyFront",
+      "kind": "canopy",
+      "index": 0,
+      "at": [
+        0,
+        0.43,
+        -9.55
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 1.0821041362364843,
+      "rest_translation": [
+        0.0,
+        0.4300000071525574,
+        -9.550000190734863
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71CanopyRear",
+      "kind": "canopy",
+      "index": 0,
+      "at": [
+        0,
+        0.43,
+        -8.2
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angle": 1.0821041362364843,
+      "rest_translation": [
+        0.0,
+        0.4300000071525574,
+        -8.199999809265137
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71FinL",
+      "kind": "fin",
+      "index": 0,
+      "at": [
+        -4.0,
+        1.28,
+        10.4
+      ],
+      "axis": [
+        0.22,
+        1.0,
+        0.05
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -4.0,
+        1.2799999713897705,
+        10.399999618530273
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71FinR",
+      "kind": "fin",
+      "index": 1,
+      "at": [
+        4.0,
+        1.28,
+        10.4
+      ],
+      "axis": [
+        -0.22,
+        1.0,
+        0.05
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        4.0,
+        1.2799999713897705,
+        10.399999618530273
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71ElevonInnerL",
+      "kind": "elevon",
+      "index": 0,
+      "at": [
+        -1.9,
+        0.14,
+        13.1
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -1.899999976158142,
+        0.14000000059604645,
+        13.100000381469727
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71ElevonInnerR",
+      "kind": "elevon",
+      "index": 1,
+      "at": [
+        1.9,
+        0.14,
+        13.1
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        1.899999976158142,
+        0.14000000059604645,
+        13.100000381469727
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71ElevonOuterL",
+      "kind": "elevon",
+      "index": 0,
+      "at": [
+        -6.8,
+        0.16,
+        12.2
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        -0.23
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -6.800000190734863,
+        0.1599999964237213,
+        12.199999809265137
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71ElevonOuterR",
+      "kind": "elevon",
+      "index": 1,
+      "at": [
+        6.8,
+        0.16,
+        12.2
+      ],
+      "axis": [
+        1.0,
+        0.0,
+        0.23
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        6.800000190734863,
+        0.1599999964237213,
+        12.199999809265137
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71SpikeL",
+      "kind": "spike",
+      "index": 0,
+      "at": [
+        -4.2,
+        0.18,
+        1.4
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 0.66,
+      "rest_translation": [
+        -4.199999809265137,
+        0.18000000715255737,
+        1.399999976158142
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71SpikeR",
+      "kind": "spike",
+      "index": 0,
+      "at": [
+        4.2,
+        0.18,
+        1.4
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 0.66,
+      "rest_translation": [
+        4.199999809265137,
+        0.18000000715255737,
+        1.399999976158142
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71NozzleL",
+      "kind": "nozzle",
+      "index": 0,
+      "at": [
+        -4.35,
+        0.49,
+        10.97
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        -4.349999904632568,
+        0.49000000953674316,
+        10.970000267028809
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "Sr71NozzleR",
+      "kind": "nozzle",
+      "index": 1,
+      "at": [
+        4.35,
+        0.49,
+        10.97
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "angle": 0.0,
+      "rest_translation": [
+        4.349999904632568,
+        0.49000000953674316,
+        10.970000267028809
+      ],
+      "rest_rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ],
+  "links": [
+    {
+      "barrel": "Sr71RamGear1Barrel",
+      "rod": "Sr71RamGear1Rod",
+      "base": [
+        -0.72,
+        0.19,
+        6.34
+      ],
+      "parent": "Sr71GearLeft",
+      "local": [
+        0,
+        -0.53,
+        0.05
+      ],
+      "length": 1.1,
+      "radius": 0.045
+    },
+    {
+      "barrel": "Sr71RamGear2Barrel",
+      "rod": "Sr71RamGear2Rod",
+      "base": [
+        0.72,
+        0.19,
+        6.34
+      ],
+      "parent": "Sr71GearRight",
+      "local": [
+        0,
+        -0.53,
+        0.05
+      ],
+      "length": 1.1,
+      "radius": 0.045
+    },
+    {
+      "barrel": "Sr71RamGear0Barrel",
+      "rod": "Sr71RamGear0Rod",
+      "base": [
+        0,
+        0.31,
+        -4.5
+      ],
+      "parent": "Sr71GearNose",
+      "local": [
+        0,
+        -0.72,
+        0.08
+      ],
+      "length": 1.1,
+      "radius": 0.032
+    },
+    {
+      "barrel": "Sr71RamDoorNoseLBarrel",
+      "rod": "Sr71RamDoorNoseLRod",
+      "base": [
+        -0.3050000071525574,
+        -0.16277578473091125,
+        -6.275000095367432
+      ],
+      "parent": "Sr71DoorNoseL",
+      "local": [
+        0.23999999463558197,
+        0.0,
+        0.20000000298023224
+      ],
+      "length": 0.12,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamDoorNoseRBarrel",
+      "rod": "Sr71RamDoorNoseRRod",
+      "base": [
+        0.3050000071525574,
+        -0.16022920608520508,
+        -6.275000095367432
+      ],
+      "parent": "Sr71DoorNoseR",
+      "local": [
+        -0.23999999463558197,
+        0.0,
+        0.20000000298023224
+      ],
+      "length": 0.12,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamDoorMainOuterLBarrel",
+      "rod": "Sr71RamDoorMainOuterLRod",
+      "base": [
+        -2.7799999713897705,
+        0.25676557421684265,
+        6.484999656677246
+      ],
+      "parent": "Sr71DoorMainOuterL",
+      "local": [
+        0.44999998807907104,
+        0.0,
+        0.20000000298023224
+      ],
+      "length": 0.18,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamDoorMainOuterRBarrel",
+      "rod": "Sr71RamDoorMainOuterRRod",
+      "base": [
+        2.7799999713897705,
+        0.25678369402885437,
+        6.484999656677246
+      ],
+      "parent": "Sr71DoorMainOuterR",
+      "local": [
+        -0.44999998807907104,
+        0.0,
+        0.20000000298023224
+      ],
+      "length": 0.18,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamDoorMainInnerLBarrel",
+      "rod": "Sr71RamDoorMainInnerLRod",
+      "base": [
+        -0.22499999403953552,
+        -0.23598095774650574,
+        6.484999656677246
+      ],
+      "parent": "Sr71DoorMainInnerL",
+      "local": [
+        -0.44999998807907104,
+        0.0,
+        0.20000000298023224
+      ],
+      "length": 0.18,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamDoorMainInnerRBarrel",
+      "rod": "Sr71RamDoorMainInnerRRod",
+      "base": [
+        0.22499999403953552,
+        -0.23589780926704407,
+        6.484999656677246
+      ],
+      "parent": "Sr71DoorMainInnerR",
+      "local": [
+        0.44999998807907104,
+        0.0,
+        0.20000000298023224
+      ],
+      "length": 0.18,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamDoorNoseAftBarrel",
+      "rod": "Sr71RamDoorNoseAftRod",
+      "base": [
+        0.0,
+        -0.26346927881240845,
+        -4.710000038146973
+      ],
+      "parent": "Sr71DoorNoseAft",
+      "local": [
+        0.0,
+        0.0,
+        -0.550000011920929
+      ],
+      "length": 0.12,
+      "radius": 0.018
+    },
+    {
+      "barrel": "Sr71RamCanopy0-1Barrel",
+      "rod": "Sr71RamCanopy0-1Rod",
+      "base": [
+        -0.3199999928474426,
+        0.4099999964237213,
+        -9.730000495910645
+      ],
+      "parent": "Sr71CanopyFront",
+      "local": [
+        -0.3,
+        0.05,
+        -0.46
+      ],
+      "length": 0.19,
+      "radius": 0.014
+    },
+    {
+      "barrel": "Sr71RamCanopy01Barrel",
+      "rod": "Sr71RamCanopy01Rod",
+      "base": [
+        0.3199999928474426,
+        0.4099999964237213,
+        -9.730000495910645
+      ],
+      "parent": "Sr71CanopyFront",
+      "local": [
+        0.3,
+        0.05,
+        -0.46
+      ],
+      "length": 0.19,
+      "radius": 0.014
+    },
+    {
+      "barrel": "Sr71RamCanopy1-1Barrel",
+      "rod": "Sr71RamCanopy1-1Rod",
+      "base": [
+        -0.3199999928474426,
+        0.4099999964237213,
+        -8.380000114440918
+      ],
+      "parent": "Sr71CanopyRear",
+      "local": [
+        -0.3,
+        0.05,
+        -0.46
+      ],
+      "length": 0.19,
+      "radius": 0.014
+    },
+    {
+      "barrel": "Sr71RamCanopy11Barrel",
+      "rod": "Sr71RamCanopy11Rod",
+      "base": [
+        0.3199999928474426,
+        0.4099999964237213,
+        -8.380000114440918
+      ],
+      "parent": "Sr71CanopyRear",
+      "local": [
+        0.3,
+        0.05,
+        -0.46
+      ],
+      "length": 0.19,
+      "radius": 0.014
+    }
+  ],
+  "source_triangles": 31413,
+  "notes": [
+    "Timing, hinges and actuator strokes are fitted visual estimates; source geometry retained."
+  ]
+}

@@ -41,7 +41,7 @@ pub fn wheel_clearance(f: &Flight) -> f64 {
         return 0.6;
     }
     let up = f.up();
-    if f.aircraft!=crate::aircraft::Aircraft::Gripen && f.vehicle==Vehicle::Gripen {return (0..3).map(|i|-(f.orientation*gear_pose(f,i,false).1).dot(up)+WHEEL_RADIUS).fold(0.6,f64::max);}
+    if f.aircraft!=crate::aircraft::Aircraft::Gripen && f.vehicle==Vehicle::Gripen {return (0..3).map(|i|-(f.orientation*gear_pose(f,i,false).1).dot(up)+wheel_radius(f,i)).fold(0.6,f64::max);}
     wheels()
         .iter()
         .map(|p| -(f.orientation * *p).dot(up) + WHEEL_RADIUS)
@@ -56,6 +56,7 @@ fn wheels() -> [DVec3; 3] {
 }
 pub const GEAR_TRAVEL: f64 = 0.32;
 pub const WHEEL_RADIUS: f64 = 0.33;
+pub fn wheel_radius(f:&Flight,index:usize)->f64{if f.aircraft==crate::aircraft::Aircraft::Sr71{if index==0{0.285}else{0.36}}else{WHEEL_RADIUS}}
 pub fn update_gear(f: &mut Flight, dt: f64) {
     let target = if f.gear { 1.0 } else { 0.0 };
     let mut remaining = dt;
@@ -152,7 +153,7 @@ pub fn suspension(f: &mut Flight, dt: f64) -> (DVec3, DVec3) {
         let body = gear_pose(f, i, false).1;
         let arm = f.orientation * body;
         let p = f.position + arm;
-        let gap = p.length() - RADIUS - crate::carrier::ground(f,p) - WHEEL_RADIUS;
+        let gap = p.length() - RADIUS - crate::carrier::ground(f,p) - wheel_radius(f,i);
         if gap > 0.0 {
             continue;
         }
@@ -199,7 +200,7 @@ pub fn wheel_contact(f: &Flight) -> bool {
                 return false;
             }
             let p = f.position + f.orientation * gear_pose(f, i, false).1;
-            p.length() - RADIUS - crate::carrier::ground(f,p) <= WHEEL_RADIUS
+            p.length() - RADIUS - crate::carrier::ground(f,p) <= wheel_radius(f,i)
         })
 }
 /// Slab test gives the first time of impact, including segments longer than a building.
@@ -310,7 +311,7 @@ pub fn check_airframe_dt(f:&mut Flight,previous:DVec3,previous_rotation:bevy::ma
                 continue;
             }
             let (mount, wheel, _) = gear_pose(f, i, true);
-            for (body, radius) in [(wheel, WHEEL_RADIUS), ((mount + wheel) * 0.5, 0.12)] {
+            for (body, radius) in [(wheel, wheel_radius(f,i)), ((mount + wheel) * 0.5, 0.12)] {
                 let a = previous + previous_rotation * body;
                 let b = end + f.orientation * body;
                 let aa = DVec3::new(a.x, a.length() - RADIUS, a.z);

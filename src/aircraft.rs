@@ -5,6 +5,7 @@ pub mod raptor;
 pub mod hornet;
 pub mod tu160;
 pub mod su27;
+pub mod sr71;
 pub mod bays;
 pub mod main_bay;
 use crate::physics::*;
@@ -37,7 +38,7 @@ impl Aircraft {
             Self::F35B => "F-35B LIGHTNING II",
             Self::F22 => "F-22A RAPTOR",
             Self::Hornet => "F/A-18F SUPER HORNET",
-            Self::Sr71 => "SR-71A BLACKBIRD (STATIC PREVIEW)",
+            Self::Sr71 => "SR-71A BLACKBIRD",
         }
     }
     pub fn slug(self) -> &'static str {
@@ -389,6 +390,7 @@ impl Panel {
 }
 #[derive(Clone)]
 pub struct Systems {
+    pub sr71: sr71::State,
     pub raptor: raptor::flight_model::Dynamics,
     /// Arresting hook command; Hornet dynamics integrate its physical angle.
     pub hook_down: bool,
@@ -418,6 +420,7 @@ pub struct Systems {
 impl Default for Systems {
     fn default() -> Self {
         Self {
+            sr71: default(),
             raptor: default(),
             hook_down: false,
             hornet_canopy_target: false,
@@ -817,6 +820,7 @@ fn panel_loads_angles(
 /// orientation changes are used for vectoring or hover control.
 pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3, f64) {
     let s = f.aircraft.spec();
+    if f.aircraft==Aircraft::Sr71 {sr71::advance(f,dt,mach);}
     if f.aircraft == Aircraft::Hornet && f.damage.hydraulics > 0.12 {
         let canopy = if f.systems.hornet_canopy_target { 1. } else { 0. };
         let wing = if f.systems.hornet_wing_target { 1. } else { 0. };
