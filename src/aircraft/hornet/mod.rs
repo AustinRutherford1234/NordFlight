@@ -112,7 +112,7 @@ fn contacts(f: &mut Flight, dt: f64) -> Loads {
         let (point, radius) = wheel(i);
         let p = f.position + f.orientation * point;
         let n = crate::carrier::normal(f, p);
-        let gap = p.length() - RADIUS - crate::carrier::ground(f, p) - radius;
+        let gap = p.length() - planet_radius() - crate::carrier::ground(f, p) - radius;
         if gap > 0. {
             continue;
         }
@@ -210,7 +210,7 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     let body_force = aero.force + engine.force + contact.force + attachment.force;
     let moment = aero.moment + engine.moment + contact.moment + attachment.moment;
     let omega = rotation();
-    let gravity = -f.up() * MU / f.position.length_squared();
+    let gravity = -f.up() * planet_mu() / f.position.length_squared();
     let rotating = -2. * omega.cross(f.velocity) - omega.cross(omega.cross(f.position));
     let sun = e.sun_direction() * e.sun_distance();
     let ds = sun - f.position;

@@ -370,7 +370,7 @@ fn schedule(
     velocity: DVec3,
     right: DVec3,
 ) {
-    let (_, _, density, c) = atmosphere(listener.length() - RADIUS);
+    let (_, _, density, c) = atmosphere(listener.length() - planet_radius());
     let (mut gain, pan, pitch) =
         spatial(event.position, event.velocity, listener, velocity, right, c);
     let air = atmosphere_gain(density, false);
@@ -460,7 +460,7 @@ pub fn update(
                 .map(|m| m.velocity)
         })
         .unwrap_or(f.velocity);
-    let (_, _, listener_density, sound) = atmosphere(listener.length() - RADIUS);
+    let (_, _, listener_density, sound) = atmosphere(listener.length() - planet_radius());
     let reset = !scene.initialized
         || scene.generation != v.generation
         || scene.vehicle != Some(f.vehicle)
@@ -557,7 +557,7 @@ pub fn update(
             0.
         },
         pitch: (0.45 + 1.35 * spool) * if cockpit { 1. } else { doppler },
-        burner: if f.vehicle == Vehicle::Gripen {
+        burner: if f.vehicle==Vehicle::Gripen&&f.aircraft==crate::aircraft::Aircraft::Sr71&&f.systems.sr71.propulsion.initialized{f.systems.sr71.propulsion.mean_burner as f32}else if f.vehicle == Vehicle::Gripen {
             ((spool - 0.86) / 0.14).clamp(0., 1.)
         } else {
             (f.thrust / 180000.).clamp(0., 1.) as f32
@@ -2297,7 +2297,7 @@ mod tests {
         a.update();
         let initial = a.world().resource::<Bridge>().0.lock().unwrap().controls;
         assert!(initial.settings.master > 0.);
-        let listener = f.position.normalize() * (RADIUS + 250_000.);
+        let listener = f.position.normalize() * (planet_radius() + 250_000.);
         let mut query = a
             .world_mut()
             .query_filtered::<&mut Transform, With<FlightCamera>>();

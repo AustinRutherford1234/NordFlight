@@ -1,4 +1,5 @@
 //! Bounded game AI, cannon rounds, countermeasures and combat damage.
+use crate::physics::contact_height;
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -155,7 +156,7 @@ pub fn advance_targets(
         let opponent_energy = t
             .brain
             .memory
-            .map(|(p, v, _)| v.length_squared() * 0.5 + 9.81 * (p.length() - RADIUS));
+            .map(|(p, v, _)| v.length_squared() * 0.5 + 9.81 * (p.length() - planet_radius()));
         let disadvantaged = opponent_energy.is_some_and(|other| energy + 15000. < other);
         let (mode, mut desired, speed, label) = if let Some(m) = incoming {
             let los = (m.position - t.position).normalize();
@@ -712,8 +713,8 @@ impl Combat {
                     age: 0.0,
                     hit: true,
                 });
-            } else if m.position.length() - RADIUS
-                < terrain_height(m.position.x, m.position.z).max(0.0)
+            } else if m.position.length() - planet_radius()
+                < crate::physics::contact_height_at(m.position)
                 || m.age > super::MISSILE_LIFETIME
             {
                 m.alive = false;
@@ -797,8 +798,8 @@ impl Combat {
         fight.rounds.retain(|r| {
             r.alive
                 && r.age < 2.5
-                && r.position.length() - RADIUS
-                    > terrain_height(r.position.x, r.position.z).max(0.0)
+                && r.position.length() - planet_radius()
+                    > crate::physics::contact_height_at(r.position)
         });
         if fight.rounds.len() > 128 {
             fight.rounds.drain(0..fight.rounds.len() - 128);

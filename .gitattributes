@@ -1,0 +1,2 @@
+# DEM elevation rasters are binary even when their first block contains no NUL.
+assets/environment/packs/**/*.bin binary

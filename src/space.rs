@@ -49,11 +49,11 @@ impl Body {
         if self == Self::Earth { "EARTH" } else { "MOON" }
     }
     pub fn mu(self) -> f64 {
-        if self == Self::Earth { MU } else { MOON_MU }
+        if self == Self::Earth { planet_mu() } else { MOON_MU }
     }
     pub fn radius(self) -> f64 {
         if self == Self::Earth {
-            RADIUS
+            planet_radius()
         } else {
             MOON_RADIUS
         }
@@ -698,7 +698,7 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
     let (t, p, rho, a) = if body == Body::Moon {
         (3., 0., 0., 1.)
     } else {
-        atmosphere(r.length() - RADIUS)
+        atmosphere(r.length() - planet_radius())
     };
     f.temperature = t;
     f.pressure = p;
@@ -885,7 +885,7 @@ pub fn simulate(f: &mut Flight, e: &Environment, dt: f64) {
             f.throttle = 0.;
             f.engine = false;
             f.position = f.up()
-                * (RADIUS + terrain_height(f.position.x, f.position.z).max(0.) - hull_offset);
+                * (planet_radius() + crate::physics::contact_height_at(f.position) - hull_offset);
             f.status = "CAPSULE LANDED / RECOVERY COMPLETE".into();
             return;
         } else {
@@ -928,7 +928,7 @@ pub fn wreck(f: &mut Flight, dt: f64) {
         let h = if body == Body::Moon {
             terrain_at(f.position, f.elapsed).0
         } else {
-            terrain_height(f.position.x, f.position.z).max(0.)
+            crate::physics::contact_height_at(f.position)
         };
         f.position = center(body, f.elapsed) + f.up() * (body.radius() + h + 2.1);
         f.velocity = ground_velocity(f.position, f.elapsed, body);

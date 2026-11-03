@@ -15,7 +15,7 @@ pub fn sam_reachable(kind:Kind,launch:DVec3,target:DVec3,velocity:DVec3)->bool {
 #[cfg(test)]mod tests {
  use super::*;
  #[test]fn sam_launch_limits_account_for_aspect_and_climb(){
-  let p=DVec3::Y*(RADIUS+30.);let t=p+DVec3::NEG_Z*65000.+DVec3::Y*9970.;
+  let p=DVec3::Y*(planet_radius()+30.);let t=p+DVec3::NEG_Z*65000.+DVec3::Y*9970.;
   assert!(sam_reachable(Kind::Standard,p,t,DVec3::Z*480.));
   assert!(!sam_reachable(Kind::Standard,p,t,DVec3::NEG_Z*480.));
   assert!(!sam_reachable(Kind::Essm,p,t,DVec3::Z*480.));

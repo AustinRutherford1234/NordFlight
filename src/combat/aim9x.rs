@@ -497,7 +497,7 @@ pub fn plume_transform(m: &Missile, layer: usize) -> Transform {
     let exhaust =
         (Vec3::Z * deflection.cos() + control.normalize_or_zero() * deflection.sin()).normalize();
     let ignition = ((m.age - 0.18) / 0.12).clamp(0., 1.) as f32;
-    let pressure = (1.225 / atmosphere(m.position.length() - RADIUS).2.max(0.10)).powf(0.16) as f32;
+    let pressure = (1.225 / atmosphere(m.position.length() - planet_radius()).2.max(0.10)).powf(0.16) as f32;
     let pulse = 1. + 0.035 * (m.age as f32 * 79.).sin() + 0.020 * (m.age as f32 * 113.).sin();
     let length = [1.8, 2.7, 3.5][layer] * ignition * pulse;
     let width = [1., 1.8, 3.2][layer] * ignition * pressure;

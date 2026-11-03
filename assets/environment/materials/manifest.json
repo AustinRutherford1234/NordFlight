@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "size": 512,
+  "layers": [
+    "aerial_grass_rock",
+    "brown_mud_leaves_01",
+    "rock_boulder_cracked",
+    "gravel_floor_02",
+    "aerial_beach_01",
+    "snow_02"
+  ],
+  "mips": 10,
+  "sources": [
+    {
+      "asset": "aerial_grass_rock",
+      "map": "diff",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg",
+      "license": "CC0",
+      "sha256": "57b8041bfe0d0f01430e4dbaad45e7ddddf0a9fc97317f90dbc51f7b0d9e1b5d"
+    },
+    {
+      "asset": "aerial_grass_rock",
+      "map": "nor_gl",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_nor_gl_1k.jpg",
+      "license": "CC0",
+      "sha256": "1aa3e23bff453f152e089b9f83aa36b4901651e019f7e2ca01d5331a9bbbda78"
+    },
+    {
+      "asset": "aerial_grass_rock",
+      "map": "rough",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_rough_1k.jpg",
+      "license": "CC0",
+      "sha256": "b9f3f76aba74007f708333c0dbe73c52eb83ea0c4187a13e2e994f888a25114a"
+    },
+    {
+      "asset": "brown_mud_leaves_01",
+      "map": "diff",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_leaves_01/brown_mud_leaves_01_diff_1k.jpg",
+      "license": "CC0",
+      "sha256": "c598c555f13cd5328409fd5e2a45496a26e319e52299e3959042f1449c2f1b06"
+    },
+    {
+      "asset": "brown_mud_leaves_01",
+      "map": "nor_gl",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_leaves_01/brown_mud_leaves_01_nor_gl_1k.jpg",
+      "license": "CC0",
+      "sha256": "8dd5166ddcc293cefd331d491ce6b9162bc9202ddd999ac1e4141697560d38e0"
+    },
+    {
+      "asset": "brown_mud_leaves_01",
+      "map": "rough",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_leaves_01/brown_mud_leaves_01_rough_1k.jpg",
+      "license": "CC0",
+      "sha256": "9f84b7e7b5fdd2ff9798645fdec243b994fced05e543692761994b793211b5d0"
+    },
+    {
+      "asset": "rock_boulder_cracked",
+      "map": "diff",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_cracked/rock_boulder_cracked_diff_1k.jpg",
+      "license": "CC0",
+      "sha256": "e88c9e50109c7f610bc380a00b9bdac5954c392bb02134dedeea3358da57276a"
+    },
+    {
+      "asset": "rock_boulder_cracked",
+      "map": "nor_gl",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_cracked/rock_boulder_cracked_nor_gl_1k.jpg",
+      "license": "CC0",
+      "sha256": "022000a37cb91457de2e0c738baebbc1b0b8eb864ba99321d07c248d5c0741bc"
+    },
+    {
+      "asset": "rock_boulder_cracked",
+      "map": "rough",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_cracked/rock_boulder_cracked_rough_1k.jpg",
+      "license": "CC0",
+      "sha256": "47e6c4b43c9cc5331d0392e3f74777f9a6712edda141dd148586b404c6c30e73"
+    },
+    {
+      "asset": "gravel_floor_02",
+      "map": "diff",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel_floor_02/gravel_floor_02_diff_1k.jpg",
+      "license": "CC0",
+      "sha256": "ac9874264762a9e8d337e684259d51dac41a012933f0d8013033fee7076383f3"
+    },
+    {
+      "asset": "gravel_floor_02",
+      "map": "nor_gl",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel_floor_02/gravel_floor_02_nor_gl_1k.jpg",
+      "license": "CC0",
+      "sha256": "7db09804733f912bd120a1a3179bb867a01819ab9539a1c80eadfaff7e22509e"
+    },
+    {
+      "asset": "gravel_floor_02",
+      "map": "rough",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel_floor_02/gravel_floor_02_rough_1k.jpg",
+      "license": "CC0",
+      "sha256": "5efe350a5e27408bf85c6aebdf725127d7ef064e2c4eaf888fc1a1744e2d7bb6"
+    },
+    {
+      "asset": "aerial_beach_01",
+      "map": "diff",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_01/aerial_beach_01_diff_1k.jpg",
+      "license": "CC0",
+      "sha256": "5b849983d08fda1c6d28b95b55851c2227697598721b25ff2b85e57cf8b04fc4"
+    },
+    {
+      "asset": "aerial_beach_01",
+      "map": "nor_gl",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_01/aerial_beach_01_nor_gl_1k.jpg",
+      "license": "CC0",
+      "sha256": "0133712fbe5de7389948150a6900a687707b93df4e6652b531b6e317b49737b3"
+    },
+    {
+      "asset": "aerial_beach_01",
+      "map": "rough",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_01/aerial_beach_01_rough_1k.jpg",
+      "license": "CC0",
+      "sha256": "1c5ed28fc47821fea601da5f8793462fc1aebe009ea72c272b9c32ce5eb27ccf"
+    },
+    {
+      "asset": "snow_02",
+      "map": "diff",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_diff_1k.jpg",
+      "license": "CC0",
+      "sha256": "523a4e69c90b96d787dd69b897f29a2b3761a017024405c60aa630d1e8e9009a"
+    },
+    {
+      "asset": "snow_02",
+      "map": "nor_gl",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_nor_gl_1k.jpg",
+      "license": "CC0",
+      "sha256": "9495ec680616b8340e2cbecbd151bff84c690cfad4209e90cc98d2d0ba81f810"
+    },
+    {
+      "asset": "snow_02",
+      "map": "rough",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_rough_1k.jpg",
+      "license": "CC0",
+      "sha256": "b6dea8039ac2a5beaed6fd41834fb55540cc76b492edd1d48ba2da2f30f1cb75"
+    }
+  ]
+}

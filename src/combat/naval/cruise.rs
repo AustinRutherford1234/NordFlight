@@ -1,4 +1,5 @@
 //! Estimated radar-altimeter/INS altitude channel, not a particular weapon's OFP.
+use crate::physics::contact_height;
 use super::*;
 pub(super) fn acceleration(position:DVec3, velocity:DVec3, goal:DVec3, time:f64)->DVec3 {
     let up=position.normalize();
@@ -17,16 +18,16 @@ pub(super) fn acceleration(position:DVec3, velocity:DVec3, goal:DVec3, time:f64)
     // open-water cruise/terminal heights remain 12/5 m.
     let mut target_height=if carrier::sea(position.x,position.z) {
         clearance+crate::ocean::sample(position,time).height.max(0.)
-    }else{terrain_height(position.x,position.z).max(0.)+30.};
+    }else{crate::physics::contact_height_at(position)+30.};
     for seconds in [2.,4.,8.,12.,20.,30.,40.] {
         // Stop preview at the navigation goal: terrain beyond the target ship
         // must not pull a terminal sea-skimmer upward before impact.
         let ahead=position+horizontal*(speed*seconds).min(range);
         let desired=if carrier::sea(ahead.x,ahead.z) {clearance}
-            else {terrain_height(ahead.x,ahead.z).max(0.)+30.};
+            else {crate::physics::contact_height_at(ahead)+30.};
         target_height=target_height.max(desired);
     }
-    let height=position.length()-RADIUS;
+    let height=position.length()-planet_radius();
     let error=target_height-height;
     // Retain the bounded physical climb/descent response. Preview raises the
     // commanded altitude early, rather than increasing force or snapping height.
@@ -51,8 +52,8 @@ pub(super) fn acceleration(position:DVec3, velocity:DVec3, goal:DVec3, time:f64)
     let a=acceleration(p,v,goal,k as f64/hz as f64)-p.normalize()*9.81
       +direction*(thrust-0.000025*speed*speed);
     v+=a/hz as f64;p+=v/hz as f64;
-    let floor=terrain_height(p.x,p.z).max(0.);
-    assert!(p.length()-RADIUS>floor+1.,"coast collision hz={hz} t={} h={} floor={floor}",k as f64/hz as f64,p.length()-RADIUS);
+    let floor=crate::physics::contact_height_at(p);
+    assert!(p.length()-planet_radius()>floor+1.,"coast collision hz={hz} t={} h={} floor={floor}",k as f64/hz as f64,p.length()-planet_radius());
    }
   }
  }
@@ -67,7 +68,7 @@ pub(super) fn acceleration(position:DVec3, velocity:DVec3, goal:DVec3, time:f64)
     // Hold tangential speed for this altitude-channel unit fixture only.
     v+=a/hz as f64;let up=p.normalize();let vertical=v.dot(up);
     v=(v-up*vertical).normalize()*290.+up*vertical;p+=v/hz as f64;
-    let height=p.length()-RADIUS;
+    let height=p.length()-planet_radius();
     assert!(height>1.,"sea impact hz={hz} t={t} h={height}");
     if t>210. {low=low.min(height);high=high.max(height);}
    }

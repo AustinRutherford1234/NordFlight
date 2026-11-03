@@ -217,7 +217,7 @@ pub fn coast(f: &mut Flight, e: &mut Environment, duration: f64) -> f64 {
         let acceleration = |p: DVec3, env: &Environment| {
             let sun = env.sun_direction() * env.sun_distance();
             let ds = sun - p;
-            -p * MU / p.length().powi(3)
+            -p * planet_mu() / p.length().powi(3)
                 + SUN_MU * (ds / ds.length().powi(3) - sun / sun.length().powi(3))
         };
         let a = acceleration(r, e);

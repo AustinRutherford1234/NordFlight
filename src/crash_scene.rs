@@ -3,7 +3,7 @@
 use crate::{
     aircraft::Aircraft,
     carrier,
-    physics::{Environment, Flight, RADIUS, Vehicle},
+    physics::{Environment, Flight, planet_radius, Vehicle},
     world,
 };
 use bevy::{
@@ -46,7 +46,7 @@ fn support(f: &Flight, p: DVec3) -> f64 {
         return base;
     }
     let plane = if p.x.abs() < 22.5 && p.z.abs() < crate::physics::RUNWAY_HALF {
-        Some(RADIUS + crate::physics::RUNWAY_HEIGHT + 0.23)
+        Some(planet_radius() + crate::physics::RUNWAY_HEIGHT + 0.23)
     } else if (p.x - 150.).abs() < 100. && (p.z - 620.).abs() < 325. {
         Some(
             crate::physics::surface_point(150., 620., crate::physics::RUNWAY_HEIGHT + 0.12).y
@@ -57,12 +57,12 @@ fn support(f: &Flight, p: DVec3) -> f64 {
             crate::physics::surface_point(80., 500., crate::physics::RUNWAY_HEIGHT + 0.15).y + 0.05,
         )
     } else if p.x.abs() < 90. && p.z.abs() < 1450. {
-        Some(RADIUS + crate::physics::RUNWAY_HEIGHT)
+        Some(planet_radius() + crate::physics::RUNWAY_HEIGHT)
     } else {
         None
     };
     plane.map_or(base, |y| {
-        base.max(DVec3::new(p.x, y, p.z).length() - RADIUS)
+        base.max(DVec3::new(p.x, y, p.z).length() - planet_radius())
     })
 }
 fn shape(i: usize) -> (DVec3, Vec3) {
@@ -185,8 +185,8 @@ impl Scene {
                     p.v=gv+(rel-hit.normal*vn.min(0.)*1.17)*(-h*1.9).exp();
                     p.spin*=(-h*4.).exp();
                 }
-                if p.p.length() - RADIUS < support {
-                    p.p = p.p.normalize() * (RADIUS + support);
+                if p.p.length() - planet_radius() < support {
+                    p.p = p.p.normalize() * (planet_radius() + support);
                     if self.contact.is_none() && !self.water {
                         self.contact = Some((p.p, self.age));
                     }
@@ -550,7 +550,7 @@ pub fn update(
         } else if i == 120 {
             let (origin, time) = state.contact.unwrap_or((state.origin, age));
             let shifted = origin + carrier::ground_velocity(&f, origin) * (age - time);
-            let p = shifted.normalize() * (RADIUS + support(&f, shifted) + 0.035);
+            let p = shifted.normalize() * (planet_radius() + support(&f, shifted) + 0.035);
             (
                 p,
                 Vec3::new(13., 19., 1.),
@@ -582,7 +582,7 @@ mod tests {
     fn impact() -> Flight {
         let mut f = Flight::approach();
         crate::aircraft::select(&mut f, Aircraft::Hornet);
-        f.position = f.up() * (RADIUS + 3.);
+        f.position = f.up() * (planet_radius() + 3.);
         f.velocity = f.orientation * DVec3::new(0., -10., -90.);
         let up = f.up();
         crate::collision::destroy(&mut f, "TEST", up);
@@ -761,7 +761,7 @@ mod tests {
                 let world = part.p + part.q * (Vec3::from_array(*p) * shape(i).1).as_dvec3();
                 if world.x.abs() < 22.5 && world.z.abs() < crate::physics::RUNWAY_HALF {
                     assert!(
-                        world.y >= RADIUS + crate::physics::RUNWAY_HEIGHT + 0.17,
+                        world.y >= planet_radius() + crate::physics::RUNWAY_HEIGHT + 0.17,
                         "submerged panel {i}: {world:?}"
                     );
                 }

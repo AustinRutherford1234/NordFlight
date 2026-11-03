@@ -153,7 +153,7 @@ pub fn suspension(f: &mut Flight, dt: f64) -> (DVec3, DVec3) {
         let body = gear_pose(f, i, false).1;
         let arm = f.orientation * body;
         let p = f.position + arm;
-        let gap = p.length() - RADIUS - crate::carrier::ground(f,p) - wheel_radius(f,i);
+        let gap = p.length() - planet_radius() - crate::carrier::ground(f,p) - wheel_radius(f,i);
         if gap > 0.0 {
             continue;
         }
@@ -200,7 +200,7 @@ pub fn wheel_contact(f: &Flight) -> bool {
                 return false;
             }
             let p = f.position + f.orientation * gear_pose(f, i, false).1;
-            p.length() - RADIUS - crate::carrier::ground(f,p) <= wheel_radius(f,i)
+            p.length() - planet_radius() - crate::carrier::ground(f,p) <= wheel_radius(f,i)
         })
 }
 /// Slab test gives the first time of impact, including segments longer than a building.
@@ -281,13 +281,13 @@ pub fn check_airframe_dt(f:&mut Flight,previous:DVec3,previous_rotation:bevy::ma
     let mut first_hit: Option<(f64, DVec3)> = None;
     let vegetation = crate::terrain::obstacles_reused(previous, end);
     let has_vegetation=!vegetation.is_empty();
-    let airport = previous.length().min(end.length()) - RADIUS < RUNWAY_HEIGHT + 45.0+radius
+    let airport = previous.length().min(end.length()) - planet_radius() < RUNWAY_HEIGHT + 45.0+radius
         && previous.x.min(end.x) < 310.0+radius
         && previous.x.max(end.x) > 105.0-radius
         && previous.z.min(end.z) < 730.0+radius
         && previous.z.max(end.z) > -240.0-radius;
     let near_ground = f.agl() < 12.0
-        || previous.length() - RADIUS - terrain_height(previous.x, previous.z).max(0.0) < 12.0;
+        || previous.length() - planet_radius() - crate::physics::contact_height_at(previous) < 12.0;
     if !airport && !near_ground && !has_vegetation {
         return;
     }
@@ -314,8 +314,8 @@ pub fn check_airframe_dt(f:&mut Flight,previous:DVec3,previous_rotation:bevy::ma
             for (body, radius) in [(wheel, wheel_radius(f,i)), ((mount + wheel) * 0.5, 0.12)] {
                 let a = previous + previous_rotation * body;
                 let b = end + f.orientation * body;
-                let aa = DVec3::new(a.x, a.length() - RADIUS, a.z);
-                let bb = DVec3::new(b.x, b.length() - RADIUS, b.z);
+                let aa = DVec3::new(a.x, a.length() - planet_radius(), a.z);
+                let bb = DVec3::new(b.x, b.length() - planet_radius(), b.z);
                 for (min, max) in boxes() {
                     if let Some((time, n)) = swept_box(
                         aa,
@@ -342,7 +342,7 @@ pub fn check_airframe_dt(f:&mut Flight,previous:DVec3,previous_rotation:bevy::ma
                 let q = previous_rotation.slerp(f.orientation, (t0 + t1) * 0.5);
                 let a = previous.lerp(end, t0);
                 let b = previous.lerp(end, t1);
-                let origin = DVec3::new(a.x, a.length() - RADIUS, a.z) + q * offset;
+                let origin = DVec3::new(a.x, a.length() - planet_radius(), a.z) + q * offset;
                 let delta = DVec3::new(b.x - a.x, b.length() - a.length(), b.z - a.z);
                 for (min, max) in boxes()
                     .into_iter()
@@ -369,7 +369,7 @@ pub fn check_airframe_dt(f:&mut Flight,previous:DVec3,previous_rotation:bevy::ma
                 }
                 for vertex in &hull.vertices {
                     let p = center + q * (hinge * *vertex + offset);
-                    if p.length() - RADIUS < crate::carrier::ground(f,p) + 0.015
+                    if p.length() - planet_radius() < crate::carrier::ground(f,p) + 0.015
                         && first_hit.is_none_or(|hit| time < hit.0)
                     {
                         first_hit = Some((time, p.normalize()));
@@ -412,13 +412,13 @@ fn above_flat_ground(
         return false;
     }
     middle.dot(center.normalize()) - extent.dot(center.normalize().abs())
-        > RADIUS + RUNWAY_HEIGHT + 0.015 + 1e-6
+        > planet_radius() + RUNWAY_HEIGHT + 0.015 + 1e-6
 }
 pub fn simulate_wreck(f: &mut Flight, dt: f64) {
     f.elapsed += dt;
     f.wreck_age += dt;
     let up = f.up();
-    f.velocity -= up * (MU / f.position.length_squared()) * dt;
+    f.velocity -= up * (planet_mu() / f.position.length_squared()) * dt;
     let before=f.position;
     f.position += f.velocity * dt;
     if let Some(hit)=crate::carrier::collider::sweep(f,before,f.position,dt,0.65) {
@@ -427,9 +427,9 @@ pub fn simulate_wreck(f: &mut Flight, dt: f64) {
         let vn=relative.dot(hit.normal);if vn<0.{relative-=hit.normal*vn*1.08;}
         f.velocity=ship+relative*(-dt*2.).exp();f.rates*=(-dt*3.).exp();
     }
-    let ground = terrain_height(f.position.x, f.position.z).max(0.0) + 0.65;
+    let ground = crate::physics::contact_height_at(f.position) + 0.65;
     if f.altitude() < ground {
-        f.position = up * (RADIUS + ground);
+        f.position = up * (planet_radius() + ground);
         let vn = f.velocity.dot(up);
         if vn < 0.0 {
             f.velocity -= up * vn * 1.08;
@@ -459,7 +459,7 @@ mod tests {
                         if above_flat_ground(hull, f.position, f.orientation, hinge, offset) {
                             assert!(hull.vertices.iter().all(|v| {
                                 let p = f.position + f.orientation * (hinge * *v + offset);
-                                p.length() - RADIUS > crate::carrier::ground(&f,p) + 0.015
+                                p.length() - planet_radius() > crate::carrier::ground(&f,p) + 0.015
                             }));
                         }
                     }

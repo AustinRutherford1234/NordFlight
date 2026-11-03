@@ -1,0 +1,165 @@
+{
+  "passed": true,
+  "issues": [],
+  "steady_points": 150,
+  "independent_transient_runs": 30,
+  "static_wet_thrust_n_per_engine": 135821.28008406793,
+  "reference_wet_thrust_n": 144567.20249596625,
+  "static_rating_relative_difference": -0.06049727919541333,
+  "infeasible_stress_grid_points": [
+    {
+      "alt_m": 0.0,
+      "mach": 2.0,
+      "throttle": 0.0
+    },
+    {
+      "alt_m": 0.0,
+      "mach": 3.2,
+      "throttle": 0.88
+    },
+    {
+      "alt_m": 0.0,
+      "mach": 3.2,
+      "throttle": 0.94
+    },
+    {
+      "alt_m": 0.0,
+      "mach": 3.2,
+      "throttle": 1.0
+    }
+  ],
+  "independent_convergence": {
+    "ground_start": {
+      "240": {
+        "fuel_kg": 0.00013977269552758995,
+        "impulse_ns": 0.00012052310456455815,
+        "peak_thrust_n": 4.548883110416989e-05
+      },
+      "480": {
+        "fuel_kg": 5.578020167603925e-05,
+        "impulse_ns": 3.1932346273721894e-05,
+        "peak_thrust_n": 1.4677082800024272e-05
+      }
+    },
+    "failed_ignition": {
+      "240": {
+        "fuel_kg": 0.0,
+        "impulse_ns": 0.0,
+        "peak_thrust_n": 0.0
+      },
+      "480": {
+        "fuel_kg": 0.0,
+        "impulse_ns": 0.0,
+        "peak_thrust_n": 0.0
+      }
+    },
+    "throttle_step": {
+      "240": {
+        "fuel_kg": 1.370181901295705e-06,
+        "impulse_ns": 1.2356341067170518e-05,
+        "peak_thrust_n": 5.775666433052551e-07
+      },
+      "480": {
+        "fuel_kg": 2.0079596439283967e-06,
+        "impulse_ns": 7.193866735888074e-06,
+        "peak_thrust_n": 1.8185321347670735e-07
+      }
+    },
+    "cruise": {
+      "240": {
+        "fuel_kg": 3.4730170642907533e-13,
+        "impulse_ns": 4.2470829066445924e-13,
+        "peak_thrust_n": 5.507990343136676e-11
+      },
+      "480": {
+        "fuel_kg": 1.307586760416423e-13,
+        "impulse_ns": 1.0293836558561502e-13,
+        "peak_thrust_n": 1.8556478550548427e-11
+      }
+    },
+    "inlet_unstart": {
+      "240": {
+        "fuel_kg": 6.44975756768725e-05,
+        "impulse_ns": 5.7968653880658906e-05,
+        "peak_thrust_n": 5.429436451653972e-05
+      },
+      "480": {
+        "fuel_kg": 3.94979796910543e-06,
+        "impulse_ns": 2.0364076196221015e-06,
+        "peak_thrust_n": 1.6586946603987683e-05
+      }
+    },
+    "nozzle_jam": {
+      "240": {
+        "fuel_kg": 0.0006646729759192362,
+        "impulse_ns": 0.0006028893037595889,
+        "peak_thrust_n": 4.3888938727370896e-13
+      },
+      "480": {
+        "fuel_kg": 0.0002215576586400468,
+        "impulse_ns": 0.0002009419010472433,
+        "peak_thrust_n": 1.484329980018693e-13
+      }
+    },
+    "bleed_jam": {
+      "240": {
+        "fuel_kg": 2.461923880035108e-07,
+        "impulse_ns": 2.174015400384673e-07,
+        "peak_thrust_n": 5.507990343136676e-11
+      },
+      "480": {
+        "fuel_kg": 8.212531292036863e-08,
+        "impulse_ns": 7.250379562425113e-08,
+        "peak_thrust_n": 1.8556478550548427e-11
+      }
+    },
+    "pump_failure": {
+      "240": {
+        "fuel_kg": 0.000624869817170185,
+        "impulse_ns": 0.000624869816571818,
+        "peak_thrust_n": 5.507990343136676e-11
+      },
+      "480": {
+        "fuel_kg": 0.00020828993905521912,
+        "impulse_ns": 0.00020828993885438468,
+        "peak_thrust_n": 1.8556478550548427e-11
+      }
+    },
+    "fuel_exhaustion": {
+      "240": {
+        "fuel_kg": 2.2467495256469057e-12,
+        "impulse_ns": 2.271564626948123e-12,
+        "peak_thrust_n": 5.652261094366872e-13
+      },
+      "480": {
+        "fuel_kg": 7.496945227901373e-13,
+        "impulse_ns": 7.603817674262014e-13,
+        "peak_thrust_n": 1.906014633433174e-13
+      }
+    },
+    "windmill_restart": {
+      "240": {
+        "fuel_kg": 0.00013395355783222862,
+        "impulse_ns": 0.0001421962377985894,
+        "peak_thrust_n": 1.4729984485082476e-05
+      },
+      "480": {
+        "fuel_kg": 1.230987486461678e-05,
+        "impulse_ns": 1.3822205754258362e-05,
+        "peak_thrust_n": 3.0681637096855153e-06
+      }
+    }
+  },
+  "performance": {
+    "mean": 15.388569999999879,
+    "p50": 15.25,
+    "p95": 16.0,
+    "p99": 16.625,
+    "rendering_included": false,
+    "samples": 6000,
+    "steady_points": 150,
+    "transient_cases": 30,
+    "unit": "microseconds per twin-engine 240 Hz tick (four 480 Hz component steps)"
+  },
+  "limits": "Estimated component maps; arithmetic/trajectory consistency is not OEM or flight validation."
+}

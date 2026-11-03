@@ -2,7 +2,7 @@
 //! contact queries evaluate the same bounded 24-mode field in double precision.
 use crate::{
     FlightCamera,
-    physics::{Flight, RADIUS},
+    physics::{Flight, planet_radius},
     world,
 };
 use bevy::{
@@ -58,7 +58,7 @@ fn spectrum() -> &'static [Wave; COUNT] {
                 k,
                 a: a * weight,
                 b: b * weight,
-                omega: (9.80665 * k.length()).sqrt(),
+                omega: ((if !crate::environment::real(){9.80665}else{crate::environment::active().preset.planet.surface_gravity()}) * k.length()).sqrt(),
             }
         });
         let variance = waves
@@ -82,6 +82,7 @@ fn smooth(a: f64, b: f64, x: f64) -> f64 {
     t * t * (3. - 2. * t)
 }
 fn strength(p: DVec2) -> f64 {
+    if crate::environment::real(){return 0.65;}
     0.10 + 0.90
         * (1. - smooth(6500., 7000., (p.x - 20000.).abs()))
         * (1. - smooth(-8500., -8000., p.y))
@@ -95,7 +96,7 @@ pub struct Sample {
 pub fn sample(p: DVec3, time: f64) -> Sample {
     if !enabled() {
         return Sample {
-            height: 0.,
+            height: if crate::environment::real(){crate::environment::active().raw(p).2.unwrap_or(0.)}else{0.},
             normal: p.normalize(),
             velocity: DVec3::ZERO,
         };
@@ -118,7 +119,7 @@ pub fn sample(p: DVec3, time: f64) -> Sample {
     let dz = (strength(x + DVec2::Y) - strength(x - DVec2::Y)) * 0.5;
     let up = p.normalize();
     Sample {
-        height: 0.12 + h * weight,
+        height: if crate::environment::real(){crate::environment::active().raw(p).2.unwrap_or(0.)}else{0.} + 0.12 + h * weight,
         normal: (up - DVec3::new(slope.x * weight + h * dx, 0., slope.y * weight + h * dz))
             .normalize(),
         velocity: up * (speed * weight),
@@ -127,6 +128,8 @@ pub fn sample(p: DVec3, time: f64) -> Sample {
 #[derive(Clone, Copy, Debug, ShaderType, PartialEq)]
 struct Parameters {
     center: Vec4,
+    water_grid: Vec4,
+    water_coarse:Vec4,
     detail: Vec4,
     axis_x: Vec4,
     axis_z: Vec4,
@@ -140,6 +143,10 @@ pub struct Extension {
     #[texture(101)]
     #[sampler(102)]
     detail: Handle<Image>,
+    #[texture(103,sample_type="float",filterable=false)]
+    water:Handle<Image>,
+    #[texture(104,sample_type="float",filterable=false)]
+    coarse:Handle<Image>,
 }
 impl MaterialExtension for Extension {
     fn vertex_shader() -> ShaderRef {
@@ -158,6 +165,24 @@ impl MaterialExtension for Extension {
 type OceanMaterial = ExtendedMaterial<StandardMaterial, Extension>;
 #[derive(Component)]
 pub(crate) struct Ocean;
+#[derive(Resource)]
+pub(crate) struct WaterGrid {
+    image:Handle<Image>,coarse:Handle<Image>,cell:(i32,i32),bounds:Vec4,far:Vec4,
+    task:Option<bevy::tasks::Task<(Image,Image,Vec4,Vec4)>>,
+}
+fn water_image(x:f64,z:f64,n:usize,step:f64)->(Image,Vec4) {
+    let west=(x/1024.).floor()*1024.-n as f64*step*0.5;
+    let south=(z/1024.).floor()*1024.-n as f64*step*0.5;
+    let mut bytes=Vec::with_capacity(n*n*8);
+    for j in 0..n {for i in 0..n {
+        let p=crate::environment::point(west+i as f64*step,south+j as f64*step,0.,planet_radius());
+        let(_,_,water,_)=crate::environment::active().raw(p);
+        bytes.extend((water.unwrap_or(0.) as f32).to_le_bytes());
+        bytes.extend((if water.is_some(){1f32}else{0f32}).to_le_bytes());
+    }}
+    (Image::new(Extent3d{width:n as u32,height:n as u32,depth_or_array_layers:1},TextureDimension::D2,bytes,TextureFormat::Rg32Float,RenderAssetUsages::RENDER_WORLD),Vec4::new(west as f32,south as f32,step as f32,1.))
+}
+
 pub struct OceanPlugin;
 impl Plugin for OceanPlugin {
     fn build(&self, app: &mut App) {
@@ -168,13 +193,15 @@ impl Plugin for OceanPlugin {
 }
 fn parameters(center: DVec3, time: f64, quality: bool) -> Parameters {
     Parameters {
+        water_grid:Vec4::ZERO,
+        water_coarse:Vec4::ZERO,
         axis_x: Vec4::X,
         axis_z: Vec4::Z,
         center: Vec4::new(
             center.x as f32,
             center.z as f32,
             center.y as f32,
-            RADIUS as f32,
+            planet_radius() as f32,
         ),
         detail: Vec4::new(
             (time * 0.13).rem_euclid(256.) as f32,
@@ -347,6 +374,9 @@ fn setup(
     if !enabled() {
         return;
     }
+    let (near,bounds)=water_image(0.,0.,384,64.);let (far,far_bounds)=water_image(0.,0.,256,1024.);
+    let water=images.add(near);let coarse=images.add(far);
+    c.insert_resource(WaterGrid{image:water.clone(),coarse:coarse.clone(),cell:(i32::MIN,i32::MIN),bounds,far:far_bounds,task:None});
     let material = materials.add(OceanMaterial {
         base: StandardMaterial {
             base_color: Color::srgb(0.018, 0.095, 0.125),
@@ -358,8 +388,9 @@ fn setup(
             ..default()
         },
         extension: Extension {
-            parameters: parameters(DVec3::Y * RADIUS, 0., false),
+            parameters: parameters(DVec3::Y * planet_radius(), 0., false),
             detail: images.add(detail_image()),
+            water,coarse,
         },
     });
     c.spawn((
@@ -386,10 +417,14 @@ pub fn update(
         With<Ocean>,
     >,
     mut materials: ResMut<Assets<OceanMaterial>>,
+    mut images:ResMut<Assets<Image>>,
+    grid:Option<ResMut<WaterGrid>>,
 ) {
+    let Some(mut grid)=grid else{return;};
     for (mut transform, mut visible, handle) in &mut surfaces {
         let opacity = crate::earth::terrain_opacity(f.altitude());
-        let show = opacity > 0.001 && !v.map && f.position.y > RADIUS * 0.5;
+        let show = opacity > 0.001 && !v.map && f.position.y > planet_radius() * 0.5
+            && !(f.vehicle==crate::physics::Vehicle::Spacecraft&&f.space.body==crate::space::Body::Moon);
         visible.set_if_neq(if show {
             Visibility::Inherited
         } else {
@@ -411,7 +446,26 @@ pub fn update(
             rotation: world::local_rot(DQuat::IDENTITY, &f),
             ..default()
         });
+        if crate::environment::real() {
+            use bevy::tasks::{block_on,poll_once,AsyncComputeTaskPool};
+            if let Some(task)=grid.task.as_mut() {
+                if let Some((near,far,bounds,far_bounds))=block_on(poll_once(task)){
+                    if let Some(image)=images.get_mut(&grid.image){*image=near;}
+                    if let Some(image)=images.get_mut(&grid.coarse){*image=far;}
+                    grid.bounds=bounds;grid.far=far_bounds;grid.task=None;
+                }
+            }
+            let cell=((x/1024.).floor()as i32,(z/1024.).floor()as i32);
+            if grid.task.is_none()&&cell!=grid.cell {
+                grid.cell=cell;
+                grid.task=Some(AsyncComputeTaskPool::get().spawn(async move{
+                    let(near,bounds)=water_image(x,z,384,64.);let(far,far_bounds)=water_image(x,z,256,1024.);
+                    (near,far,bounds,far_bounds)
+                }));
+            }
+        }
         let mut desired = parameters(center, f.elapsed, v.high_quality);
+        if crate::environment::real(){desired.water_grid=grid.bounds;desired.water_coarse=grid.far;}
         desired.axis_x = (world::frame(&f).conjugate() * DVec3::X)
             .as_vec3()
             .extend(0.);

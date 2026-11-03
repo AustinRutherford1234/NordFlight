@@ -78,7 +78,7 @@ pub fn moon_transfer(f: &Flight) -> Option<Maneuver> {
     let make = |offset: f64| -> Option<Maneuver> {
         let target = earth_rotation(f.elapsed).conjugate()
             * (mp + mp.normalize().cross(n).normalize() * offset);
-        let velocity = lambert(p, target, MU, flight_time, n)?;
+        let velocity = lambert(p, target, planet_mu(), flight_time, n)?;
         let dv = velocity - v;
         let mut planned = node;
         planned.dv = DVec3::new(dv.dot(tangent), dv.dot(radial), dv.dot(n));
@@ -227,7 +227,7 @@ mod tests {
         let node = moon_transfer(&f).unwrap();
         let eta = node.eta(&f).unwrap();
         let (p, v, _) = node.states(&f).unwrap();
-        let (pos, _) = propagate(p, v, MU, 3.5 * 86400.).unwrap();
+        let (pos, _) = propagate(p, v, planet_mu(), 3.5 * 86400.).unwrap();
         let mp =
             earth_rotation(f.elapsed).conjugate() * moon_inertial(f.elapsed + eta + 3.5 * 86400.).0;
         assert!(

@@ -29,6 +29,7 @@ pub struct Menu {
     infinite: bool,
     dirty: bool,
     preview: Option<(bool, Aircraft, bool)>,
+    environment_error: Option<String>,
 }
 impl Default for Menu {
     fn default() -> Self {
@@ -50,13 +51,15 @@ impl Default for Menu {
             infinite: false,
             dirty: true,
             preview: None,
+            environment_error: None,
         }
     }
 }
 impl Menu {
     pub fn configured() -> Self {
         let mut m = Self::default();
-        m.open = !std::env::args().skip(1).any(|arg| arg.starts_with("--"))
+        m.open = std::env::args().any(|arg| arg == "--start-menu")
+            || !std::env::args().skip(1).any(|arg| arg.starts_with("--"))
             || std::env::var_os("NORD_MENU_CAPTURE").is_some();
         if let Ok(mode) = std::env::var("NORD_MENU_CAPTURE") {
             m.space = mode == "space";
@@ -82,6 +85,20 @@ impl Menu {
             self.scenario
         }
     }
+}
+// A world owns immutable simulation/streaming data for its process lifetime.
+// Start the replacement first; only close this flight when spawning succeeds.
+fn environment_command(executable: &std::path::Path, preset: &str) -> std::process::Command {
+    let mut command = std::process::Command::new(executable);
+    command.args(["--environment", preset, "--start-menu"]);
+    command
+}
+fn open_environment(preset: &str) -> Result<(), String> {
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    environment_command(&executable, preset)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open environment: {e}"))
 }
 #[derive(Component)]
 pub(crate) struct Root;
@@ -282,7 +299,7 @@ pub fn setup(
         ));
     }
     for (radius, tex, pos, earth) in [
-        (10., "earth.jpg", Vec3::new(-6., -1., -18.), true),
+        (10., "environment/menu-earth.jpg", Vec3::new(-6., -1., -18.), true),
         (2.4, "moon.jpg", Vec3::new(5., 11., -24.), false),
     ] {
         let mat = mats.add(StandardMaterial {
@@ -335,6 +352,7 @@ pub fn controls(
     mut audio: ResMut<crate::sound::Settings>,
     mut crew: Option<ResMut<crate::crew::Crew>>,
     mut quit: MessageWriter<AppExit>,
+    mut graphics:Option<ResMut<crate::environment::graphics::Graphics>>,
     scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
     mut panels: Query<&mut ScrollPosition, With<Root>>,
 ) {
@@ -419,12 +437,22 @@ pub fn controls(
             }
             220 | 221 => menu.defense = id == 221,
             235=>menu.map_reveal=!menu.map_reveal,
+            240 | 241 => {
+                let preset = if id == 240 { "earth" } else { "scifi-earth" };
+                if crate::environment::active().preset.id != preset {
+                    match open_environment(preset) {
+                        Ok(()) => { quit.write(AppExit::Success); break; }
+                        Err(error) => menu.environment_error = Some(error),
+                    }
+                }
+            }
             230 => menu.fbw = !menu.fbw,
             231 => menu.infinite = !menu.infinite,
             232 => menu.external = !menu.external,
             233 => {if let Some(crew)=crew.as_mut(){let enabled=!crew.control_loss;crew.set_control_loss(enabled);}},
             234 => {if let Some(crew)=crew.as_mut(){let enabled=!crew.cockpit_g_effects;crew.set_cockpit_g_effects(enabled);}},
             300 => view.high_quality = !view.high_quality,
+            304 => {if let Some(g)=graphics.as_mut(){g.0.render_scale=if g.0.render_scale<0.59{0.67}else if g.0.render_scale<0.74{0.75}else if g.0.render_scale<0.99{1.}else{0.5};}},
             301 => audio.menu_volume(-0.1),
             302 => audio.menu_volume(0.1),
             303 => audio.menu_mute(),
@@ -505,6 +533,7 @@ pub fn ui(
     roots: Query<Entity, With<Root>>,
     assets: Res<AssetServer>,
     mut hover: Query<(&Interaction, &mut BorderColor), With<Action>>,
+    graphics:Option<Res<crate::environment::graphics::Graphics>>,
 ) {
     for (i, mut border) in &mut hover {
         border.set_if_neq(BorderColor::all(if *i == Interaction::Hovered {
@@ -546,6 +575,18 @@ pub fn ui(
                 if menu.launched {button(p,906,"RESUME FLIGHT",true);}
             });
         }
+        if matches!(menu.page, Page::Setup | Page::Pause) {
+            heading(p,"WORLD");
+            let active = &crate::environment::active().preset.id;
+            row(p,|p| {
+                button(p,240,"EARTH",active=="earth");
+                button(p,241,"SCI-FI EARTH",active=="scifi-earth");
+            });
+            label(p,"Switching worlds opens fresh flight setup and ends the current flight.",12.,Color::srgb(0.64,0.78,0.82));
+            if let Some(error)=&menu.environment_error {
+                label(p,error,13.,Color::srgb(1.,0.5,0.35));
+            }
+        }
         if menu.page==Page::Pause {
             heading(p,"FLIGHT PAUSED");
             label(p,"Your current flight is held. Resume it, or configure a new mission from the main menu.",17.,Color::srgb(0.78,0.87,0.91));
@@ -561,6 +602,9 @@ pub fn ui(
             button(p,233,if control_loss{"G-LOC CONTROL LOSS: ON"}else{"G-LOC CONTROL LOSS: OFF"},control_loss);
             label(p,"Cockpit G effects controls grey-out, red-out and blackout. Dog animations and crew status continue with it OFF. Control loss is separate: enable it to fade stick/rudder input and hold throttle while unconscious. Autopilot, camera, pause and reset remain available.",14.,Color::srgb(0.66,0.80,0.84));
             heading(p,"PRESENTATION");
+            let scale=graphics.as_ref().map_or(1.,|g|g.0.render_scale);
+            button(p,304,&format!("WORLD RESOLUTION: {}% / UI NATIVE",(scale*100.).round()),false);
+            label(p,&crate::environment::active().preset.label,15.,Color::srgb(0.64,0.78,0.82));
             button(p,300,if view.high_quality {"GRAPHICS: HIGH"}else{"GRAPHICS: STANDARD"},view.high_quality);
             heading(p,&format!("MASTER AUDIO  /  {}%",(audio.menu_level()*100.).round()));
             row(p,|p| {button(p,301,"− VOLUME",false);button(p,302,"+ VOLUME",false);button(p,303,if audio.menu_muted(){"UNMUTE"}else{"MUTE"},audio.menu_muted());});
@@ -810,6 +854,16 @@ mod tests {
             .id();
         app.update();
         app.world_mut().entity_mut(entity).despawn();
+    }
+    #[test]
+    fn world_switch_launches_same_binary_with_explicit_preset_and_open_setup() {
+        for preset in ["earth", "scifi-earth"] {
+            let executable = std::path::Path::new("/Applications/Nord Flight.app/Contents/MacOS/gripen-flight");
+            let command = environment_command(executable, preset);
+            assert_eq!(command.get_program(), executable.as_os_str());
+            assert_eq!(command.get_args().collect::<Vec<_>>(),
+                ["--environment", preset, "--start-menu"].map(std::ffi::OsStr::new));
+        }
     }
     #[test]
     fn pause_setup_and_resume_preserve_flight_and_prior_pause_state() {

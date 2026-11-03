@@ -100,6 +100,7 @@ pub struct Snapshot {
     pub integrity: f64,
     pub inlet_recovery: f64,
     pub flags: u32,
+    pub engines:[super::engine::state::State;2],
     pub element_points_body_m: [[f64; 3]; 30],
     pub element_forces_body_n: [[f64; 3]; 30],
     pub actual_element_forces_body_n: [[f64; 3]; 30],
@@ -276,6 +277,7 @@ pub fn capture(f: &mut Flight, loads: StepLoads) {
         integrity: f.integrity,
         inlet_recovery: super::engine::recovery(f),
         flags,
+        engines:sr.propulsion.sides,
         element_points_body_m: sr.airframe.local.map(|l| l.at.to_array()),
         element_forces_body_n: sr.airframe.local.map(|l| l.force.to_array()),
         actual_element_forces_body_n: std::array::from_fn(|i| {
@@ -296,7 +298,7 @@ pub fn capture(f: &mut Flight, loads: StepLoads) {
         aerodynamic_root_nm: sr.airframe.structure.aerodynamic_root_nm,
         inertial_root_nm: sr.airframe.structure.inertial_root_nm,
         wing_loading_n_m2: sr.airframe.structure.wing_loading_n_m2,
-        aircraft_weight_loading_n_m2: f.mass() * MU
+        aircraft_weight_loading_n_m2: f.mass() * planet_mu()
             / f.position.length_squared()
             / super::airframe_config::SPATIAL.estimated_lifting_planform_m2,
         elastic_energy_j: sr.airframe.structure.energy_j,

@@ -1,3 +1,4 @@
+use crate::physics::contact_height;
 use super::*;
 fn closest(a: DVec3, b: DVec3) -> f64 {
     let d = b - a;
@@ -564,7 +565,7 @@ impl State {
             }
             if !m.alive || !m.position.is_finite()
                 || m.age > life
-                || m.position.length() < RADIUS + terrain_height(m.position.x, m.position.z).max(0.)
+                || m.position.length() < planet_radius() + crate::physics::contact_height_at(m.position)
             {
                 m.alive = false;
                 continue;
@@ -634,7 +635,7 @@ impl State {
             b.age += dt;
             b.velocity -= b.position.normalize() * 9.81 * dt;
             b.position += b.velocity * dt;
-            if b.age > 3. || b.position.length() < RADIUS {
+            if b.age > 3. || b.position.length() < planet_radius() {
                 b.alive = false;
                 continue;
             }
@@ -782,7 +783,7 @@ mod engagement_tests {
                 TargetId::Ship(1),
                 TargetId::Aircraft(i),
                 Kind::Essm,
-                DVec3::Y * RADIUS,
+                DVec3::Y * planet_radius(),
                 DVec3::Y * 30.
             ));
         }
@@ -790,7 +791,7 @@ mod engagement_tests {
             TargetId::Ship(1),
             TargetId::Aircraft(100),
             Kind::Essm,
-            DVec3::Y * RADIUS,
+            DVec3::Y * planet_radius(),
             DVec3::Y * 30.
         ));
         n.rounds[0].alive = false;
@@ -798,7 +799,7 @@ mod engagement_tests {
             TargetId::Ship(1),
             TargetId::Aircraft(101),
             Kind::Essm,
-            DVec3::Y * RADIUS,
+            DVec3::Y * planet_radius(),
             DVec3::Y * 30.
         ));
         assert_eq!(n.rounds.len(), 96);
@@ -820,8 +821,8 @@ mod defense_tests {
                 f.elapsed=k as f64/hz as f64;n.clock=f.elapsed;
                 n.weapons(&mut c,&mut f,1./hz as f64);
                 let m=&n.rounds[0];
-                assert!(m.alive,"cruise fell after lost track: hz={hz} t={} h={}",m.age,m.position.length()-RADIUS);
-                assert!(m.position.length()-RADIUS>3.);
+                assert!(m.alive,"cruise fell after lost track: hz={hz} t={} h={}",m.age,m.position.length()-planet_radius());
+                assert!(m.position.length()-planet_radius()>3.);
             }
             assert!(!n.rounds[0].visual.guided,"fixture must exhaust seeker memory");
             assert_eq!(n.rounds[0].visual.gnc.mode,guidance::Mode::Inertial);
@@ -845,7 +846,7 @@ mod defense_tests {
                 if !n.rounds[0].alive {break;}
             }
             let m=&n.rounds[0];
-            println!("CRUISE bearing={} age={} h={} floor={} hull={}",bearing*45,m.age,m.position.length()-RADIUS,terrain_height(m.position.x,m.position.z),n.ships[0].hull);
+            println!("CRUISE bearing={} age={} h={} floor={} hull={}",bearing*45,m.age,m.position.length()-planet_radius(),crate::physics::terrain_height_at(m.position),n.ships[0].hull);
             assert!(n.ships.iter().any(|s|s.hull<1.),"route bearing={} missed fleet or struck terrain: {:?}",bearing*45,m);
         }
     }
@@ -865,7 +866,7 @@ mod defense_tests {
             if !n.rounds[0].alive {break;}
         }
         let m=&n.rounds[0];
-        println!("CRUISE outer launch age={} altitude={} remaining={} hull={} reason={}",m.age,m.position.length()-RADIUS,m.position.distance(carrier::ship_origin(&f,0,f.elapsed)),n.ships[0].hull,m.visual.gnc.reason);
+        println!("CRUISE outer launch age={} altitude={} remaining={} hull={} reason={}",m.age,m.position.length()-planet_radius(),m.position.distance(carrier::ship_origin(&f,0,f.elapsed)),n.ships[0].hull,m.visual.gnc.reason);
         assert!(!m.alive&&n.ships[0].hull<initial,"outer cruise weapon did not reach carrier");
         assert!(m.age<envelope::CRUISE_BURN);
     }
@@ -915,7 +916,7 @@ mod defense_tests {
 }
 
 #[cfg(test)]mod raid_target_tests{use super::*;
- #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());t.dynamics.mach=t.velocity.length()/atmosphere(t.position.length()-RADIUS).3;}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
+ #[test]fn bombers_prioritize_carrier_even_when_escort_is_closer(){let mut f=flight(true);f.crashed=true;let mut c=Combat::default();start(&mut c,&f,1,1);let mut n=c.naval.take().unwrap();n.raiders.truncate(2);for r in &mut n.raiders{r.role=Role::Bomber;r.bay=1.;r.next_shot=0.;r.stores=2;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());t.dynamics.mach=t.velocity.length()/atmosphere(t.position.length()-planet_radius()).3;}n.hostile_launches(&c,&f);assert_eq!(n.rounds.len(),2);assert!(n.rounds.iter().all(|m|m.target==TargetId::Ship(0)));}
 }
 #[cfg(test)]mod bay_interlock_tests{use super::*;
  #[test]fn bomber_release_waits_for_open_bays_and_empty_bays_close(){
@@ -959,7 +960,7 @@ mod defense_tests {
    assert_eq!(r.stores,BOMBER_MISSILES);assert_eq!(c.targets[r.slot].dynamics.bomber_stores,BOMBER_MISSILES);
    r.bay=1.;let t=&mut c.targets[r.slot];t.position=carrier::world(DVec3::new(-20000.,3500.,0.),0.);
    t.velocity=carrier::rotation(0.)*DVec3::X*230.;t.orientation=facing(t.velocity.normalize(),t.position.normalize());
-   t.dynamics.mach=t.velocity.length()/atmosphere(t.position.length()-RADIUS).3;
+   t.dynamics.mach=t.velocity.length()/atmosphere(t.position.length()-planet_radius()).3;
   }
   for shot in 0..BOMBER_MISSILES {n.clock=shot as f64*5.;n.hostile_launches(&c,&f);
    assert_eq!(n.rounds.len(),(shot as usize+1)*2);
@@ -1098,8 +1099,8 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
   n.round(TargetId::Aircraft(n.raiders[2].id),TargetId::Ship(0),Kind::AntiShip,p,(goal-p).normalize()*290.);
   tracking::seed(&mut n.rounds[0],goal,carrier::velocity(0.));
   for k in 0..120*30 {f.elapsed=k as f64/120.;n.clock=f.elapsed;n.weapons(c,f,1./120.);}
-  let m=&n.rounds[0];println!("NAVAL SKIM age={} height={} speed={} alive={}",m.age,m.position.length()-RADIUS,m.velocity.length(),m.alive);
-  assert!(m.alive&&(3. ..25.).contains(&(m.position.length()-RADIUS)));
+  let m=&n.rounds[0];println!("NAVAL SKIM age={} height={} speed={} alive={}",m.age,m.position.length()-planet_radius(),m.velocity.length(),m.alive);
+  assert!(m.alive&&(3. ..25.).contains(&(m.position.length()-planet_radius())));
   v.restore_camera();v.follow_missile(RENDER_MISSILES);v.zoom=3.;v.yaw=1.2;v.pitch=-0.1;
  } else if mode=="defense-ciws" {
   for s in &mut n.ships {s.standard=0;s.essm=0;}

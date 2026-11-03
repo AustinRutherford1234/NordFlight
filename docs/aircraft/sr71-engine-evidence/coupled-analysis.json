@@ -1,0 +1,116 @@
+{
+  "passed": true,
+  "issues": [],
+  "flight_cases": 21,
+  "snapshot_samples": 1251,
+  "max_force_closure_n": 9.313225746154785e-10,
+  "nominal_convergence": {
+    "neutral": [
+      {
+        "hz": 60,
+        "altitude_difference_m": 0.0,
+        "relative_mach_difference": 0.0
+      },
+      {
+        "hz": 120,
+        "altitude_difference_m": 0.0,
+        "relative_mach_difference": 0.0
+      }
+    ],
+    "doublet": [
+      {
+        "hz": 60,
+        "altitude_difference_m": 0.0,
+        "relative_mach_difference": 0.0
+      },
+      {
+        "hz": 120,
+        "altitude_difference_m": 0.0,
+        "relative_mach_difference": 0.0
+      }
+    ]
+  },
+  "independent_airframe_convergence": {
+    "free_decay": [
+      {
+        "hz": 240,
+        "relative_differences": {
+          "peak_force_n": 0.0,
+          "peak_bend_m": 0.009300163552194561,
+          "peak_root_stress_pa": 0.0,
+          "peak_root_strain": 0.0
+        }
+      },
+      {
+        "hz": 480,
+        "relative_differences": {
+          "peak_force_n": 0.0,
+          "peak_bend_m": 0.0018722061420710849,
+          "peak_root_stress_pa": 0.0,
+          "peak_root_strain": 0.0
+        }
+      }
+    ],
+    "alpha_doublet": [
+      {
+        "hz": 240,
+        "relative_differences": {
+          "peak_force_n": 0.0008345323570812832,
+          "peak_bend_m": 0.0005920115292349202,
+          "peak_root_stress_pa": 6.743690815942838e-05,
+          "peak_root_strain": 6.743690815954691e-05
+        }
+      },
+      {
+        "hz": 480,
+        "relative_differences": {
+          "peak_force_n": 0.0002829853776466462,
+          "peak_bend_m": 0.0002000828645222324,
+          "peak_root_stress_pa": 2.3975394676458216e-05,
+          "peak_root_strain": 2.397539467651797e-05
+        }
+      }
+    ],
+    "landing_flare": [
+      {
+        "hz": 240,
+        "relative_differences": {
+          "peak_force_n": 8.959293842622865e-09,
+          "peak_bend_m": 8.892437529329327e-07,
+          "peak_root_stress_pa": 0.0,
+          "peak_root_strain": 0.0
+        }
+      },
+      {
+        "hz": 480,
+        "relative_differences": {
+          "peak_force_n": 2.9912352985090767e-09,
+          "peak_bend_m": 1.7901272455542647e-07,
+          "peak_root_stress_pa": 0.0,
+          "peak_root_strain": 0.0
+        }
+      }
+    ],
+    "asymmetric_load": [
+      {
+        "hz": 240,
+        "relative_differences": {
+          "peak_force_n": 4.3963967389075685e-06,
+          "peak_bend_m": 2.8528946260912873e-05,
+          "peak_root_stress_pa": 1.2841775280257868e-09,
+          "peak_root_strain": 1.2841774847787896e-09
+        }
+      },
+      {
+        "hz": 480,
+        "relative_differences": {
+          "peak_force_n": 3.377735498577074e-06,
+          "peak_bend_m": 2.5735859441467514e-05,
+          "peak_root_stress_pa": 4.0904949429533427e-10,
+          "peak_root_strain": 4.0904960752615153e-10
+        }
+      }
+    ]
+  },
+  "note": "Fault-case aircraft losses are reported, not treated as numerical failures."
+}

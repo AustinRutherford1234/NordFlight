@@ -9,7 +9,7 @@ mod controls;
 #[path = "diagnostics.rs"]
 pub mod diagnostics;
 #[path = "engine.rs"]
-mod engine;
+pub mod engine;
 #[path = "mass.rs"]
 mod mass;
 #[path = "math.rs"]

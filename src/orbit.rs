@@ -1,6 +1,6 @@
 //! Osculating two-body elements from inertial velocity. These describe the
 //! instantaneous orbit; drag, thrust and third-body forces change it over time.
-use crate::physics::{Flight, MU, RADIUS, rotation};
+use crate::physics::{Flight, planet_mu, planet_radius, rotation};
 use bevy::math::DVec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -26,7 +26,7 @@ impl Orbit {
         }
     }
     pub fn from_state(position: DVec3, velocity: DVec3) -> Self {
-        Self::from_state_about(position, velocity, MU, RADIUS)
+        Self::from_state_about(position, velocity, planet_mu(), planet_radius())
     }
     pub fn from_state_about(position: DVec3, velocity: DVec3, mu: f64, body_radius: f64) -> Self {
         let radius = position.length().max(1.0);
@@ -86,8 +86,8 @@ mod tests {
     }
     #[test]
     fn circular_orbit_has_equal_apsides() {
-        let r = RADIUS + 220000.0;
-        let o = Orbit::from_state(DVec3::Y * r, DVec3::X * (MU / r).sqrt());
+        let r = planet_radius() + 220000.0;
+        let o = Orbit::from_state(DVec3::Y * r, DVec3::X * (planet_mu() / r).sqrt());
         assert!((o.periapsis - 220000.0).abs() < 1e-6);
         assert!((o.apoapsis.unwrap() - 220000.0).abs() < 1e-6);
         assert!(o.eccentricity < 1e-10 && o.period.unwrap() > 5000.0);
@@ -104,15 +104,15 @@ mod tests {
     }
     #[test]
     fn escape_trajectory_has_no_apoapsis() {
-        let r = RADIUS + 220000.0;
-        let o = Orbit::from_state(DVec3::Y * r, DVec3::X * (2.2 * MU / r).sqrt());
+        let r = planet_radius() + 220000.0;
+        let o = Orbit::from_state(DVec3::Y * r, DVec3::X * (2.2 * planet_mu() / r).sqrt());
         assert!(o.apoapsis.is_none() && o.period.is_none() && o.eccentricity > 1.0);
     }
     #[test]
     fn orbital_energy_tracks_coasting_spacecraft() {
         let f = Flight::spacecraft();
         let o = Orbit::from_flight(&f);
-        assert!((o.speed - (MU / f.position.length()).sqrt()).abs() < 1e-8);
+        assert!((o.speed - (planet_mu() / f.position.length()).sqrt()).abs() < 1e-8);
         assert!(o.periapsis > 219999.0);
     }
 }

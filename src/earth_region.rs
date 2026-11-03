@@ -1,6 +1,6 @@
 //! Higher-resolution Nordic albedo, blended into the global NASA mosaic.
 #[cfg(test)]
-use crate::physics::RADIUS;
+use crate::physics::planet_radius;
 use crate::{earth, world};
 use bevy::{
     asset::RenderAssetUsages,
@@ -122,7 +122,7 @@ mod tests {
             let b = Vec3::from(p[triangle[1] as usize]);
             let c = Vec3::from(p[triangle[2] as usize]);
             assert!((b - a).cross(c - a).dot(a) > 0.0);
-            assert!((a.length() - RADIUS as f32 + 60.0).abs() < 1.0);
+            assert!((a.length() - planet_radius() as f32 + 60.0).abs() < 1.0);
         }
     }
 }

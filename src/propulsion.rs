@@ -44,7 +44,7 @@ fn trim(altitude: f64, mach: f64, mass: f64) -> Trim {
     let speed = sound * mach;
     let q_area = 0.5 * density * speed * speed * WING_AREA;
     let thrust = jet_output(1.0, density, mach).0;
-    let weight = mass * (MU / (RADIUS + altitude).powi(2) - speed.powi(2) / (RADIUS + altitude));
+    let weight = mass * (planet_mu() / (planet_radius() + altitude).powi(2) - speed.powi(2) / (planet_radius() + altitude));
     let loads = |alpha: f64| {
         let air = DVec3::new(0.0, -speed * alpha.sin(), -speed * alpha.cos());
         let mut state = aero::FlowState {

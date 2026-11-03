@@ -217,7 +217,7 @@ pub fn update(
             let state = target
                 .map(|t| {
                     let air = t.velocity - f.wind;
-                    let (_, _, rho, sound) = atmosphere(t.position.length() - RADIUS);
+                    let (_, _, rho, sound) = atmosphere(t.position.length() - planet_radius());
                     let speed = air.length();
                     let mach = speed / sound.max(1.0);
                     (

@@ -218,7 +218,7 @@ impl State {
                     + DVec3::Y * height,
                 f.elapsed,
             );
-            let p=p.normalize()*(RADIUS+height);
+            let p=p.normalize()*(planet_radius()+height);
             let direct=carrier::ship_origin(f,0,f.elapsed)-p;
             let forward=(direct-p.normalize()*direct.dot(p.normalize())).normalize();
             let id = self.id();
@@ -255,7 +255,7 @@ impl State {
                 right: tangent,
                 forward,
                 phase: 0.,
-                altitude: p.length() - RADIUS,
+                altitude: p.length() - planet_radius(),
                 speed: 300.,
             };
             ai::initialize(&mut t);
@@ -373,9 +373,9 @@ impl State {
             f.elapsed,
         );
         let range = antenna.distance(p);
-        let h1 = (antenna.length() - RADIUS).max(0.);
-        let h2 = (p.length() - RADIUS).max(0.);
-        let horizon = (2. * RADIUS * h1).sqrt() + (2. * RADIUS * h2).sqrt();
+        let h1 = (antenna.length() - planet_radius()).max(0.);
+        let h2 = (p.length() - planet_radius()).max(0.);
+        let horizon = (2. * planet_radius() * h1).sqrt() + (2. * planet_radius() * h2).sqrt();
         range < horizon
             && range < 140000. * signature.powf(0.25) * authority.sqrt()
             && guidance::terrain_visible(antenna, p)
@@ -404,7 +404,7 @@ impl State {
                 },
                 bearing,
                 range,
-                (t.position.length() - RADIUS).max(0.) * 3.28084
+                (t.position.length() - planet_radius()).max(0.) * 3.28084
             ));
             count += 1;
         }

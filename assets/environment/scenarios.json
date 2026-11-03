@@ -1,0 +1,6 @@
+[
+  {"version":1,"id":"home","pack":"sweden-west","longitude":12.711111,"latitude":58.428333,"altitude_agl":0.0,"heading_degrees":184.59},
+  {"version":1,"id":"carrier","pack":"sweden-west","longitude":10.8,"latitude":57.7,"altitude_agl":0.0,"heading_degrees":180.0},
+  {"version":1,"id":"mountains","pack":"norway-mountains","longitude":7.7,"latitude":61.25,"altitude_agl":2500.0,"heading_degrees":0.0},
+  {"version":1,"id":"offfield","pack":"sweden-west","longitude":12.7041666667,"latitude":58.4358333333,"altitude_agl":300.0,"heading_degrees":0.0}
+]

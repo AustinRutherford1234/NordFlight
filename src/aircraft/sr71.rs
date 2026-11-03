@@ -12,6 +12,7 @@ pub struct State {
     pub nozzles: [f64; 2],
     pub diagnostics: flight::diagnostics::State,
     pub airframe:flight::plant::State,
+    pub propulsion:flight::engine::Twin,
 }
 fn move_to(value: &mut f64, target: f64, rate: f64, dt: f64) {
     *value += (target - *value).clamp(-rate * dt, rate * dt);
@@ -76,6 +77,7 @@ pub fn advance(f: &mut Flight, dt: f64, mach: f64) {
         flight::config::REGIMES.canopy_rate_s * authority,
         dt,
     );
+    if !state.propulsion.initialized {
     // Representative spike schedule shared with the installed inlet-loss model.
     let target = flight::config::ENGINE.spike_travel_m
         * ((mach - flight::config::ENGINE.spike_start_mach)
@@ -100,6 +102,8 @@ pub fn advance(f: &mut Flight, dt: f64, mach: f64) {
             dt,
         );
     }
+    }
+
 }
 pub fn smooth(x: f64) -> f64 {
     let x = x.clamp(0., 1.);

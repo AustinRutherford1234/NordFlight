@@ -1,4 +1,7 @@
-//! Bounded terrain LOD, procedural surface detail, and shared off-field contacts.
+pub mod material;
+pub(crate) mod mesh;
+pub mod vegetation;
+// Bounded terrain LOD, procedural surface detail, and shared off-field contacts.
 use crate::{
     physics::*,
     world::{self, WorldObject},
@@ -22,12 +25,13 @@ pub fn paved(x: f64, z: f64) -> bool {
 }
 /// Terrain queries use world x/z: retain those coordinates when lifting a vertex.
 pub fn point(x: f64, z: f64, h: f64) -> DVec3 {
-    DVec3::new(x, ((RADIUS + h).powi(2) - x * x - z * z).max(0.).sqrt(), z)
+    DVec3::new(x, ((planet_radius() + h).powi(2) - x * x - z * z).max(0.).sqrt(), z)
 }
 pub fn meadow(x: f64, z: f64) -> bool {
     (x - 6500.).abs() < 420. && (z - 3200.).abs() < 1250.
 }
 pub fn normal(p: DVec3) -> DVec3 {
+    if crate::environment::real(){return crate::environment::active().sample_surface(p).normal;}
     let x = p.x;
     let z = p.z;
     let d = 2.;
@@ -45,12 +49,14 @@ fn noise(x: i32, z: i32) -> f64 {
     ((h ^ (h >> 31)) >> 11) as f64 / (1_u64 << 53) as f64
 }
 pub fn forest(x: f64, z: f64) -> bool {
+    if crate::environment::real(){return crate::environment::forest(x,z);}
     if (x.abs() < 650. && z.abs() < 2600.) || meadow(x, z) || in_lake(x, z) {
         return false;
     }
     (x * 0.00071 + 0.7).sin() * (z * 0.00053 - 0.4).cos() > 0.18
 }
 pub fn tree(ix: i32, iz: i32) -> Option<(f64, f64, f64, f64)> {
+    if crate::environment::real(){return crate::environment::tree(ix,iz);}
     if noise(ix, iz) > 0.62 {
         return None;
     }
@@ -75,12 +81,12 @@ pub fn obstacles_reused(a:DVec3,b:DVec3)->ObstacleScratch{
     data.clear();data.extend(obstacle_iter(a,b));ObstacleScratch(data)
 }
 pub fn obstacle_iter(a:DVec3,b:DVec3)->impl Iterator<Item=(DVec3,DVec3)>+Clone {
-    let near=a.length().min(b.length()) - RADIUS - terrain_height(b.x,b.z)<=30.;
+    let near=a.length().min(b.length()) - planet_radius() - crate::physics::terrain_height_at(b)<=30.;
     let x0=((a.x.min(b.x)-16.)/32.).floor()as i32;
     let x1=((a.x.max(b.x)+16.)/32.).floor()as i32;
     let z0=((a.z.min(b.z)-16.)/32.).floor()as i32;
     let z1=((a.z.max(b.z)+16.)/32.).floor()as i32;
-    (z0..=z1).take(if near{usize::MAX}else{0}).flat_map(move|iz|(x0..=x1).filter_map(move|ix|tree(ix,iz)))
+    let trees=(z0..=z1).take(if near{usize::MAX}else{0}).flat_map(move|iz|(x0..=x1).filter_map(move|ix|tree(ix,iz)))
         .flat_map(|(x,z,h,size)|[
                 (
                     DVec3::new(x - 0.35, h, z - 0.35),
@@ -90,9 +96,14 @@ pub fn obstacle_iter(a:DVec3,b:DVec3)->impl Iterator<Item=(DVec3,DVec3)>+Clone {
                     DVec3::new(x - size * 0.17, h + size * 0.35, z - size * 0.17),
                     DVec3::new(x + size * 0.17, h + size * 0.85, z + size * 0.17),
                 ),
-        ])
+        ]);
+    let props=(z0.div_euclid(4)..=z1.div_euclid(4)).take(if near&&crate::environment::real(){usize::MAX}else{0})
+        .flat_map(move|iz|(x0.div_euclid(4)..=x1.div_euclid(4)).filter_map(move|ix|crate::environment::prop(ix,iz)))
+        .map(|prop|{let p=DVec3::new(prop.position.x,prop.position.length()-planet_radius(),prop.position.z);(p-prop.half,p+prop.half)});
+    trees.chain(props)
 }
 pub fn color(x: f64, z: f64, h: f64) -> [f32; 4] {
+    if crate::environment::real(){return crate::environment::surface_color(x,z,h);}
     let grain = (0.92 + 0.08 * (x * 0.037 + z * 0.023).sin()) as f32;
     let c = if h < 0. {
         [0.10, 0.15, 0.12]
@@ -114,65 +125,9 @@ pub fn color(x: f64, z: f64, h: f64) -> [f32; 4] {
     };
     [c[0] * grain, c[1] * grain, c[2] * grain, 1.]
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-struct Tile {
-    x: i32,
-    z: i32,
-    size: i32,
-}
-/// `active` is the published layout, used for split/merge hysteresis: a tile
-/// that is currently split stays split until 0.95 of its size, so circling
-/// near a boundary does not rebuild the same tiles repeatedly. `coarser` is set
-/// once an ancestor is an active leaf. Decisions remain per quadtree node, so
-/// the result is always a complete, non-overlapping partition.
-type Active<'a> = Option<&'a dyn Fn(&Tile) -> bool>;
-fn leaves(tile: Tile, p: DVec3, agl: f64, active: Active, coarser: bool, out: &mut HashSet<Tile>) {
-    let dx = (tile.x as f64 - p.x)
-        .max(0.)
-        .max(p.x - (tile.x + tile.size) as f64);
-    let dz = (tile.z as f64 - p.z)
-        .max(0.)
-        .max(p.z - (tile.z + tile.size) as f64);
-    let leaf = active.is_some_and(|has| has(&tile));
-    let split = active.is_some_and(|_| !coarser && !leaf);
-    let reach = if split { 0.95 } else { 0.85 };
-    if tile.size > 512 && dx.hypot(dz) < tile.size as f64 * reach && agl < tile.size as f64 * 2. {
-        let half = tile.size / 2;
-        for (x, z) in [
-            (tile.x, tile.z),
-            (tile.x + half, tile.z),
-            (tile.x, tile.z + half),
-            (tile.x + half, tile.z + half),
-        ] {
-            leaves(Tile { x, z, size: half }, p, agl, active, coarser || leaf, out);
-        }
-    } else {
-        out.insert(tile);
-    }
-}
-fn layout(p: DVec3, agl: f64) -> HashSet<Tile> {
-    layout_from(p, agl, None)
-}
-fn layout_from(p: DVec3, agl: f64, active: Active) -> HashSet<Tile> {
-    let mut out = HashSet::new();
-    for z in -8..4 {
-        for x in -2..8 {
-            leaves(
-                Tile {
-                    x: x * 32768,
-                    z: z * 32768,
-                    size: 32768,
-                },
-                p,
-                agl,
-                active,
-                false,
-                &mut out,
-            );
-        }
-    }
-    out
-}
+use lod::{Tile,layout,layout_from};
+mod lod;
+
 struct Entry {
     anchor: DVec3,
     entity: Entity,
@@ -367,6 +322,7 @@ fn mesh_bytes(mesh:&Mesh)->usize {
 pub struct Landscape {
     tiles: HashMap<Tile, Entry>,
     material: Handle<StandardMaterial>,
+    surface: Option<Handle<material::SurfaceMaterial>>,
     trees: Handle<StandardMaterial>,
     cell: (i32, i32, i32),
     pending: Option<Pending>,
@@ -377,10 +333,11 @@ fn cell(f: &Flight) -> (i32, i32, i32) {
     (
         (f.position.x / 512.).floor() as i32,
         (f.position.z / 512.).floor() as i32,
-        (f.agl().max(1.).log2() / 2.).floor() as i32,
+        if crate::environment::real(){(f.agl().max(1.).log2()/2.).floor()as i32*64+(crate::environment::graphics::lod_error()*2.)as i32}else{(f.agl().max(1.).log2()/2.).floor()as i32},
     )
 }
 fn forest_mesh(tile: Tile, anchor: DVec3) -> Option<Mesh> {
+    if crate::environment::real(){return None;}
     if tile.size > 2048 {
         return None;
     }
@@ -592,7 +549,9 @@ fn spawn_piece(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:
             },
         ))
         .id();
-    if forest {c.entity(entity).insert(ForestBatch);}
+    if forest {c.entity(entity).insert(ForestBatch);} else if let Some(surface)=&state.surface {
+        c.entity(entity).remove::<MeshMaterial3d<StandardMaterial>>().insert(MeshMaterial3d(surface.clone()));
+    }
     (entity,mesh)
 }
 fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Preparing,f:&Flight)->StreamBudget {
@@ -641,6 +600,7 @@ pub fn setup(
     meshes: &mut Assets<Mesh>,
     mats: &mut Assets<StandardMaterial>,
     images: &mut Assets<Image>,
+    surfaces: &mut Assets<material::SurfaceMaterial>,
     f: &Flight,
 ) {
     let mut image = Image::new_fill(
@@ -680,8 +640,13 @@ pub fn setup(
         cull_mode: None,
         ..default()
     });
+    let arrays=crate::environment::real().then(||material::load(images));
     let mut state = Landscape {
         tiles: HashMap::new(),
+        surface: crate::environment::real().then(||surfaces.add(material::SurfaceMaterial {
+            base: StandardMaterial{base_color:Color::WHITE,perceptual_roughness:0.94,..default()},
+            extension:material::SurfaceExtension{detail:Vec4::new(0.,0.,1.,0.),albedo:arrays.as_ref().unwrap().0.clone(),normal:arrays.as_ref().unwrap().1.clone()},
+        })),
         material,
         trees,
         cell: cell(f),
@@ -701,6 +666,7 @@ pub fn update(
     mut state: ResMut<Landscape>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut surfaces: Option<ResMut<Assets<material::SurfaceMaterial>>>,
     readiness: Res<crate::terrain_ready::TerrainReady>,
     time: Option<Res<Time<Real>>>,
 ) {
@@ -716,9 +682,13 @@ pub fn update(
             material.alpha_mode = alpha_mode;
         }
     }
-    if f.vehicle == Vehicle::Spacecraft {
-        return;
+    if let (Some(handle),Some(surfaces))=(&state.surface,surfaces.as_mut()) {
+        if let Some(m)=surfaces.get_mut(handle) {
+            let desired=if opacity>0.999{AlphaMode::Opaque}else{AlphaMode::Blend};
+            if m.base.base_color.alpha()!=opacity||m.base.alpha_mode!=desired {m.base.base_color=Color::srgba(1.,1.,1.,opacity);m.base.alpha_mode=desired;}
+        }
     }
+    if f.vehicle == Vehicle::Spacecraft {return;}
     // Retired tiles wait while a layout is being published group by group, so
     // reclaim work never shares those frames.
     let publishing=state.preparing.as_ref().is_some_and(|p|p.publishing.is_some());
@@ -758,7 +728,11 @@ pub fn update(
         }
         if !preparing.requested {
             let ids=preparing.ready.iter().flat_map(|(_,e)|std::iter::once(e.mesh.id()).chain(e.trees.iter().map(|(_,m)|m.id()))).collect();
-            readiness.request(ids); preparing.requested=true;
+            readiness.request(ids);
+            if let (Some(handle),Some(surfaces))=(&state.surface,surfaces.as_ref()) {
+                if let Some(m)=surfaces.get(handle){readiness.dependencies(vec![m.extension.albedo.id(),m.extension.normal.id()],vec![handle.id().untyped(),state.trees.id().untyped()]);}
+            }
+            preparing.requested=true;
             state.preparing=Some(preparing); return;
         }
         if preparing.publishing.is_none() {
@@ -905,7 +879,7 @@ mod tests {
         }
         let old_entities:Vec<_>=std::iter::once(old).chain(old_trees.iter().map(|x|x.0)).collect();
         let tile=Tile{x:0,z:0,size:512};
-        app.insert_resource(Landscape {tiles:HashMap::from([(Tile{x:0,z:0,size:1024},Entry {
+        app.insert_resource(Landscape {surface:None,tiles:HashMap::from([(Tile{x:0,z:0,size:1024},Entry {
             anchor:DVec3::ZERO,entity:old,mesh:old_mesh,trees:old_trees,
         })]),material:material.clone(),trees:material,cell:cell(&f),pending:None,retiring:VecDeque::new(),
             preparing:Some(Preparing {cell:(cell(&f).0-1,cell(&f).1,cell(&f).2),wanted:HashSet::from([tile]),remaining:VecDeque::from([Built {
@@ -1006,6 +980,7 @@ mod tests {
             work.into_iter().map(build).collect()
         });
         app.insert_resource(Landscape {
+            surface:None,
             tiles: HashMap::from([(
                 Tile {
                     x: 0,
@@ -1086,7 +1061,7 @@ mod tests {
     #[test]
     fn swap_groups_cover_identical_area_for_real_layout_changes() {
         let area=|t:&Tile|(t.size as i64).pow(2);
-        let mut p=DVec3::new(-8000.,RADIUS,-1000.);
+        let mut p=DVec3::new(-8000.,planet_radius(),-1000.);
         let mut active=layout(p,10.);
         for _ in 0..30 {
             p+=DVec3::new(311.,0.,173.);
@@ -1108,7 +1083,7 @@ mod tests {
     #[test]
     fn lod_hysteresis_keeps_detail_longer_and_stays_a_partition() {
         let area = |tiles: &HashSet<Tile>| tiles.iter().map(|t| (t.size as i64).pow(2)).sum::<i64>();
-        let start = DVec3::new(-8000., RADIUS, -1000.);
+        let start = DVec3::new(-8000., planet_radius(), -1000.);
         let active = layout(start, 10.);
         // A published layout is stable under its own hysteresis.
         assert_eq!(layout_from(start, 10., Some(&|t: &Tile| active.contains(t))), active);
@@ -1136,8 +1111,8 @@ mod tests {
     #[test]
     fn lod_has_no_overlapping_tiles_and_stays_bounded() {
         for p in [
-            DVec3::new(0., RADIUS, 0.),
-            DVec3::new(100000., RADIUS, -150000.),
+            DVec3::new(0., planet_radius(), 0.),
+            DVec3::new(100000., planet_radius(), -150000.),
         ] {
             let tiles = layout(p, 10.);
             assert!(tiles.len() < 500);

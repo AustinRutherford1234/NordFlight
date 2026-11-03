@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "id": "scifi-earth",
+  "label": "EARTH / VIOLET FRONTIER",
+  "revision": 1,
+  "planet": {
+    "version": 1,
+    "id": "violet-earth",
+    "radius": 6500000.0,
+    "mu": 360000000000000.0,
+    "rotation_rate": 6e-05,
+    "sea_level": 0.0,
+    "atmosphere": {
+      "model": "dry",
+      "temperature": 275.0,
+      "pressure": 95000.0,
+      "gas_constant": 287.05,
+      "gamma": 1.4,
+      "top": 110000.0
+    },
+    "sky_tint": [
+      1.1,
+      0.65,
+      1.2
+    ]
+  },
+  "packs": [
+    "sweden-west",
+    "norway-mountains"
+  ],
+  "seed": 271828,
+  "legacy": false,
+  "palette": [
+    [
+      0.22,
+      0.11,
+      0.3
+    ],
+    [
+      0.34,
+      0.18,
+      0.35
+    ],
+    [
+      0.3,
+      0.22,
+      0.22
+    ],
+    [
+      0.25,
+      0.31,
+      0.36
+    ],
+    [
+      0.48,
+      0.37,
+      0.36
+    ],
+    [
+      0.72,
+      0.82,
+      0.86
+    ],
+    [
+      0.16,
+      0.09,
+      0.22
+    ],
+    [
+      0.27,
+      0.28,
+      0.31
+    ]
+  ],
+  "terrain": {
+    "relief_scale": 1.18,
+    "height_offset": 0.0,
+    "snow_line": 2200.0,
+    "tree_line": 1900.0
+  },
+  "vegetation": {
+    "density": 0.9,
+    "height_scale": 1.25,
+    "species_weights": [
+      0.18,
+      0.22,
+      0.6
+    ],
+    "prop_density": 1.2
+  }
+}

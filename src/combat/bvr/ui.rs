@@ -1,3 +1,4 @@
+use crate::physics::contact_height;
 use super::*;
 use bevy::{
     asset::RenderAssetUsages,
@@ -504,7 +505,7 @@ pub fn draw(
                 let az=local.x.atan2(-local.z).to_degrees();let el=local.y.atan2(local.x.hypot(local.z)).to_degrees();
                 let contact=Contact{position:tr.position,velocity:tr.velocity,forward:-tr.velocity.normalize_or_zero(),throttle:1.,engine:true,alive:true,decoy:false,strength:1.};
                 let(max,nez)=envelope(f.position,f.velocity,contact);
-                format!("T{:02} {:.1} km / {:.0} m / AZ {:+.0}° EL {:+.0}°\nRMAX EST {:.0} km · NEZ EST {:.0} km · {}",combat.selected+1,r.length()/1000.,tr.position.length()-RADIUS,az,el,max/1000.,nez/1000.,combat.cue(&f).err().unwrap_or(if combat.lock>=combat.weapon.lock_time(){"SHOOT"}else{"ACQUIRING"}))
+                format!("T{:02} {:.1} km / {:.0} m / AZ {:+.0}° EL {:+.0}°\nRMAX EST {:.0} km · NEZ EST {:.0} km · {}",combat.selected+1,r.length()/1000.,tr.position.length()-planet_radius(),az,el,max/1000.,nez/1000.,combat.cue(&f).err().unwrap_or(if combat.lock>=combat.weapon.lock_time(){"SHOOT"}else{"ACQUIRING"}))
             });
             let incoming = combat
                 .missiles
@@ -555,7 +556,7 @@ pub fn draw(
                     for x in 0..512 {
                         let xx = menu.center.x + (x as f32 / 511. - 0.5) * menu.span;
                         let zz = menu.center.y + (y as f32 / 511. - 0.5) * menu.span;
-                        let h = terrain_height(xx as f64, zz as f64).max(0.);
+                        let h = contact_height(xx as f64, zz as f64);
                         let shade = (h / 3000.).clamp(0., 1.) as f32;
                         let contour = ((h / 250.).fract() < 0.04) as u8;
                         let grid = (x % 64 == 0 || y % 64 == 0) as u8;
@@ -581,7 +582,7 @@ pub fn draw(
         let selected=mark.aircraft==Some(combat.selected)&&!mark.friendly;
         let color=if selected{Color::srgb(1.,0.75,0.25)}else{super::super::tactical::color(&mark)};
         let weapon=mark.category==super::super::tactical::Category::Weapon;
-        let label=if weapon {mark.label}else{format!("{}{}\n{:.1} km / {:.0} m",if selected{"* "}else{""},mark.label,f.position.distance(mark.position)/1000.,mark.position.length()-RADIUS)};
+        let label=if weapon {mark.label}else{format!("{}{}\n{:.1} km / {:.0} m",if selected{"* "}else{""},mark.label,f.position.distance(mark.position)/1000.,mark.position.length()-planet_radius())};
         marks.push((mark.position,label,color,weapon));
     }
     let label_width=(size.x-8.).min(250.);

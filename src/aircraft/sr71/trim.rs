@@ -1,4 +1,4 @@
-use super::{config::*, controls::targets, engine::engine};
+use super::{config::*, controls::targets, engine::equilibrium_loads};
 use crate::{
     aerodynamics::{Conditions, FlowState},
     physics::*,
@@ -67,7 +67,7 @@ pub fn solve(mass: f64, fuel: f64, alt: f64, speed: f64) -> TrimReport {
     let mut x = DVec3::from_array(REGIMES.trim_initial);
     let c = condition(REGIMES.trim_initial[0], alt, speed);
     let qs = 0.5 * c.density * speed * speed * AREA;
-    let w = mass * (MU / (RADIUS + alt).powi(2) - speed * speed / (RADIUS + alt));
+    let w = mass * (planet_mu() / (planet_radius() + alt).powi(2) - speed * speed / (planet_radius() + alt));
     if !qs.is_finite() || qs <= 0. || !w.is_finite() || w <= 0. {
         return failed(TrimFailure::InvalidInput, 0, DVec3::ZERO);
     }
@@ -86,12 +86,12 @@ pub fn solve(mass: f64, fuel: f64, alt: f64, speed: f64) -> TrimReport {
             super::landing::Surface::free(),
             true,
         );
-        let thrust = engine(x.z, c.density, c.mach).0;
-        let force = state.total.force + DVec3::new(0., -INCIDENCE.sin(), -INCIDENCE.cos()) * thrust;
+        let (thrust,engine_moment)=equilibrium_loads(x.z,c.density,c.temperature,c.mach,x.x,0.,cg);
+        let force = state.total.force + thrust;
         DVec3::new(
             (force.y - w * x.x.cos()) / w,
             (force.z + w * x.x.sin()) / w,
-            (state.total.moment.x + thrust * MASS.engine_aft_m * INCIDENCE.sin()) / (qs * CHORD),
+            (state.total.moment.x + engine_moment.x) / (qs * CHORD),
         )
     };
     for iteration in 0..SOLVER.iterations {
@@ -177,6 +177,7 @@ pub fn initialize(f: &mut Flight) {
             };
         }
     }
+    super::engine::initialize(f);
     f.systems.sr71.spike = ENGINE.spike_travel_m
         * ((f.mach - ENGINE.spike_start_mach) / ENGINE.spike_mach_interval).clamp(0., 1.);
 }

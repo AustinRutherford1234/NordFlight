@@ -4,7 +4,7 @@ use bevy::math::{DVec3,DQuat};
 #[derive(Clone,Debug,Default)]
 pub struct State {pub active:bool,pub age:f64,pub flooding:f64,pub origin:DVec3,pub speed:f64,pub sink:f64}
 pub fn surface(f:&Flight)->bool {
- (in_lake(f.position.x,f.position.z)||crate::carrier::sea(f.position.x,f.position.z))
+ (if crate::environment::real(){f.environment.raw(f.position).2.is_some()}else{in_lake(f.position.x,f.position.z)||crate::carrier::sea(f.position.x,f.position.z)})
  && crate::carrier::deck(f,f.position).is_none()
 }
 pub fn step(f:&mut Flight,dt:f64)->bool {
@@ -12,12 +12,13 @@ pub fn step(f:&mut Flight,dt:f64)->bool {
  if !f.water.active {
   if !surface(f){return false;}
   let reach=crate::collision::wheel_clearance(f).max(0.65+f.aircraft.spec().span*0.5*f.roll().sin().abs());
-  if f.altitude()>reach+5.2{return false;}
+  let level=if crate::environment::real(){crate::environment::active().raw(f.position).2.unwrap_or(0.)}else{0.};
+  if f.altitude()>level+reach+5.2{return false;}
   let sea=crate::ocean::sample(f.position,f.elapsed);
   if f.altitude()>reach+sea.height{return false;}
   let up=f.up();let vertical=(f.velocity-sea.velocity).dot(up);let speed=(f.velocity-up*vertical).length();
   let gentle=speed<=85. && vertical>=-6. && f.roll().abs()<20f64.to_radians() && f.pitch()>-5f64.to_radians() && f.pitch()<18f64.to_radians();
-  f.water=State{active:true,age:0.,flooding:if gentle{0.}else{0.65},origin:up*(RADIUS+sea.height),speed,sink:(-vertical).max(0.)};
+  f.water=State{active:true,age:0.,flooding:if gentle{0.}else{0.65},origin:up*(planet_radius()+sea.height),speed,sink:(-vertical).max(0.)};
   if !gentle && !f.crashed {crate::collision::destroy(f,"WATER IMPACT",up);}
   if gentle {
    f.integrity=(f.integrity-0.06-speed.powi(2)*0.000025-(-vertical).max(0.).powi(2)*0.003).max(0.15);
@@ -40,15 +41,16 @@ pub fn step(f:&mut Flight,dt:f64)->bool {
  let immersion=((1.1+sea.height-f.altitude())/1.8).clamp(0.,1.);
  let v=f.velocity.dot(up);let tangent=f.velocity-up*v;
  let horizontal=tangent*(-dt*(0.10+0.009*tangent.length())*immersion).exp();
- let buoyancy=9.81*1.12*immersion*(1.-0.95*f.water.flooding);
+ let gravity=if f.environment.preset.legacy{9.81}else{f.environment.preset.planet.surface_gravity()};
+ let buoyancy=gravity*1.12*immersion*(1.-0.95*f.water.flooding);
  let surface_speed=sea.velocity.dot(up);
- let vertical=(v+(buoyancy-9.81)*dt-surface_speed)*(-dt*2.2*immersion).exp()+surface_speed;
+ let vertical=(v+(buoyancy-gravity)*dt-surface_speed)*(-dt*2.2*immersion).exp()+surface_speed;
  f.velocity=horizontal+up*vertical;f.position+=f.velocity*dt;
  let body_up=f.orientation.conjugate()*sea.normal;
  f.rates+=(DVec3::Y.cross(body_up)*1.4-f.rates*2.)*dt;
  f.orientation=(f.orientation*DQuat::from_scaled_axis(f.rates*dt)).normalize();
- f.airspeed=f.velocity.length();f.g_load=buoyancy/9.81;
- f.status=if f.altitude()< -2.{"SINKING / R TO RESET"}else if f.crashed{"WATER IMPACT / FLOODING / R TO RESET"}else{"DITCHED / FLOODING / R TO RESET"}.into();
+ f.airspeed=f.velocity.length();f.g_load=buoyancy/9.80665;
+ f.status=if f.altitude()<sea.height-2.{"SINKING / R TO RESET"}else if f.crashed{"WATER IMPACT / FLOODING / R TO RESET"}else{"DITCHED / FLOODING / R TO RESET"}.into();
  true
 }
 #[cfg(test)]

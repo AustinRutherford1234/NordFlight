@@ -484,7 +484,7 @@ pub fn select(f: &mut Flight, aircraft: Aircraft) {
         if f.landed {
             let h = crate::collision::wheel_clearance(f);
             f.position = f.up()
-                * (RADIUS + crate::physics::terrain_height(f.position.x, f.position.z).max(0.) + h);
+                * (planet_radius() + crate::physics::contact_height_at(f.position) + h);
         }
         if !f.landed && aircraft!=Aircraft::Sr71 {
             f.velocity *= 1.25;
@@ -823,7 +823,7 @@ fn panel_loads_angles(
 /// orientation changes are used for vectoring or hover control.
 pub fn propulsion(f: &mut Flight, dt: f64, rho: f64, mach: f64) -> (DVec3, DVec3, f64) {
     let s = f.aircraft.spec();
-    if f.aircraft==Aircraft::Sr71 {sr71::advance(f,dt,mach);}
+    if f.aircraft==Aircraft::Sr71 {sr71::advance(f,dt,mach);return sr71::flight::engine::propulsion(f,dt,rho,mach);}
     if f.aircraft == Aircraft::Hornet && f.damage.hydraulics > 0.12 {
         let canopy = if f.systems.hornet_canopy_target { 1. } else { 0. };
         let wing = if f.systems.hornet_wing_target { 1. } else { 0. };
@@ -1093,7 +1093,7 @@ mod tests {
         let mut f = Flight::approach();
         select(&mut f, Aircraft::F35B);
         f.airspeed = 0.;
-        f.position = DVec3::Y * (RADIUS + 1000.);
+        f.position = DVec3::Y * (planet_radius() + 1000.);
         f.orientation = bevy::math::DQuat::IDENTITY;
         f.spool = 1.;
         f.controls = DVec3::ZERO;
@@ -1130,7 +1130,7 @@ mod tests {
     fn full_six_dof_hover_is_controllable_and_lift_fan_failure_causes_descent() {
         let mut f = Flight::approach();
         select(&mut f, Aircraft::F35B);
-        f.position = DVec3::Y * (RADIUS + 500.);
+        f.position = DVec3::Y * (planet_radius() + 500.);
         f.orientation = bevy::math::DQuat::IDENTITY;
         f.velocity = DVec3::ZERO;
         f.rates = DVec3::ZERO;

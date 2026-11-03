@@ -87,9 +87,9 @@ fn fall_state(b: &mut Body, dt: f64, drag: f64, carrier:&crate::carrier::State, 
         b.grounded=hit.normal.dot(up)>0.6;
         if b.grounded {b.velocity=ship;}
     }
-    let ground = terrain_height(b.position.x, b.position.z).max(0.) + 0.4;
-    if b.position.length() < RADIUS + ground {
-        b.position = up * (RADIUS + ground);
+    let ground = crate::physics::contact_height_at(b.position) + 0.4;
+    if b.position.length() < planet_radius() + ground {
+        b.position = up * (planet_radius() + ground);
         b.velocity = DVec3::ZERO;
         b.grounded = true;
     }
@@ -514,7 +514,7 @@ mod escape_regressions {
             f.ejection
                 .pilots
                 .iter()
-                .all(|p| !p.grounded && p.position.length() - RADIUS > ground + 3.)
+                .all(|p| !p.grounded && p.position.length() - planet_radius() > ground + 3.)
         );
     }
     #[test]

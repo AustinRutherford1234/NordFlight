@@ -185,7 +185,7 @@ impl State {
                 }
                 Kind::Foam => {
                     part.velocity *= (-dt*0.7).exp();
-                    part.position=up*(RADIUS+crate::ocean::sample(part.position,f.elapsed).height+0.08);
+                    part.position=up*(planet_radius()+crate::ocean::sample(part.position,f.elapsed).height+0.08);
                 }
                 Kind::Smoke => {
                     part.velocity *= (-dt * 0.9).exp();
@@ -202,11 +202,11 @@ impl State {
                     part.velocity=ship+(rel-hit.normal*rel.dot(hit.normal).min(0.)*1.2)*(-dt*2.).exp();
                 }
             }
-            if matches!(part.kind, Kind::Spray) && part.age>0.1 && part.position.length()<RADIUS+3. && part.position.length()<RADIUS+crate::ocean::sample(part.position,f.elapsed).height {part.age=part.life;}
+            if matches!(part.kind, Kind::Spray) && part.age>0.1 && part.position.length()<planet_radius()+3. && part.position.length()<planet_radius()+crate::ocean::sample(part.position,f.elapsed).height {part.age=part.life;}
             if matches!(part.kind, Kind::Fragment) {
-                let ground = if in_lake(part.position.x,part.position.z)||crate::carrier::sea(part.position.x,part.position.z) {crate::ocean::sample(part.position,f.elapsed).height+0.2} else {terrain_height(part.position.x, part.position.z).max(0.0) + 0.2};
-                if part.position.length() - RADIUS < ground {
-                    part.position = up * (RADIUS + ground);
+                let ground = if in_lake(part.position.x,part.position.z)||crate::carrier::sea(part.position.x,part.position.z) {crate::ocean::sample(part.position,f.elapsed).height+0.2} else {crate::physics::contact_height_at(part.position) + 0.2};
+                if part.position.length() - planet_radius() < ground {
+                    part.position = up * (planet_radius() + ground);
                     part.velocity -= up * part.velocity.dot(up).min(0.0) * 1.2;
                     part.velocity *= (-dt * 2.0).exp();
                 }
@@ -278,7 +278,7 @@ mod tests {
     use super::*;
     #[test]
     fn water_impact_emits_spray_and_foam_without_a_fireball() {
-        let mut f=Flight::approach();f.water.active=true;f.water.origin=f.up()*RADIUS;f.water.speed=120.;f.water.sink=12.;f.crashed=true;f.damage.fire=1.;
+        let mut f=Flight::approach();f.water.active=true;f.water.origin=f.up()*planet_radius();f.water.speed=120.;f.water.sink=12.;f.crashed=true;f.damage.fire=1.;
         let mut state=State::default();let c=Combat::default();
         state.advance(&c,&f,0.01);
         assert!(state.particles.iter().any(|p|matches!(p.kind,Kind::Spray)));

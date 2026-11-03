@@ -114,7 +114,7 @@ impl Target {
         self.phase += self.speed * dt / 10000.;
         let angle = self.phase + 0.12;
         let goal = self.center + (-self.right * angle.cos() + self.forward * angle.sin()) * 10000.;
-        let goal = goal.normalize() * (RADIUS + self.altitude);
+        let goal = goal.normalize() * (planet_radius() + self.altitude);
         self.brain.mode = "ROUTE";
         ai::fly(
             self,
@@ -361,7 +361,7 @@ impl Combat {
                 right,
                 forward,
                 phase: 0.0,
-                altitude: origin.length() - RADIUS,
+                altitude: origin.length() - planet_radius(),
                 speed,
             };
             target.advance(0.0, &self.environment);
@@ -753,8 +753,8 @@ impl Combat {
                 );
                 self.message_until = self.clock + 4.0;
                 self.recent_hit = Some(effects::HitReport::new(missile.target, target, self.clock));
-            } else if missile.position.length() - RADIUS
-                < terrain_height(missile.position.x, missile.position.z).max(0.0)
+            } else if missile.position.length() - planet_radius()
+                < crate::physics::contact_height_at(missile.position)
                 || missile.age > MISSILE_LIFETIME
                 || !missile.position.is_finite()
             {
@@ -1867,7 +1867,7 @@ pub fn draw_telemetry(
             if node.display != Display::Flex {
                 node.display = Display::Flex;
             }
-            let (_, _, _, sound) = atmosphere(m.position.length() - RADIUS);
+            let (_, _, _, sound) = atmosphere(m.position.length() - planet_radius());
             let r = m.gnc.estimate - m.position;
             let vc = (m.velocity - m.gnc.estimated_velocity).dot(r.normalize_or_zero());
             let eta = if m.gnc.initialized && vc > 10.0 && m.guided {
@@ -2955,7 +2955,7 @@ mod tests {
         for t in c.targets.iter().filter(|t| t.alive) {
             assert_eq!(t.position, t.dynamics.position);
             assert_eq!(t.velocity, t.dynamics.velocity);
-            assert!((t.position.length() - RADIUS - t.altitude).abs() < 50.0);
+            assert!((t.position.length() - planet_radius() - t.altitude).abs() < 50.0);
             assert!(t.brain.physics_steps >= 240);
             assert!(t.fuel < 2400.);
         }

@@ -38,7 +38,7 @@ fn pose(def:&Def,rest:Transform,f:&Flight,spin:[f32;3])->Transform{
   "fin"=>s.fins[def.index]as f32,"canopy"=>s.canopy as f32*def.angle,_=>0.,
  };
  t.rotation=rest.rotation*Quat::from_axis_angle(def.axis,angle);
- if def.kind=="spike"{t.translation+=Vec3::Z*s.spike as f32;}
+ if def.kind=="spike"{let spike=if s.propulsion.initialized{s.propulsion.sides[usize::from(def.name.ends_with('R'))].inlet.spike_m}else{s.spike};t.translation+=Vec3::Z*spike as f32;}
  if def.kind=="nozzle"{let n=s.nozzles[def.index];t.scale=Vec3::new(1.+n as f32*0.05,1.+n as f32*0.05,1.);}
  if def.kind=="oleo"||def.kind=="steering"{t.translation+=Vec3::Y*f.gear_compression[def.index]as f32;}
  t

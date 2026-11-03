@@ -2,6 +2,8 @@
 
 Date: November 3, 2026. This follows the first aerodynamic implementation and the earlier refinement/debugging pass. It is a real-time reduced-order airframe model. It is not CFD, a proprietary aerodynamic database, finite-element stress certification, or validated flutter analysis.
 
+The subsequent [integrated engine implementation](SR71_ENGINE_MODEL_2026-11-03.md) supersedes this report's engine-deferral status. The results below remain the historical airframe-pass evidence.
+
 ## Scope
 
 Implemented in this pass: local distributed aerodynamic forces, a multidimensional coefficient database, unsteady and post-stall states, supporting-surface landing effects, two-way aeroelastic feedback, wing loading, bending, stress/strain estimates, and diagnostic/validation extensions.

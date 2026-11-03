@@ -218,7 +218,7 @@ pub fn plume(m: &Missile, layer: usize) -> Transform {
     // Fixed rocket nozzle: no fictitious radar-missile thrust vectoring.
     let ignition = ((m.age - 0.18) / 0.12).clamp(0., 1.) as f32;
     let power = (m.gnc.thrust / 23000.).clamp(0.1, 1.5) as f32;
-    let density = atmosphere(m.position.length() - RADIUS).2.max(0.06);
+    let density = atmosphere(m.position.length() - planet_radius()).2.max(0.06);
     let expansion = (1.225 / density).powf(0.16) as f32;
     let pulse = 1. + 0.03 * (m.age as f32 * 73.).sin();
     Transform::from_xyz(0., 0., 1.77).with_scale(Vec3::new(

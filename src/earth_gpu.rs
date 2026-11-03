@@ -1,7 +1,7 @@
 //! Same atmosphere vertex colors as earth.rs, evaluated without rebuilding meshes.
 use crate::{
     earth::{CloudCover, Haze, Surface, region::Region},
-    physics::RADIUS,
+    physics::planet_radius,
 };
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
@@ -103,6 +103,12 @@ fn convert(
         }
         let mut base = base.clone();
         base.unlit = true;
+        if haze.is_none()&&cloud.is_none()&&crate::environment::real(){
+            let palette=crate::environment::active().preset.palette[0];
+            let reference=[0.13,0.23,0.10];
+            let tint=Vec3::from_array(std::array::from_fn(|i|(palette[i]/reference[i]).clamp(0.2,3.)));
+            base.base_color=Color::linear_rgb(tint.x,tint.y,tint.z);
+        }
         let m = meshes.get_mut(&mesh.0).unwrap();
         let colors: Vec<_> = (0..m.count_vertices())
             .map(|i| [1., 1., 1., region.map_or(1., |r| r.0[i])])
@@ -112,7 +118,7 @@ fn convert(
             eye: Vec4::ZERO,
             sun: Vec4::ZERO,
             layer: Vec4::new(
-                RADIUS as f32,
+                planet_radius() as f32,
                 haze.map_or(5200., |h| h.0),
                 haze.map_or(0., |h| h.1),
                 if haze.is_some() {

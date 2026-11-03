@@ -35,6 +35,8 @@ if (-not (Test-Path 'target/release/gripen-flight.exe')) {
 New-Item -ItemType Directory -Force -Path 'dist/assets' | Out-Null
 Copy-Item 'target/release/gripen-flight.exe' 'dist/NordFlight.exe' -Force
 Copy-Item 'assets/*' 'dist/assets/' -Recurse -Force
+Set-Content 'dist/NordFlight-High.cmd' -Value @('@echo off', 'cd /d "%~dp0"', 'start "" "NordFlight.exe" --graphics high --environment earth')
+Set-Content 'dist/NordFlight-SciFi.cmd' -Value @('@echo off', 'cd /d "%~dp0"', 'start "" "NordFlight.exe" --graphics high --environment scifi-earth')
 Copy-Item 'README.md', 'docs' 'dist/' -Recurse -Force
 & "$PSScriptRoot/tools/New-WindowsIcon.ps1" -SourceImage "$PSScriptRoot/assets/branding/nord-flight-icon.png" -DestinationIcon "$PSScriptRoot/dist/NordFlight.ico"
 $version = (Select-String -Path 'Cargo.toml' -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value

@@ -151,8 +151,8 @@ pub const LOCAL_RANGES: [f64; 4] = [5000., 10000., 20000., 40000.];
 pub const FORMATIONS: [(usize, usize); 4] = [(2, 0), (2, 1), (4, 1), (8, 3)];
 pub fn flight() -> Flight {
     let mut f = super::flight();
-    f.position = surface_point(100000., 0., 11000.);
-    f.orientation = facing(-DVec3::Z, f.up());
+    f.position = crate::scenarios::position("mountains").unwrap_or_else(||surface_point(100000., 0., 11000.));
+    f.orientation = facing(crate::scenarios::direction("mountains",f.position).unwrap_or(-DVec3::Z), f.up());
     f.velocity = f.forward() * 290.;
     f.spool = 0.88;
     f.throttle = 0.88;
@@ -178,7 +178,7 @@ pub fn envelope(position: DVec3, velocity: DVec3, c: Contact) -> (f64, f64) {
     let los = (c.position - position).normalize_or_zero();
     let closure = (velocity - c.velocity).dot(los);
     let max = (30000.
-        + (position.length() - RADIUS).max(0.) * 3.
+        + (position.length() - planet_radius()).max(0.) * 3.
         + velocity.length() * 40.
         + closure * 35.)
         .clamp(28000., 115000.);
@@ -203,7 +203,7 @@ pub fn start(c: &mut Combat, f: &Flight, generation: u64, m: &Menu) {
             f.forward() * (distance + (i / 4) as f64 * 6000.)
                 + right * ((i % 4) as f64 - 1.5) * 7000.
         };
-        t.position = (f.position + offset).normalize() * (RADIUS + 11000. + (i % 3) as f64 * 500.);
+        t.position = (f.position + offset).normalize() * (planet_radius() + 11000. + (i % 3) as f64 * 500.);
         let dir = if friend { f.forward() } else { -f.forward() };
         t.velocity = dir * 290.;
         t.orientation = facing(dir, t.position.normalize());
@@ -682,7 +682,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
         }
         // Attack elements press the defended sector; escorts engage interceptors.
         if b.defense && !friend && i % 2 == 0 {
-            desired = (b.objective.normalize() * (RADIUS + 10000.) - t.position).normalize_or(dir);
+            desired = (b.objective.normalize() * (planet_radius() + 10000.) - t.position).normalize_or(dir);
         }
         let mut dragging = false;
         if let Some((missile, _)) = incoming {
@@ -697,7 +697,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
         } else if supporting {
             desired = (desired + right * if i % 2 == 0 { 0.65 } else { -0.65 }).normalize();
         }
-        let clearance = t.position.length() - RADIUS - terrain_height(t.position.x, t.position.z);
+        let clearance = t.position.length() - planet_radius() - crate::physics::terrain_height_at(t.position);
         if clearance < 900. {
             desired = (dir + up).normalize();
         }
@@ -966,7 +966,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             });
             c.strikes += 1;
         } else if m.age > (if m.gnc.long_range { 210. } else { 45. })
-            || m.position.length() - RADIUS < terrain_height(m.position.x, m.position.z)
+            || m.position.length() - planet_radius() < crate::physics::terrain_height_at(m.position)
             || !contact.alive
         {
             m.alive = false;
@@ -1132,7 +1132,7 @@ fn weapon_trials() -> Vec<serde_json::Value> {
         let f = flight();
         let mut c = Combat::default();
         start(&mut c, &f, 1, &Menu::default());
-        c.targets[0].position = (f.position + f.forward() * range).normalize() * (RADIUS + 11000.);
+        c.targets[0].position = (f.position + f.forward() * range).normalize() * (planet_radius() + 11000.);
         c.targets[0].velocity = f.forward() * if retreat { 280. } else { -280. };
         let mut b = c.bvr.take().unwrap();
         launch(&mut c, &mut b, &f, None, Some(0), Weapon::Radar);
@@ -1147,7 +1147,7 @@ fn weapon_trials() -> Vec<serde_json::Value> {
             let old_target = target.position;
             let old_missile = m.position;
             target.position += target.velocity * 0.01;
-            target.position = target.position.normalize() * (RADIUS + 11000.);
+            target.position = target.position.normalize() * (planet_radius() + 11000.);
             let up = target.position.normalize();
             target.velocity = (target.velocity - up * target.velocity.dot(up)).normalize() * 280.;
             guidance::fly(
@@ -1168,7 +1168,7 @@ fn weapon_trials() -> Vec<serde_json::Value> {
             );
             active |= m.gnc.active;
             if miss < 12.
-                || m.position.length() - RADIUS < terrain_height(m.position.x, m.position.z)
+                || m.position.length() - planet_radius() < crate::physics::terrain_height_at(m.position)
             {
                 break;
             }
@@ -1479,7 +1479,7 @@ mod tests {
                 },
             );
             let goal = c.bvr.as_ref().unwrap().objective;
-            c.targets[0].position = goal.normalize() * (RADIUS + 5000.);
+            c.targets[0].position = goal.normalize() * (planet_radius() + 5000.);
             let mut f = f;
             c.tick(&mut f, 0.001);
             assert_eq!(c.bvr.as_ref().unwrap().result.contains("BREACHED"), defense);

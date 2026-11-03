@@ -161,9 +161,9 @@ pub fn target_rates(f: &Flight, c: DVec3) -> DVec3 {
                 * smooth(REGIMES.authority_mach[0], REGIMES.authority_mach[1], m));
     if c.x.abs() < CONTROL.neutral_deadband {
         let speed_tangent = (f.velocity - f.up() * f.vertical_speed()).length();
-        let gravity = crate::physics::MU / (crate::physics::RADIUS + f.altitude()).powi(2);
+        let gravity = crate::physics::planet_mu() / (crate::physics::planet_radius() + f.altitude()).powi(2);
         let support =
-            (gravity - speed_tangent.powi(2) / (crate::physics::RADIUS + f.altitude())) / 9.80665;
+            (gravity - speed_tangent.powi(2) / (crate::physics::planet_radius() + f.altitude())) / 9.80665;
         let target_load = support * f.alpha.cos() / bank.cos().max(REGIMES.bank_cos_floor);
         pitch += ((f.g_load - target_load) * -CONTROL.load_trim_gain)
             .clamp(-CONTROL.load_trim_rate_limit, CONTROL.load_trim_rate_limit);

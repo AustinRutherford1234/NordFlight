@@ -6,6 +6,7 @@ use bevy::{
 };
 use std::f64::consts::PI;
 
+pub use crate::environment::{planet_radius,planet_mu};
 pub const RADIUS: f64 = 6_371_000.0;
 pub const MU: f64 = 3.986_004_418e14;
 pub const AU: f64 = 149_597_870_700.0;
@@ -23,6 +24,7 @@ pub enum Vehicle {
 
 #[derive(Resource, Clone)]
 pub struct Flight {
+    pub environment: std::sync::Arc<crate::environment::EnvironmentSnapshot>,
     pub ai_bomber:bool,
     pub bomber_stores:u8,
     pub water: crate::water::State,
@@ -104,7 +106,7 @@ impl Default for Flight {
 }
 impl Flight {
     pub fn approach() -> Self {
-        Self {ai_bomber:false,bomber_stores:0,
+        Self {environment:crate::environment::active().clone(),ai_bomber:false,bomber_stores:0,
             water: Default::default(),
             ejection: Default::default(),
             carrier: Default::default(),
@@ -204,9 +206,9 @@ impl Flight {
         let (moon_position, moon_velocity, _, _) = crate::space::moon_inertial(f.elapsed);
         let normal = moon_position.cross(moon_velocity).normalize();
         let radial = (f.position - normal * f.position.dot(normal)).normalize();
-        f.position = radial * (RADIUS + 220000.0);
+        f.position = radial * (planet_radius() + 220000.0);
         let forward = normal.cross(radial).normalize();
-        f.velocity = forward * (MU / f.position.length()).sqrt() - rotation().cross(f.position);
+        f.velocity = forward * (planet_mu() / f.position.length()).sqrt() - rotation().cross(f.position);
         f.orientation =
             DQuat::from_mat3(&DMat3::from_cols(forward.cross(radial), radial, -forward));
         f.throttle = 0.0;
@@ -231,7 +233,7 @@ impl Flight {
             (self.position - crate::space::center(self.space.body, self.elapsed)).length()
                 - self.space.body.radius()
         } else {
-            self.position.length() - RADIUS
+            self.position.length() - self.environment.preset.planet.radius
         }
     }
     pub fn usable_fuel(&self) -> f64 {self.fuel+if self.vehicle==Vehicle::Gripen&&self.aircraft==crate::aircraft::Aircraft::Hornet{crate::aircraft::hornet::stores::fuel(self)}else{0.}}
@@ -343,7 +345,7 @@ impl Default for AircraftDamage {
     }
 }
 pub fn geographic_axes(up: DVec3) -> (DVec3, DVec3) {
-    let axis = rotation().normalize();
+    let axis = pole_axis();
     let projected = axis - up * axis.dot(up);
     let north = if projected.length_squared() > 1e-12 {
         projected.normalize()
@@ -446,7 +448,7 @@ impl Environment {
     }
     pub fn advance(&mut self, dt: f64) {
         self.time += dt;
-        self.day_phase += dt * 2.0 * PI / 86164.0905;
+        self.day_phase += dt * if crate::environment::real(){crate::environment::active().preset.planet.rotation_rate}else{2.0*PI/86164.0905};
         self.orbit_phase =
             (self.orbit_phase + dt * self.orbit_rate * 2.0 * PI / YEAR).rem_euclid(2.0 * PI);
     }
@@ -455,7 +457,7 @@ impl Environment {
             return DVec3::ZERO;
         }
         let strength = if self.weather == 2 { 3.5 } else { 1.0 };
-        let h = (p.length() - RADIUS).max(0.0);
+        let h = (p.length() - planet_radius()).max(0.0);
         let shear = (h / 180.0).clamp(0.0, 1.0).powf(0.16);
         let t = self.time;
         DVec3::new(
@@ -466,7 +468,8 @@ impl Environment {
     }
 }
 
-pub fn atmosphere(h: f64) -> (f64, f64, f64, f64) {
+pub fn atmosphere(h:f64)->(f64,f64,f64,f64){crate::environment::active().preset.planet.atmosphere(h)}
+pub fn earth_atmosphere(h: f64) -> (f64, f64, f64, f64) {
     // Hydrostatic ideal-gas layers of the standard lower atmosphere. Convert
     // geometric altitude to geopotential altitude before selecting the layer.
     // Above 86 km, a smooth game transition to vacuum replaces thermosphere
@@ -522,8 +525,8 @@ pub fn atmosphere(h: f64) -> (f64, f64, f64, f64) {
     (t, p, p / (287.05287 * t), (1.4 * 287.05287 * t).sqrt())
 }
 pub fn surface_point(x: f64, z: f64, h: f64) -> DVec3 {
-    let y = (RADIUS * RADIUS - x * x - z * z).max(0.0).sqrt();
-    DVec3::new(x, y, z).normalize() * (RADIUS + h)
+    let y = (planet_radius() * planet_radius() - x * x - z * z).max(0.0).sqrt();
+    DVec3::new(x, y, z).normalize() * (planet_radius() + h)
 }
 struct LakeIndex {
     min: bevy::math::DVec2,
@@ -592,70 +595,48 @@ mod lake_index_tests {
 }
 pub static LAKE: std::sync::OnceLock<Vec<bevy::math::DVec2>> = std::sync::OnceLock::new();
 pub fn in_lake(x: f64, z: f64) -> bool {
+    if crate::environment::real() {
+        return crate::environment::active().raw(crate::environment::point(x,z,0.,planet_radius())).2.is_some();
+    }
     let Some(poly) = LAKE.get() else {
         return false;
     };
     LAKE_INDEX.get_or_init(|| LakeIndex::new(poly)).contains(poly, x, z)
 }
+pub fn pole_axis()->DVec3{
+    let axis=rotation();
+    if axis.length_squared()>1e-24{return (axis*crate::environment::active().preset.planet.rotation_rate.signum()).normalize();}
+    let b=58.428333_f64.to_radians();let a=(-184.59_f64).to_radians();
+    DVec3::new(b.cos()*a.sin(),b.sin(),-b.cos()*a.cos()).normalize()
+}
 pub fn rotation() -> DVec3 {
     DVec3::new(
-        7.292115e-5 * 58.428333_f64.to_radians().cos() * (-184.59_f64.to_radians()).sin(),
-        7.292115e-5 * 58.428333_f64.to_radians().sin(),
-        -7.292115e-5 * 58.428333_f64.to_radians().cos() * (-184.59_f64.to_radians()).cos(),
+        crate::environment::active().preset.planet.rotation_rate * 58.428333_f64.to_radians().cos() * (-184.59_f64.to_radians()).sin(),
+        crate::environment::active().preset.planet.rotation_rate * 58.428333_f64.to_radians().sin(),
+        -crate::environment::active().preset.planet.rotation_rate * 58.428333_f64.to_radians().cos() * (-184.59_f64.to_radians()).cos(),
     )
 }
-pub fn terrain_height(x: f64, z: f64) -> f64 {
-    // Flight, collision, AI and vegetation each ask for the height under the
-    // same aircraft within one substep. A one-entry exact-bits memo per thread
-    // returns the identical value without re-evaluating the noise.
-    thread_local! {
-        static LAST: std::cell::Cell<(u64, u64, f64)> = const { std::cell::Cell::new((u64::MAX, u64::MAX, 0.0)) };
-    }
-    let key = (x.to_bits(), z.to_bits());
-    let (lx, lz, h) = LAST.get();
-    if (lx, lz) == key {
-        return h;
-    }
-    let h = terrain_height_uncached(x, z);
-    LAST.set((key.0, key.1, h));
-    h
+/// Body-fixed query preserves hemisphere and latitude information lost by x/z.
+pub fn terrain_height_at(position:DVec3)->f64 {
+    if !crate::environment::real(){return terrain_height(position.x,position.z);}
+    crate::environment::active().raw(position).0
 }
-fn terrain_height_uncached(x: f64, z: f64) -> f64 {
-    if crate::carrier::sea(x,z) {return -2.;}
-    if in_lake(x, z) {
-        return -2.0;
-    }
-    // A fictional Nordic island: rolling pine coast, granite ridges and a flattened airfield.
-    if x.abs() < 310.0 && z.abs() < 1850.0 {
-        return RUNWAY_HEIGHT;
-    }
-    let coast = 1.0;
-    let hills = 55.0
-        + 16.0 * (x * 0.00051 + 0.6).sin() * (z * 0.00039).cos()
-        + 6.0 * (x * 0.0017 + z * 0.0008).sin()
-        + 3.0 * (z * 0.0027 - x * 0.0011).cos();
-    let ridge = 230.0
-        * (-((x + 11500.0) / 6500.0).powi(2)).exp()
-        * (0.45 + 0.55 * (z * 0.00019 + 0.9).sin().powi(2));
-    let island = (hills + ridge) * coast - 20.0 * (1.0 - coast);
-    // Separate inland BVR theater: broad mountain chains with navigable valleys.
-    // Smoothly vanishes around the original airfield and close-range scenarios.
-    let theater = ((x - 35000.) / 35000.).clamp(0., 1.);
-    let ridges = (0.5 + 0.5 * (x * 0.000075 + z * 0.000018).sin()).powi(4);
-    let mountains = theater * (450. + 2600. * ridges * (0.6 + 0.4 * (z * 0.000052).cos().powi(2)));
-    let island = island + mountains;
-    let detail = 0.30 * (x * 0.043 + z * 0.017).sin() * (z * 0.031 - x * 0.012).cos()
-        + 1.4 * (x * 0.009 + z * 0.006).sin() * (z * 0.007).cos();
-    let d = ((x.abs() - 310.0).max(0.0).powi(2) + (z.abs() - 1850.0).max(0.0).powi(2)).sqrt();
-    let blend = (d / 700.0).clamp(0.0, 1.0);
-    let h = RUNWAY_HEIGHT * (1.0 - blend) + (island + detail) * blend;
-    // A broad, obstacle-free meadow offers a discoverable off-airfield landing site.
-    let edge = ((x - 6500.).abs() - 210.)
-        .max(0.)
-        .max(((z - 3200.).abs() - 1000.).max(0.));
-    let meadow = 1. - (edge / 320.).clamp(0., 1.);
-    let meadow = meadow * meadow * (3. - 2. * meadow);
-    h * (1. - meadow) + 62. * meadow
+pub fn contact_height_at(position:DVec3)->f64 {
+    if !crate::environment::real(){return terrain_height(position.x,position.z).max(0.);}
+    let(h,_,water,_)=crate::environment::active().raw(position);water.unwrap_or(h)
+}
+/// Top surface used by non-buoyant contacts, LOS and impact queries.
+pub fn contact_height(x:f64,z:f64)->f64 {
+    if !crate::environment::real(){return terrain_height(x,z).max(0.);}
+    let (h,_,water,_)=crate::environment::active().raw(crate::environment::point(x,z,0.,planet_radius()));
+    water.unwrap_or(h)
+}
+pub fn terrain_height(x:f64,z:f64)->f64 {
+    // One immutable snapshot per process; revision is part of the exact memo key.
+    thread_local! {static LAST:std::cell::Cell<(u64,u64,u64,f64)>=const{std::cell::Cell::new((0,u64::MAX,u64::MAX,0.))};}
+    let env=crate::environment::active();let key=(env.revision,x.to_bits(),z.to_bits());
+    let (r,lx,lz,h)=LAST.get();if (r,lx,lz)==key{return h;}
+    let h=env.height_xz(x,z);LAST.set((key.0,key.1,key.2,h));h
 }
 
 /// Approximate allocation of the existing aircraft-level F-22 loads for the
@@ -937,7 +918,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
 
     // Drag follows the actual deployment rather than changing at the G key press.
     let gear_drag=if sr71{0.}else{0.022*f.gear_extension};
-    let windmill=if sr71{(0..2).filter(|&i|!f.engine||!f.systems.engine_on[i]||(!f.infinite_fuel&&f.fuel<=0.)).count()as f64*crate::aircraft::sr71::flight::config::AERO.windmill_drag_per_engine}else{0.};
+    let windmill=0.; // SR-71 windmilling/spillage drag is applied at each inlet by propulsion.
     coefficients.parasite += gear_drag+windmill;
     coefficients.drag += gear_drag+windmill;
     let battle_drag = 0.012 * (1.0 - f.damage.surfaces.iter().take(crate::aircraft::count(f.aircraft)).sum::<f64>() / crate::aircraft::count(f.aircraft) as f64)
@@ -954,8 +935,8 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     let forward = f.forward();
     let right = f.orientation * DVec3::X;
     let drag = q * wing_area * coefficients.drag;
-    f.spool += (f.throttle - f.spool) * (1.0 - (-dt / 0.8).exp());
-    let (installed_thrust, burner) = if f.aircraft == crate::aircraft::Aircraft::F22 {
+    if !sr71 {f.spool += (f.throttle - f.spool) * (1.0 - (-dt / 0.8).exp());}
+    let (installed_thrust, burner) = if sr71 {(0.,0.)}else if f.aircraft == crate::aircraft::Aircraft::F22 {
         crate::aircraft::raptor::flight_model::installed(f)
     } else if custom {crate::aircraft::jet_output(f.aircraft,f.spool,rho,f.mach)}else{crate::propulsion::jet_output(f.spool, rho, f.mach)};
     f.thrust = installed_thrust
@@ -965,7 +946,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
             0.0
         };
     if custom && f.engine && (f.fuel>0.||f.infinite_fuel){f.thrust=installed_thrust*(0..spec.engines).map(|i|f.systems.engines[i]*if f.systems.engine_on[i]{1.}else{0.}).sum::<f64>()/spec.engines as f64;}
-    f.fuel = if f.infinite_fuel {
+    f.fuel = if sr71 || f.infinite_fuel {
         f.fuel
     } else {
         let fuel_rate = if sr71 {crate::aircraft::sr71::flight::fuel_flow(f)}else if f.aircraft == crate::aircraft::Aircraft::F22 {
@@ -980,11 +961,11 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     let mut aero = if sr71 {f.orientation*(f.systems.sr71.airframe.base.force-b.normalize_or_zero()*(q*wing_area*(coefficients.drag-f.systems.sr71.airframe.coefficients.drag)))}else{crate::aerodynamics::force(right, air, q * wing_area, coefficients)};
     let (thrust, engine_moment) = if custom {
         let (body,moment,_) = crate::aircraft::propulsion(f,dt,rho,f.mach);
-        f.thrust=body.length();
+        if !sr71 {f.thrust=body.length();}
         (f.orientation*body,moment)
     } else {(forward*f.thrust,DVec3::ZERO)};
     let omega = rotation();
-    let gravity = -up * MU / f.position.length_squared();
+    let gravity = -up * planet_mu() / f.position.length_squared();
     let rotational = -2.0 * omega.cross(f.velocity) - omega.cross(omega.cross(f.position));
     let sun = e.sun_direction() * e.sun_distance();
     let ds = sun - f.position;
@@ -1282,7 +1263,7 @@ fn simulate_step(f: &mut Flight, e: &Environment, dt: f64) {
     // suspension before its stops engaged, silently removing tyre normal load.
     let max_compression = crate::collision::GEAR_TRAVEL + 0.15;
     if contact && f.altitude() < ground + clearance - max_compression {
-        f.position = f.position.normalize() * (RADIUS + ground + clearance - max_compression);
+        f.position = f.position.normalize() * (planet_radius() + ground + clearance - max_compression);
         let vn = (f.velocity-crate::carrier::ground_velocity(f,f.position)).dot(up);
         if vn < 0.0 {
             f.velocity -= up * vn * 0.8;
@@ -1634,7 +1615,7 @@ mod tests {
         assert!((f.heading() - 184.59).abs() < 0.1);
         f.orientation = DQuat::from_rotation_z(std::f64::consts::PI);
         assert!((f.roll().abs() - std::f64::consts::PI).abs() < 1e-6);
-        f.position = rotation().normalize() * (RADIUS + 1000.0);
+        f.position = rotation().normalize() * (planet_radius() + 1000.0);
         let basis = crate::world::frame(&f);
         assert!(basis.is_finite() && f.heading().is_finite());
         assert!((basis.length() - 1.0).abs() < 1e-10);
@@ -1733,7 +1714,7 @@ mod tests {
     #[test]
     fn spherical_surface() {
         let p = surface_point(10000.0, -8000.0, 300.0);
-        assert!((p.length() - RADIUS - 300.0).abs() < 1e-6);
+        assert!((p.length() - planet_radius() - 300.0).abs() < 1e-6);
     }
     #[test]
     fn orbital_period() {

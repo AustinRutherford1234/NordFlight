@@ -1,0 +1,11 @@
+{
+  "mean": 15.388569999999879,
+  "p50": 15.25,
+  "p95": 16.0,
+  "p99": 16.625,
+  "rendering_included": false,
+  "samples": 6000,
+  "steady_points": 150,
+  "transient_cases": 30,
+  "unit": "microseconds per twin-engine 240 Hz tick (four 480 Hz component steps)"
+}

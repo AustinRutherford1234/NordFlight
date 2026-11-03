@@ -166,7 +166,7 @@ pub fn step(f: &mut Flight, e: &Environment, dt: f64) {
     let force = aero + f.forward() * f.thrust;
     let omega = rotation();
     let acc = force / m
-        - f.position * (MU / f.position.length().powi(3))
+        - f.position * (planet_mu() / f.position.length().powi(3))
         - 2. * omega.cross(f.velocity)
         - omega.cross(omega.cross(f.position));
     f.g_load = force.dot(f.orientation * DVec3::Y) / (m * 9.80665);

@@ -1,9 +1,27 @@
 #import bevy_pbr::{mesh_functions,forward_io::{Vertex,VertexOutput,FragmentOutput},view_transformations::position_world_to_clip,mesh_view_bindings::view,pbr_fragment::pbr_input_from_standard_material,pbr_functions::{apply_pbr_lighting,main_pass_post_lighting_processing}}
-struct Parameters {center:vec4<f32>,detail:vec4<f32>,axis_x:vec4<f32>,axis_z:vec4<f32>,waves:array<vec4<f32>,24>,phases:array<vec4<f32>,24>}
+struct Parameters {center:vec4<f32>,water_grid:vec4<f32>,water_coarse:vec4<f32>,detail:vec4<f32>,axis_x:vec4<f32>,axis_z:vec4<f32>,waves:array<vec4<f32>,24>,phases:array<vec4<f32>,24>}
 @group(#{MATERIAL_BIND_GROUP}) @binding(100) var<uniform> ocean:Parameters;
 @group(#{MATERIAL_BIND_GROUP}) @binding(101) var ripple:texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(102) var ripple_sampler:sampler;
-fn strength(p:vec2<f32>)->f32 {return 0.10+0.90*(1.0-smoothstep(6500.0,7000.0,abs(p.x-20000.0)))*(1.0-smoothstep(-8500.0,-8000.0,p.y));}
+@group(#{MATERIAL_BIND_GROUP}) @binding(103) var water_map:texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(104) var coarse_map:texture_2d<f32>;
+fn filtered_water(map:texture_2d<f32>,uv:vec2<f32>)->vec2<f32>{
+    let dims=vec2<i32>(textureDimensions(map));let i=vec2<i32>(floor(uv));let t=fract(uv);
+    let a=textureLoad(map,clamp(i,vec2<i32>(0),dims-1),0).rg;
+    let b=textureLoad(map,clamp(i+vec2<i32>(1,0),vec2<i32>(0),dims-1),0).rg;
+    let c=textureLoad(map,clamp(i+vec2<i32>(0,1),vec2<i32>(0),dims-1),0).rg;
+    let d=textureLoad(map,clamp(i+vec2<i32>(1,1),vec2<i32>(0),dims-1),0).rg;
+    let result=mix(mix(a,b,t.x),mix(c,d,t.x),t.y);
+    return vec2<f32>(result.x/max(result.y,0.001),result.y);
+}
+fn water(p:vec2<f32>)->vec2<f32>{
+    if ocean.water_grid.w<0.5{return vec2<f32>(0.0,1.0);}
+    let uv=(p-ocean.water_grid.xy)/ocean.water_grid.z;
+    if all(uv>vec2<f32>(1.0))&&all(uv<vec2<f32>(382.0)){return filtered_water(water_map,uv);}
+    return filtered_water(coarse_map,(p-ocean.water_coarse.xy)/ocean.water_coarse.z);
+}
+
+fn strength(p:vec2<f32>)->f32 {if ocean.water_grid.w>0.5{return 0.65;}return 0.10+0.90*(1.0-smoothstep(6500.0,7000.0,abs(p.x-20000.0)))*(1.0-smoothstep(-8500.0,-8000.0,p.y));}
 @vertex fn vertex(v:Vertex)->VertexOutput {
     var out:VertexOutput;
     let model=mesh_functions::get_world_from_local(v.instance_index);
@@ -23,18 +41,23 @@ fn strength(p:vec2<f32>)->f32 {return 0.10+0.90*(1.0-smoothstep(6500.0,7000.0,ab
     let weight=strength(absolute);
     let grad=vec2<f32>(strength(absolute+vec2<f32>(1.0,0.0))-strength(absolute-vec2<f32>(1.0,0.0)),strength(absolute+vec2<f32>(0.0,1.0))-strength(absolute-vec2<f32>(0.0,1.0)))*0.5;
     slope=slope*weight+height*grad;
-    let position=vec3<f32>(xz.x,curve,xz.y)+radial*(0.12+height*weight);
+    let position=vec3<f32>(xz.x,curve,xz.y)+radial*(water(absolute).x+0.12+height*weight);
     out.world_position=mesh_functions::mesh_position_local_to_world(model,vec4<f32>(position,1.0));
     out.position=position_world_to_clip(out.world_position.xyz);
     out.world_normal=mesh_functions::mesh_normal_local_to_world(normalize(radial-vec3<f32>(slope.x,0.0,slope.y)),v.instance_index);
     out.uv=absolute;
-    out.color=vec4<f32>(height*weight,curvature*weight,weight,1.0);
+    out.color=vec4<f32>(height*weight,curvature*weight,weight,water(absolute).x);
 #ifdef VERTEX_OUTPUT_INSTANCE_INDEX
     out.instance_index=v.instance_index;
 #endif
     return out;
 }
 @fragment fn fragment(in:VertexOutput,@builtin(front_facing) is_front:bool)->FragmentOutput {
+    let actual_water=water(in.uv);
+    // A ring triangle may span unrelated lakes at different elevations. Never
+    // draw the interpolated sheet above another lake or the sea; finer rings
+    // resolve the boundary as the camera approaches.
+    if actual_water.y<0.5||abs(actual_water.x-in.color.w)>4.0{discard;}
     var clean=in;clean.color=vec4<f32>(1.0);
     var pbr=pbr_input_from_standard_material(clean,is_front);
     let distance=length(view.world_position-in.world_position.xyz);

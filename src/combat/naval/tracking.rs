@@ -91,7 +91,7 @@ pub(super) fn update(m: &mut Round, target: Option<guidance::Contact>, support: 
 #[cfg(test)] mod tests {
  use super::*;
  fn scene(kind:Kind,range:f64)->(Round,guidance::Contact) {
-  let p=DVec3::Y*(RADIUS+8000.);let velocity=-DVec3::Z*500.;
+  let p=DVec3::Y*(planet_radius()+8000.);let velocity=-DVec3::Z*500.;
   let t=guidance::Contact{position:p-DVec3::Z*range,velocity:DVec3::Z*180.,forward:DVec3::Z,
    throttle:1.,engine:true,alive:true,decoy:false,strength:1.};
   let mut m=Round{sam:Default::default(),id:1,source:TargetId::Ship(1),target:TargetId::Player,kind,position:p,previous:p,velocity,

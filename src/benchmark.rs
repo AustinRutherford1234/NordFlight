@@ -253,7 +253,7 @@ pub fn exercise(
         let agl = number("NORD_TERRAIN_AGL", 5.);
         let (x,z) = terrain_origin();
         let z = z + wall * number("NORD_TERRAIN_SPEED", 100.);
-        f.position = crate::terrain::point(x, z, terrain_height(x, z).max(0.) + agl);
+        f.position = crate::terrain::point(x, z, contact_height(x, z) + agl);
         f.paused = true;
         if wall >= session.next_sample {
             session.next_sample = wall + 1.;

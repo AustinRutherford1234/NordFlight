@@ -535,7 +535,7 @@ mod tests {
         let e = Environment { wind_enabled: false, ..default() };
         crate::physics::simulate(&mut f, &e, 1. / 120.);
         let acc = (f.velocity - before) * 120.;
-        (acc.y + before.length_squared() / (RADIUS + height), -acc.z, f.rates.x * 120.)
+        (acc.y + before.length_squared() / (planet_radius() + height), -acc.z, f.rates.x * 120.)
     }
     fn speed_trim(height: f64, mach: f64, power: f64) -> (f64, f64, f64) {
         let trim_pitch = |alpha| {

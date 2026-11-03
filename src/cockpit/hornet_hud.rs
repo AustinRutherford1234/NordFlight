@@ -208,11 +208,11 @@ pub fn gun_impact(f: &Flight) -> Option<(DVec3, f64)> {
         let old = p;
         velocity -= p.normalize() * 9.81 * 0.01;
         p += velocity * 0.01;
-        if p.length() - RADIUS <= terrain_height(p.x, p.z).max(0.) {
+        if p.length() - planet_radius() <= crate::physics::contact_height_at(p) {
             let (mut a, mut b) = (old, p);
             for _ in 0..16 {
                 let m = (a + b) * 0.5;
-                if m.length() - RADIUS > terrain_height(m.x, m.z).max(0.) {
+                if m.length() - planet_radius() > crate::physics::contact_height_at(m) {
                     a = m
                 } else {
                     b = m
@@ -266,7 +266,7 @@ pub fn draw(data: &mut [u8], f: &Flight, combat: &Combat) {
     }
     let cas = calibrated_speed(f.mach, f.pressure) * 1.943844;
     let radalt =
-        (f.position.length() - RADIUS - crate::carrier::ground(f, f.position)).max(0.) * 3.28084;
+        (f.position.length() - planet_radius() - crate::carrier::ground(f, f.position)).max(0.) * 3.28084;
     let valid_radar = radalt < 5000.
         && f.roll().abs() < 60f64.to_radians()
         && f.pitch().abs() < 45f64.to_radians();
@@ -761,7 +761,7 @@ mod tests {
         f.orientation = bevy::math::DQuat::from_rotation_x(-0.15);
         f.velocity = f.forward() * 150.;
         let (p, t) = gun_impact(&f).unwrap();
-        assert!((p.length() - RADIUS - terrain_height(p.x, p.z).max(0.)).abs() < 0.002);
+        assert!((p.length() - planet_radius() - crate::physics::contact_height_at(p)).abs() < 0.002);
         assert!(t > 0. && t < 2.5);
         f.orientation = bevy::math::DQuat::from_rotation_x(0.5);
         f.velocity = f.forward() * 150.;

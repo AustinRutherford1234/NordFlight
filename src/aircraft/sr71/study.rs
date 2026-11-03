@@ -10,7 +10,7 @@ use std::{
 pub fn airborne(alt: f64, speed: f64) -> Flight {
     let mut f = Flight::approach();
     let up = f.up();
-    f.position = up * (RADIUS + alt);
+    f.position = up * (planet_radius() + alt);
     f.velocity = (f.forward() - up * f.forward().dot(up)).normalize() * speed;
     f.gear = false;
     f.gear_extension = 0.;

@@ -1,7 +1,8 @@
 //! Shared missile sensor, navigation, guidance and acceleration-control model.
 //! Coefficients are explicit gameplay assumptions, not specifications of a real missile.
+use crate::physics::contact_height;
 use super::{Missile, Weapon};
-use crate::physics::{MU, RADIUS, atmosphere, terrain_height};
+use crate::physics::{planet_mu, planet_radius, atmosphere};
 use bevy::math::{DQuat, DVec3};
 mod dynamics;
 
@@ -245,14 +246,14 @@ fn terrain_visible_uncached(observer: DVec3, point: DVec3) -> bool {
     let delta = point - observer;
     let closest =
         observer + delta * (-observer.dot(delta) / delta.length_squared().max(1.0)).clamp(0.0, 1.0);
-    if closest.length() < RADIUS {
+    if closest.length() < planet_radius() {
         return false;
     }
     // Sample the terrain along the LOS, including endpoints; curved planet uses f64.
     let steps = (delta.length() / 2500.).ceil().clamp(8., 96.) as usize;
     (0..=steps).all(|i| {
         let p = observer + delta * (i as f64 / steps as f64);
-        p.length() - RADIUS > terrain_height(p.x, p.z).max(0.0) + 1.0
+        p.length() - planet_radius() > crate::physics::contact_height_at(p) + 1.0
     })
 }
 #[cfg(test)]
@@ -639,8 +640,8 @@ fn fly_profile(
     } else {
         Mode::Active
     };
-    let gravity = -m.position.normalize() * MU / m.position.length_squared();
-    let (_, _, rho, sound) = atmosphere(m.position.length() - RADIUS);
+    let gravity = -m.position.normalize() * planet_mu() / m.position.length_squared();
+    let (_, _, rho, sound) = atmosphere(m.position.length() - planet_radius());
     let duration = if m.gnc.long_range {
         24.0
     } else {
@@ -712,8 +713,8 @@ fn fly_profile(
             // before active acquisition, rather than dropping a bias at one range.
             let up = m.position.normalize();
             let vertical = (up - velocity_axis * up.dot(velocity_axis)).normalize_or_zero();
-            let altitude = m.position.length() - RADIUS;
-            let target_altitude = m.gnc.estimate.length() - RADIUS;
+            let altitude = m.position.length() - planet_radius();
+            let target_altitude = m.gnc.estimate.length() - planet_radius();
             let blend = smoothstep((estimated_range - 18000.0) / 22000.0);
             let height = ((estimated_range - 18000.0) * 0.24).clamp(0.0, 14000.0);
             let ceiling = (target_altitude + height).min(26000.0);
@@ -731,8 +732,8 @@ fn fly_profile(
         } else if !efficient && m.gnc.long_range && range > 25000. {
             // Retained exclusively as the matched diagnostic reference.
             let up = m.position.normalize();
-            let ceiling = (contact.position.length() - RADIUS + range * 0.09).min(19000.);
-            let loft = ((ceiling - (m.position.length() - RADIUS)) * 0.004).clamp(-6., 12.);
+            let ceiling = (contact.position.length() - planet_radius() + range * 0.09).min(19000.);
+            let loft = ((ceiling - (m.position.length() - planet_radius())) * 0.004).clamp(-6., 12.);
             command += (up - velocity_axis * up.dot(velocity_axis)) * loft;
         }
         command = command.clamp_length_max(aero_limit);
@@ -780,7 +781,7 @@ fn fly_profile(
         - velocity_axis * (m.gnc.drag / m.gnc.mass))
         * dt;
     m.position += m.velocity * dt;
-    m.gnc.specific_energy = 0.5 * m.velocity.length_squared() - MU / m.position.length();
+    m.gnc.specific_energy = 0.5 * m.velocity.length_squared() - planet_mu() / m.position.length();
     m.gnc.peak_speed = m.gnc.peak_speed.max(m.velocity.length());
     m.trail_clock += dt;
     if burning && m.trail_clock >= 0.075 {
@@ -804,9 +805,9 @@ fn trajectory_trial(
     efficient: bool,
     dt: f64,
 ) -> serde_json::Value {
-    let origin = DVec3::Y * (RADIUS + altitude);
+    let origin = DVec3::Y * (planet_radius() + altitude);
     let mut contact = Contact {
-        position: (origin + DVec3::Z * range).normalize() * (RADIUS + altitude),
+        position: (origin + DVec3::Z * range).normalize() * (planet_radius() + altitude),
         velocity: DVec3::Z * if retreat { 280.0 } else { -280.0 },
         forward: if retreat { DVec3::Z } else { -DVec3::Z },
         throttle: 0.8,
@@ -844,7 +845,7 @@ fn trajectory_trial(
     for _ in 0..(210.0 / dt) as usize {
         let previous = contact.position - m.position;
         contact.position += contact.velocity * dt;
-        contact.position = contact.position.normalize() * (RADIUS + altitude);
+        contact.position = contact.position.normalize() * (planet_radius() + altitude);
         let up = contact.position.normalize();
         contact.velocity = (contact.velocity - up * contact.velocity.dot(up)).normalize() * 280.0;
         fly_profile(&mut m, contact, support, -DVec3::Y, dt, efficient);
@@ -853,9 +854,9 @@ fn trajectory_trial(
             closest = distance;
             encounter_speed = m.velocity.length();
         }
-        peak_altitude = peak_altitude.max(m.position.length() - RADIUS);
+        peak_altitude = peak_altitude.max(m.position.length() - planet_radius());
         drag_loss += m.gnc.drag / m.gnc.mass * m.velocity.length() * dt;
-        if closest < 12.0 || m.position.length() < RADIUS || !m.alive {
+        if closest < 12.0 || m.position.length() < planet_radius() || !m.alive {
             break;
         }
     }
@@ -872,7 +873,7 @@ pub fn release_study() {
     for (kind, aim9x, label) in [(Weapon::Heat, false, "IR"), (Weapon::Heat, true, "AIM-9X"), (Weapon::Radar, false, "Radar")] {
         for altitude in [3000., 12000.] {
             for alpha in [0_f64, 20., 45.] {
-                let position = DVec3::Y * (RADIUS + altitude);
+                let position = DVec3::Y * (planet_radius() + altitude);
                 let mut contact = Contact { position: position - DVec3::Z * 5000., velocity: -DVec3::Z * 230.,
                     forward: -DVec3::Z, throttle: 0.8, engine: true, alive: true, decoy: false, strength: 1. };
                 let wind = DVec3::new(12., 0., 0.);
@@ -923,7 +924,7 @@ pub fn study() {
         } else {
             Weapon::Radar
         };
-        let origin = DVec3::Y * (RADIUS + 4000.0);
+        let origin = DVec3::Y * (planet_radius() + 4000.0);
         let range = if kind == Weapon::Heat {
             5000.0
         } else {
@@ -1013,8 +1014,8 @@ pub fn study() {
                 hit = true;
                 break;
             }
-            if missile.position.length() - RADIUS
-                < terrain_height(missile.position.x, missile.position.z).max(0.0)
+            if missile.position.length() - planet_radius()
+                < crate::physics::contact_height_at(missile.position)
                 || !missile.alive
             {
                 break;
@@ -1028,7 +1029,7 @@ pub fn study() {
     }
     let mut countermeasures = Vec::new();
     for throttle in [0.65, 1.0] {
-        let position = DVec3::Y * (RADIUS + 3000.0);
+        let position = DVec3::Y * (planet_radius() + 3000.0);
         let aircraft = Contact {
             position: position + DVec3::Z * 1800.0,
             velocity: DVec3::Z * 230.0,
@@ -1118,7 +1119,7 @@ fn ir_evasion_trial(seed: u64, flares: bool, turn: bool) -> (bool, usize, usize)
     ir_evasion_trial_dt(seed, flares, turn, 1.0 / 120.0)
 }
 fn ir_evasion_trial_dt(seed: u64, flares: bool, turn: bool, dt: f64) -> (bool, usize, usize) {
-    let origin = DVec3::Y * (RADIUS + 3000.0);
+    let origin = DVec3::Y * (planet_radius() + 3000.0);
     let mut aircraft = Contact {
         position: origin + DVec3::Z * 1800.0,
         velocity: DVec3::Z * 230.0,
@@ -1222,7 +1223,7 @@ fn ir_evasion_trial_dt(seed: u64, flares: bool, turn: bool, dt: f64) -> (bool, u
         if nearest.length() < m.kind.fuse() {
             return (true, diverted, returns);
         }
-        if m.position.length() - RADIUS < 0.0 {
+        if m.position.length() - planet_radius() < 0.0 {
             break;
         }
     }
@@ -1547,7 +1548,7 @@ mod tests {
         assert!(retain_decoy(&radar, c, decoy, 0.9, -DVec3::Y));
     }
     fn scene(kind: Weapon, range: f64) -> (Missile, Contact, Support) {
-        let position = DVec3::Y * (RADIUS + 3000.0);
+        let position = DVec3::Y * (planet_radius() + 3000.0);
         let contact = Contact {
             position: position + DVec3::Z * range,
             velocity: DVec3::Z * 230.0,

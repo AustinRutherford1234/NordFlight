@@ -1078,7 +1078,7 @@ pub fn draw(data: &mut [u8], c: &Combat, f: &Flight, tactical: bool) {
                 "T{:02} {:.0}KM {:.1}K AGE{:.0}",
                 c.selected + 1,
                 r.length() / 1000.,
-                (estimate.length() - RADIUS) / 1000.,
+                (estimate.length() - planet_radius()) / 1000.,
                 c.clock - tr.seen
             ),
             38,

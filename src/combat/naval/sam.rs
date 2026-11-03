@@ -67,7 +67,7 @@ fn mass(s: Spec, t: f64) -> f64 {
     s.wet - (s.wet - s.dry) * (t / s.burn).clamp(0., 1.)
 }
 fn authority(s: Spec, p: DVec3, v: DVec3, t: f64) -> f64 {
-    let rho = atmosphere((p.length() - RADIUS).max(0.)).2;
+    let rho = atmosphere((p.length() - planet_radius()).max(0.)).2;
     (0.5 * rho * v.length_squared() * s.wing * 2.5 / mass(s, t)).min(s.max_g * 9.81)
 }
 pub(super) fn available_g(m: &Round) -> f64 {
@@ -139,7 +139,7 @@ pub(super) fn advance(m: &mut Round, track: Option<(DVec3, DVec3)>, dt: f64) {
         let lift = (m.sam.acceleration - direction * m.sam.acceleration.dot(direction))
             .clamp_length_max(limit);
         m.sam.acceleration = lift;
-        let (_, _, rho, sound) = atmosphere((m.position.length() - RADIUS).max(0.));
+        let (_, _, rho, sound) = atmosphere((m.position.length() - planet_radius()).max(0.));
         let q = 0.5 * rho * speed * speed;
         let mach = speed / sound;
         let cd = 0.32 + 0.28 * (-((mach - 1.1) / 0.32).powi(2)).exp();
@@ -290,7 +290,7 @@ pub(super) fn prepare_review(mode: &str, f: &mut Flight, c: &mut Combat, v: &mut
 mod tests {
     use super::*;
     fn round(kind: Kind, speed: f64, age: f64) -> Round {
-        let p = DVec3::Y * (RADIUS + 10000.);
+        let p = DVec3::Y * (planet_radius() + 10000.);
         let v = DVec3::NEG_Z * speed;
         Round {
             sam: Default::default(),

@@ -120,7 +120,7 @@ fn trim_envelope_register() {
 fn airborne(alt: f64, speed: f64) -> Flight {
     let mut f = Flight::approach();
     let up = f.up();
-    f.position = up * (RADIUS + alt);
+    f.position = up * (planet_radius() + alt);
     f.velocity = (f.forward() - up * f.forward().dot(up)).normalize() * speed;
     f.gear = false;
     f.gear_extension = 0.;
@@ -236,6 +236,9 @@ fn engine_shutdown_and_asymmetry_have_no_free_power() {
     f.spool = 1.;
     f.systems.engine_on = [true, false];
     f.systems.engines = [1.; 2];
+    // Warm initialization is explicit; changing a visual spool proxy must not
+    // restart a physically stopped shaft in one integration step.
+    super::engine::initialize(&mut f);
     let (_, moment, _) = crate::aircraft::propulsion(&mut f, 0.01, 0.2, 1.2);
     assert!(moment.y < 0.);
 }
@@ -438,4 +441,32 @@ fn incidence_wrap_does_not_inject_a_full_revolution_vortex_transient() {
         state.vortex_lift
     );
     assert!(coeff.lift.is_finite() && coeff.drag >= 0.);
+}
+
+#[test]
+fn engine_fuel_accounting_and_attachment_loads_match_partitioned_steps() {
+    let initial=airborne(23000.,900.);
+    let mut results=Vec::new();
+    for hz in [60,120,240] {
+        let mut f=initial.clone();f.infinite_fuel=false;
+        super::engine::initialize(&mut f);
+        let fuel=f.fuel;let mut consumed=0.;let mut impulse=bevy::math::DVec3::ZERO;
+        let (_,_,rho,c)=atmosphere(f.altitude());let mach=f.velocity.length()/c;
+        for _ in 0..hz*2 {
+            let (force,moment,_)=crate::aircraft::propulsion(&mut f,1./hz as f64,rho,mach);
+            assert!(force.is_finite()&&moment.is_finite());
+            impulse+=force/hz as f64;consumed+=f.systems.sr71.propulsion.fuel_used_kg;
+        }
+        assert!((fuel-f.fuel-consumed).abs()<1e-7);
+        assert!(consumed>0.);results.push((f.fuel,impulse));
+    }
+    for result in &results[1..] {assert!((result.0-results[0].0).abs()<1e-7);assert!(result.1.distance(results[0].1)<1e-6);}
+    let mut infinite=initial;infinite.infinite_fuel=true;let before=infinite.fuel;
+    crate::aircraft::propulsion(&mut infinite,0.1,0.06,3.);
+    assert_eq!(infinite.fuel,before);assert!(infinite.systems.sr71.propulsion.fuel_used_kg>0.);
+    infinite.fuel=0.001;infinite.infinite_fuel=false;
+    let (force,_,_)=crate::aircraft::propulsion(&mut infinite,0.1,0.06,3.);
+    assert!(force.is_finite());assert_eq!(infinite.fuel,0.);
+    assert!((infinite.systems.sr71.propulsion.fuel_used_kg-0.001).abs()<1e-9);
+    assert_eq!(infinite.thrust,0.);
 }

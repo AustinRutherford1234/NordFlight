@@ -1884,15 +1884,16 @@ pub fn update(
             if *a != f.aircraft {
                 continue;
             }
-            let active =
-                f.engine && f.thrust > 1. && f.systems.engines[*i] > 0.1 && f.systems.engine_on[*i];
+            let sr_engine=if *a==Aircraft::Sr71 && f.systems.sr71.propulsion.initialized{Some(&f.systems.sr71.propulsion.sides[*i])}else{None};
+            let active = f.engine && f.thrust > 1. && f.systems.engines[*i] > 0.1 && f.systems.engine_on[*i] && sr_engine.is_none_or(|e|e.mode==crate::aircraft::sr71::flight::engine::state::Mode::Running&&e.thrust_n>1.);
             *v = if active {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
             };
-            let wet = ((f.spool - 0.88) / 0.12).clamp(0., 1.) as f32;
-            let length = 0.6 + f.spool as f32 * 0.8 + wet * 4.;
+            let power=sr_engine.map_or(f.spool,|e|e.visual_power());
+            let wet = sr_engine.map_or(((f.spool-0.88)/0.12).clamp(0.,1.),|e|e.afterburner_fraction) as f32;
+            let length = 0.6 + power as f32 * 0.8 + wet * 4.;
             let l = *layer as f32;
             let motion = crate::plume_motion::sample(f.elapsed, (*i * 37 + *layer) as u32);
             if *a == Aircraft::F22 {

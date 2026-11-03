@@ -1,0 +1,134 @@
+[
+  {
+    "case": "free_decay",
+    "final_energy_j": 1.0474346144136484e-25,
+    "finite": true,
+    "hz": 240,
+    "initial_energy_j": 2716.1142928638837,
+    "peak_bend_m": 0.09900793626341135,
+    "peak_force_n": 0.0,
+    "peak_root_strain": 0.0,
+    "peak_root_stress_pa": 0.0
+  },
+  {
+    "case": "alpha_doublet",
+    "final_energy_j": 2670.001061669976,
+    "finite": true,
+    "hz": 240,
+    "initial_energy_j": 3937.6622868157533,
+    "peak_bend_m": 0.12200344848286092,
+    "peak_force_n": 847025.9493959394,
+    "peak_root_strain": 0.0023593778390597724,
+    "peak_root_stress_pa": 259531562.29657498
+  },
+  {
+    "case": "landing_flare",
+    "final_energy_j": 2552.050357554953,
+    "finite": true,
+    "hz": 240,
+    "initial_energy_j": 3937.7439246854324,
+    "peak_bend_m": 0.08963256603092941,
+    "peak_force_n": 506201.23910875095,
+    "peak_root_strain": 0.0017722561642321722,
+    "peak_root_stress_pa": 194948178.06553894
+  },
+  {
+    "case": "asymmetric_load",
+    "final_energy_j": 3096.98045301641,
+    "finite": true,
+    "hz": 240,
+    "initial_energy_j": 3937.7439246854324,
+    "peak_bend_m": 0.10796680339956401,
+    "peak_force_n": 593172.08093414,
+    "peak_root_strain": 0.002093466132494307,
+    "peak_root_stress_pa": 230281274.5743738
+  },
+  {
+    "case": "free_decay",
+    "final_energy_j": 1.0474346144138366e-25,
+    "finite": true,
+    "hz": 480,
+    "initial_energy_j": 2719.583876749265,
+    "peak_bend_m": 0.09975026679257117,
+    "peak_force_n": 0.0,
+    "peak_root_strain": 0.0,
+    "peak_root_stress_pa": 0.0
+  },
+  {
+    "case": "alpha_doublet",
+    "final_energy_j": 2667.9567211682297,
+    "finite": true,
+    "hz": 480,
+    "initial_energy_j": 3937.7285759152815,
+    "peak_bend_m": 0.12195566012546523,
+    "peak_force_n": 847493.5141977876,
+    "peak_root_strain": 0.002359480388107127,
+    "peak_root_stress_pa": 259542842.69178396
+  },
+  {
+    "case": "landing_flare",
+    "final_energy_j": 2552.0503509875775,
+    "finite": true,
+    "hz": 480,
+    "initial_energy_j": 3937.738098677072,
+    "peak_bend_m": 0.08963250237115647,
+    "peak_force_n": 506201.23608771234,
+    "peak_root_strain": 0.0017722561642321722,
+    "peak_root_stress_pa": 194948178.06553894
+  },
+  {
+    "case": "asymmetric_load",
+    "final_energy_j": 3096.9804533110278,
+    "finite": true,
+    "hz": 480,
+    "initial_energy_j": 3937.738098677072,
+    "peak_bend_m": 0.10796094476909578,
+    "peak_force_n": 593172.6851782042,
+    "peak_root_strain": 0.0020934661306622566,
+    "peak_root_stress_pa": 230281274.3728482
+  },
+  {
+    "case": "free_decay",
+    "final_energy_j": 1.0474346144131486e-25,
+    "finite": true,
+    "hz": 960,
+    "initial_energy_j": 2720.042218539865,
+    "peak_bend_m": 0.0999373701507899,
+    "peak_force_n": 0.0,
+    "peak_root_strain": 0.0,
+    "peak_root_stress_pa": 0.0
+  },
+  {
+    "case": "alpha_doublet",
+    "final_energy_j": 2667.0717201879615,
+    "finite": true,
+    "hz": 960,
+    "initial_energy_j": 3937.735625997568,
+    "peak_bend_m": 0.12193126376893552,
+    "peak_force_n": 847733.4103570612,
+    "peak_root_strain": 0.0023595369589369712,
+    "peak_root_stress_pa": 259549065.48306683
+  },
+  {
+    "case": "landing_flare",
+    "final_energy_j": 2552.0503469959986,
+    "finite": true,
+    "hz": 960,
+    "initial_energy_j": 3937.7366284513373,
+    "peak_bend_m": 0.08963248632580088,
+    "peak_force_n": 506201.23457354534,
+    "peak_root_strain": 0.0017722561642321722,
+    "peak_root_stress_pa": 194948178.06553894
+  },
+  {
+    "case": "asymmetric_load",
+    "final_energy_j": 3096.980453475123,
+    "finite": true,
+    "hz": 960,
+    "initial_energy_j": 3937.7366284513373,
+    "peak_bend_m": 0.10796372330830362,
+    "peak_force_n": 593174.6887654073,
+    "peak_root_strain": 0.002093466129805925,
+    "peak_root_stress_pa": 230281274.27865177
+  }
+]

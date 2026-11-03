@@ -21,15 +21,17 @@ pub fn terrain_opacity(altitude: f64) -> f32 {
     1.0 - smoothstep(((altitude - 18000.0) / 42000.0) as f32)
 }
 pub fn sky_density(altitude: f64) -> f32 {
+    if matches!(crate::environment::active().preset.planet.atmosphere,crate::environment::AtmosphereProfile::Vacuum){return 0.;}
     1.0 - smoothstep(((altitude - 45000.0) / 50000.0) as f32)
 }
 /// Conservative zero-contribution culling for the existing shell shader. Its
 /// haze alpha is zero below layer height; cloud alpha is zero below 2000 m.
 /// Retain a two-metre margin for CPU/GPU f32 length rounding at Earth radius.
 fn shell_visibility(eye: Vec3, haze: Option<&Haze>, cloud: bool) -> Visibility {
+    if matches!(crate::environment::active().preset.planet.atmosphere,crate::environment::AtmosphereProfile::Vacuum){return Visibility::Hidden;}
     let cutoff = haze.map(|h|h.0).or(cloud.then_some(2000.));
     if std::env::var_os("NORD_EARTH_DRAW_ZERO_ALPHA").is_none()
-        && cutoff.is_some_and(|h|eye.length() < RADIUS as f32 + h - 2.) {
+        && cutoff.is_some_and(|h|eye.length() < planet_radius() as f32 + h - 2.) {
         Visibility::Hidden
     } else { Visibility::Inherited }
 }
@@ -68,7 +70,7 @@ pub fn setup(
         {
             for p in p {
                 for a in p {
-                    *a *= (RADIUS as f32 + height) / (RADIUS as f32 - 80.0);
+                    *a *= (planet_radius() as f32 + height) / (planet_radius() as f32 - 80.0);
                 }
             }
         }
@@ -97,7 +99,7 @@ pub fn setup(
     {
         for point in p {
             let n = Vec3::from(*point).normalize();
-            *point = (n * (RADIUS as f32 + 5200.0)).to_array();
+            *point = (n * (planet_radius() as f32 + 5200.0)).to_array();
         }
     }
     let mut cloud_image = Image::from_buffer(
@@ -202,7 +204,7 @@ pub fn update(
         }
     }
     let light_changed = last.is_none_or(|(light, _, _)| light.distance_squared(sun) >= 1e-7);
-    let cloud_changed = eye.length() - (RADIUS as f32) < 16000.0;
+    let cloud_changed = eye.length() - (planet_radius() as f32) < 16000.0;
     if cached { return; }
     let applied_sun = if light_changed { sun } else { last.unwrap().0 };
     *last = Some((applied_sun, eye, v.map));
@@ -236,10 +238,10 @@ pub fn update(
             .map(|(index, n)| {
                 let n = Vec3::from(*n).normalize();
                 if let Some(haze) = haze {
-                    let view = (eye - n * (RADIUS as f32 + haze.0)).normalize_or_zero();
+                    let view = (eye - n * (planet_radius() as f32 + haze.0)).normalize_or_zero();
                     let mu = n.dot(view).abs();
                     let rim = (1.0 - mu).powi(6) * smoothstep(mu / 0.16);
-                    let outside = smoothstep((eye.length() - RADIUS as f32 - haze.0) / 35000.0);
+                    let outside = smoothstep((eye.length() - planet_radius() as f32 - haze.0) / 35000.0);
                     let column = if haze.0 < 10000.0 {
                         0.035
                     } else if haze.0 < 30000.0 {
@@ -255,8 +257,8 @@ pub fn update(
                     ]
                 } else if clouds.is_some() {
                     let shade = daylight(n.dot(sun));
-                    let near = smoothstep(((eye.length() - RADIUS as f32) - 2000.0) / 12000.0);
-                    let distance = (eye - n * (RADIUS as f32 + 5200.0)).length();
+                    let near = smoothstep(((eye.length() - planet_radius() as f32) - 2000.0) / 12000.0);
+                    let distance = (eye - n * (planet_radius() as f32 + 5200.0)).length();
                     [
                         shade * 0.94,
                         shade * 0.97,
@@ -283,12 +285,12 @@ mod tests {
         let origin=world::render_origin(&f);
         let inverse=world::frame(&f).conjugate();
         let camera_pose=|altitude:f64| Transform::from_translation(
-            (inverse*(bevy::math::DVec3::Y*(RADIUS+altitude)-origin)).as_vec3());
+            (inverse*(bevy::math::DVec3::Y*(planet_radius()+altitude)-origin)).as_vec3());
         let mut materials=Assets::<EarthMaterial>::default();
         let handle=materials.add(EarthMaterial {
             base:StandardMaterial::default(),
             extension:EarthExtension {parameters:Parameters {
-                eye:Vec4::ZERO,sun:Vec4::ZERO,layer:Vec4::new(RADIUS as f32,8000.,0.38,0.)
+                eye:Vec4::ZERO,sun:Vec4::ZERO,layer:Vec4::new(planet_radius() as f32,8000.,0.38,0.)
             },nordic:None}
         });
         app.insert_resource(f).insert_resource(Environment::default())
@@ -316,16 +318,16 @@ mod tests {
         for cutoff in [2000.,8000.,22000.,50000.] {
             let haze=Haze(cutoff,0.38);
             for altitude in [0.,cutoff-3.,cutoff-2.,cutoff,cutoff+1.,cutoff+3000.] {
-                let eye=Vec3::Y*(RADIUS as f32+altitude);
+                let eye=Vec3::Y*(planet_radius() as f32+altitude);
                 let visibility=shell_visibility(eye,Some(&haze),false);
-                let alpha_scale=smoothstep((eye.length()-RADIUS as f32-cutoff)/35000.);
+                let alpha_scale=smoothstep((eye.length()-planet_radius() as f32-cutoff)/35000.);
                 if visibility==Visibility::Hidden {assert_eq!(alpha_scale,0.);}
                 if altitude>=cutoff-2. {assert_eq!(visibility,Visibility::Inherited);}
             }
         }
-        assert_eq!(shell_visibility(Vec3::Y*(RADIUS as f32+500.),None,true),Visibility::Hidden);
-        assert_eq!(shell_visibility(Vec3::Y*(RADIUS as f32+2000.),None,true),Visibility::Inherited);
-        assert_eq!(shell_visibility(Vec3::Y*RADIUS as f32,None,false),Visibility::Inherited);
+        assert_eq!(shell_visibility(Vec3::Y*(planet_radius() as f32+500.),None,true),Visibility::Hidden);
+        assert_eq!(shell_visibility(Vec3::Y*(planet_radius() as f32+2000.),None,true),Visibility::Inherited);
+        assert_eq!(shell_visibility(Vec3::Y*planet_radius() as f32,None,false),Visibility::Inherited);
     }
     #[test]
     fn atmosphere_and_terrain_transitions_are_continuous_and_reversible() {

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "width": 3600,
+  "height": 1800,
+  "source": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/ETOPO_2022_v1_60s_N90W180_surface.tif",
+  "vertical_reference": "mean sea level",
+  "bytes": 12960000
+}

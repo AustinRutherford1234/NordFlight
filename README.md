@@ -307,3 +307,19 @@ Mac packaging defaults to the development profile for quicker iteration; release
 The F/A-18F now uses dedicated six-degree-of-freedom physics, twin-engine states, mass/CG/inertia updates, distributed aerodynamics, estimated flexible modes, and force-based moving-carrier operations. See the [physics evidence and limits](docs/hornet/VALIDATION.md), [parameter register](docs/hornet/PARAMETERS.md), and [carrier controls](docs/CARRIER_OPERATIONS.md). The implementation requires user flight review and does not claim a manufacturer aerodynamic database or production Hornet FBW. The [representative FBW implementation](docs/hornet/FBW.md) adds redundant channels, sensor voting, reconfigurable surface allocation and normal/degraded/direct control while keeping manual flaps, manual launch rotation and pilot-flown approaches.
 
 The F/A-18F now integrates two AIM-9X and six AIM-120, optional three 480-gallon drop tanks through the F6 external-loadout toggle, and 2x flight-control actuator response. **Option+J** drops Hornet tanks; **Option+Shift+J** jettisons all stores. See [Hornet stores and controls](docs/hornet/STORES.md).
+
+### Real terrain and environment presets
+
+The landscape now loads offline elevation/land-cover packs for western Sweden
+and Norwegian mountains, with a coarse global fallback. Mac Balanced renders
+the 3D world at 50% resolution while keeping the UI sharp; change World Resolution
+in Settings → Presentation. Use `--environment scifi-earth --graphics high` for
+the configurable sci-fi example, or `--environment legacy --render-scale 1` for
+the previous terrain reference. Physical environment changes require a restart.
+See [environment setup and architecture](docs/ENVIRONMENT_TERRAIN.md) and
+[validation results](docs/ENVIRONMENT_TERRAIN_VALIDATION.md) for data preparation,
+pack management, limitations and measured performance.
+
+### SR-71 propulsion diagnostics
+
+The SR-71 now uses independent J58-class inlet/core/bleed/ejector dynamics, fuel and ignition states, shaft inertia, nozzle control and condition-driven failures. See the [engine model and validation notes](docs/aircraft/SR71_ENGINE_MODEL_2026-11-03.md) for estimates, controls, headless study commands and limitations.

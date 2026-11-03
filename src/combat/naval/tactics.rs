@@ -86,10 +86,10 @@ pub fn pilots(n: &mut State, c: &mut Combat, f: &Flight, dt: f64) {
             if r.strike_reverse && along< -35000. {r.strike_reverse=false;}
             let target=ship+axis*if r.strike_reverse {-40000.}else{40000.};
             let altitude=if t.position.distance(ship)>envelope::STRIKE_RANGE+40000. && r.stores==BOMBER_MISSILES {10000.}else{8000.};
-            let goal=target.normalize()*(RADIUS+altitude);
+            let goal=target.normalize()*(planet_radius()+altitude);
             ((goal-t.position).normalize_or(-outward),"STRIKE RUN")
         } else {
-            let goal=ship.normalize()*(RADIUS+8000.);
+            let goal=ship.normalize()*(planet_radius()+8000.);
             ((goal-t.position).normalize_or(-outward),"STRIKE")
         };
         let avoid = ai::avoidance_iter(

@@ -19,7 +19,7 @@ pub fn map_axes(f: &Flight, v: &ViewState) -> (Vec3, Vec3, Vec3) {
     let north = if moon {
         space::moon(f.elapsed).2 * -DVec3::Z
     } else {
-        rotation().normalize()
+        pole_axis()
     };
     let north = (world::frame(f).conjugate() * north).as_vec3().normalize();
     let seed = (world::frame(f).conjugate() * DVec3::X).as_vec3();
@@ -32,7 +32,7 @@ pub fn map_focus(f: &Flight, v: &ViewState) -> (DVec3, f64) {
         return (f.position, f.space.body.radius());
     }
     match v.map_target {
-        1 => (DVec3::ZERO, RADIUS),
+        1 => (DVec3::ZERO, planet_radius()),
         2 => (space::moon(f.elapsed).0, space::MOON_RADIUS),
         3 => (DVec3::ZERO, space::MOON_DISTANCE * 0.9),
         _ => (
@@ -1403,7 +1403,7 @@ mod tests {
                     let expected = if target == 2 || (target == 0 && f.space.body == Body::Moon) {
                         space::moon(elapsed).2 * -DVec3::Z
                     } else {
-                        rotation().normalize()
+                        pole_axis()
                     };
                     assert!((world::frame(&f) * north.as_dvec3()).dot(expected) > 0.99999);
                     for yaw in [0.0_f32, 1., 4.] {

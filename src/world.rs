@@ -78,20 +78,9 @@ pub struct Cloud;
 pub struct Starfield;
 
 pub fn geo_to_local(lon: f64, lat: f64, h: f64) -> DVec3 {
-    let lat = lat.to_radians();
-    let lon = lon.to_radians();
-    // Geographic east must follow the positive spin direction. With +Y as
-    // north, east-positive longitude is -Z, not +Z (which mirrored the globe).
-    let p = DVec3::new(lat.cos() * lon.cos(), lat.sin(), -lat.cos() * lon.sin()) * (RADIUS + h);
-    let b = 58.428333_f64.to_radians();
-    let l = 12.711111_f64.to_radians();
-    let up = DVec3::new(b.cos() * l.cos(), b.sin(), -b.cos() * l.sin());
-    let north = DVec3::new(-b.sin() * l.cos(), b.cos(), b.sin() * l.sin());
-    let east = DVec3::new(-l.sin(), 0.0, -l.cos());
-    let forward = north * 184.59_f64.to_radians().cos() + east * 184.59_f64.to_radians().sin();
-    let right = forward.cross(up);
-    DVec3::new(p.dot(right), p.dot(up), p.dot(-forward))
+    crate::environment::geo_to_local(lon,lat,h,crate::environment::planet_radius())
 }
+
 pub fn frame(f: &Flight) -> DQuat {
     render_reference(f).0
 }
@@ -124,7 +113,7 @@ fn render_reference(f: &Flight) -> (DQuat, DVec3) {
                 *last = Some(up);
                 crate::performance::frame_event(crate::performance::EV_REBASE);
             }
-            (frame_for_up(up), up * RADIUS)
+            (frame_for_up(up), up * planet_radius())
         };
         cache.set(Some((key, f.vehicle, rotation, origin)));
         (rotation, origin)
@@ -137,7 +126,7 @@ fn anchor_up(up: DVec3) -> DVec3 {
     if *FOLLOW.get_or_init(|| std::env::var_os("NORD_ANCHOR_REFERENCE").is_some()) {
         return up;
     }
-    let cell = ANCHOR_CELL / RADIUS;
+    let cell = ANCHOR_CELL / planet_radius();
     ((up / cell).round() * cell).normalize()
 }
 fn frame_uncached(f: &Flight) -> DQuat {
@@ -201,6 +190,7 @@ pub fn setup_world(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     f: Res<Flight>,
+    mut surfaces: ResMut<Assets<crate::terrain::material::SurfaceMaterial>>,
 ) {
     // Actual Vänern shoreline from Natural Earth; no claim of a surveyed height map.
     let lakes: Value = serde_json::from_str(include_str!("../assets/lakes.geojson")).unwrap();
@@ -270,7 +260,7 @@ pub fn setup_world(
     if std::env::var_os("NORD_EARTH_CPU").is_some() {
         crate::earth::setup_region(&mut c, &mut meshes, &mut materials, &mut images);
     }
-    crate::terrain::setup(&mut c, &mut meshes, &mut materials, &mut images, &f);
+    crate::terrain::setup(&mut c, &mut meshes, &mut materials, &mut images, &mut surfaces, &f);
     if !crate::ocean::enabled() {
     let water = materials.add(StandardMaterial {
         base_color: Color::srgb(0.025, 0.13, 0.18),
@@ -286,7 +276,7 @@ pub fn setup_world(
         Transform::default(),
         crate::earth::LocalWater,
         WorldObject {
-            position: DVec3::new(0.0, RADIUS + 0.2, 0.0),
+            position: DVec3::new(0.0, planet_radius() + 0.2, 0.0),
             rotation: DQuat::IDENTITY,
         },
     ));
@@ -438,7 +428,7 @@ pub fn setup_world(
         perceptual_roughness: 1.0,
         ..default()
     });
-    for i in 0..26 {
+    for i in 0..if matches!(crate::environment::active().preset.planet.atmosphere,crate::environment::AtmosphereProfile::Vacuum){0}else{26} {
         let x = hash(i * 3 + 100) * 90000.0 - 45000.0;
         let z = hash(i * 11 + 80) * 90000.0 - 45000.0;
         for j in 0..4 {
@@ -545,83 +535,8 @@ fn hash(i: i32) -> f64 {
     let x = (i as f64 * 127.1 + 311.7).sin() * 43758.5453;
     x - x.floor()
 }
-pub(crate) fn terrain_mesh(x: f64, z: f64, size: f64, n: usize, anchor: DVec3) -> Mesh {
-    let mut p = Vec::new();
-    let mut colors = Vec::new();
-    let mut uv = Vec::new();
-    let mut idx = Vec::new();
-    for j in 0..=n {
-        for i in 0..=n {
-            let xx = x + size * i as f64 / n as f64;
-            let zz = z + size * j as f64 / n as f64;
-            let h = terrain_height(xx, zz);
-            p.push(
-                (crate::terrain::point(xx, zz, h) - anchor)
-                    .as_vec3()
-                    .to_array(),
-            );
-            uv.push([xx as f32 * 0.025, zz as f32 * 0.025]);
-            let col = crate::terrain::color(xx, zz, h);
-            colors.push(col);
-        }
-    }
-    for j in 0..n {
-        for i in 0..n {
-            let a = (j * (n + 1) + i) as u32;
-            let b = a + 1;
-            let d = a + (n + 1) as u32;
-            let cc = d + 1;
-            idx.extend([a, d, b, b, d, cc]);
-        }
-    }
-    // Skirts conceal T-junctions where neighboring tiles use different grids.
-    let perimeter: Vec<usize> = (0..=n)
-        .chain((1..=n).map(|j| j * (n + 1) + n))
-        .chain((0..n).rev().map(|i| n * (n + 1) + i))
-        .chain((1..n).rev().map(|j| j * (n + 1)))
-        .collect();
-    let skirt_start = p.len();
-    for &index in &perimeter {
-        let mut vertex = p[index];
-        vertex[1] -= 25.0;
-        p.push(vertex);
-        uv.push(uv[index]);
-        colors.push(colors[index]);
-    }
-    for i in 0..perimeter.len() {
-        let next = (i + 1) % perimeter.len();
-        let a = perimeter[i] as u32;
-        let b = perimeter[next] as u32;
-        let c = (skirt_start + i) as u32;
-        let d = (skirt_start + next) as u32;
-        idx.extend([a, c, b, b, c, d]);
-    }
-    let mut m = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
-    );
-    m.insert_attribute(Mesh::ATTRIBUTE_POSITION, p);
-    m.insert_attribute(Mesh::ATTRIBUTE_UV_0, uv);
-    m.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
-    m.insert_indices(Indices::U32(idx));
-    m.compute_smooth_normals();
-    // Keep skirt faces out of visible edge normals, including at LOD changes.
-    if let Some(bevy::mesh::VertexAttributeValues::Float32x3(normals)) =
-        m.attribute_mut(Mesh::ATTRIBUTE_NORMAL)
-    {
-        for j in 0..=n {
-            for i in 0..=n {
-                let xx = x + size * i as f64 / n as f64;
-                let zz = z + size * j as f64 / n as f64;
-                normals[j * (n + 1) + i] =
-                    crate::terrain::normal(crate::terrain::point(xx, zz, 0.))
-                        .as_vec3()
-                        .to_array();
-            }
-        }
-    }
-    m
-}
+pub(crate) use crate::terrain::mesh::terrain_mesh;
+
 fn terrain_water_mesh(size: f64, n: usize) -> Mesh {
     let mut p = Vec::new();
     let mut idx = Vec::new();
@@ -632,7 +547,7 @@ fn terrain_water_mesh(size: f64, n: usize) -> Mesh {
             let z = (j as f64 / n as f64 - 0.5) * size;
             p.push([
                 x as f32,
-                (-((x * x + z * z) / (2.0 * RADIUS))) as f32,
+                (-((x * x + z * z) / (2.0 * planet_radius()))) as f32,
                 z as f32,
             ]);
             uv.push([i as f32 / n as f32, j as f32 / n as f32]);
@@ -1125,9 +1040,9 @@ pub fn update_destruction(
             state.velocities[i] *= (-dt * 0.05).exp();
             let velocity = state.velocities[i];
             state.positions[i] += velocity * dt;
-            let h = terrain_height(state.positions[i].x, state.positions[i].z).max(0.0) + 0.25;
-            if state.positions[i].length() - RADIUS < h {
-                state.positions[i] = up * (RADIUS + h);
+            let h = crate::physics::contact_height_at(state.positions[i]) + 0.25;
+            if state.positions[i].length() - planet_radius() < h {
+                state.positions[i] = up * (planet_radius() + h);
                 let v = state.velocities[i].dot(up);
                 if v < 0.0 {
                     state.velocities[i] -= up * v * 1.18;
@@ -2084,7 +1999,7 @@ mod visual_contract_tests {
             assert!((geo_to_local(lon + 0.01, lat, 0.) - p).dot(east) > 0.);
             assert!((geo_to_local(lon, lat + 0.01, 0.) - p).dot(north) > 0.);
         }
-        let camera = geo_to_local(30., 20., RADIUS * 2.).normalize();
+        let camera = geo_to_local(30., 20., planet_radius() * 2.).normalize();
         let screen_right = (-camera).cross(pole).normalize();
         assert!((geo_to_local(45., 24., 0.) - geo_to_local(20., 24., 0.)).dot(screen_right) > 0.);
         let mesh = globe_mesh(64, 32);
@@ -2115,7 +2030,7 @@ mod visual_contract_tests {
         for step in 1..400 {
             f.position = start + DVec3::new(step as f64 * 25., 0., step as f64 * 9.);
             let origin = render_origin(&f);
-            assert!((f.up() * RADIUS).distance(origin) < 1.8 * ANCHOR_CELL);
+            assert!((f.up() * planet_radius()).distance(origin) < 1.8 * ANCHOR_CELL);
             if origin != last { rebases += 1; last = origin; }
         }
         // ~10.6 km travelled across 2 km cells: a handful of rebases, not 399.
@@ -2128,8 +2043,8 @@ mod visual_contract_tests {
         for position in [
             surface_point(0., 0., 55.),
             surface_point(120000., -80000., 12000.),
-            DVec3::Y * (RADIUS + 99999.),
-            DVec3::Y * (RADIUS + 100001.),
+            DVec3::Y * (planet_radius() + 99999.),
+            DVec3::Y * (planet_radius() + 100001.),
             DVec3::Y * 1e12,
         ] {
             let mut f = Flight::spacecraft();
@@ -2141,7 +2056,7 @@ mod visual_contract_tests {
                         (frame_uncached(&f), f.position)
                     } else {
                         let up = anchor_up(f.up());
-                        (frame_for_up(up), up * RADIUS)
+                        (frame_for_up(up), up * planet_radius())
                     };
                     assert_eq!(
                         frame(&f).to_array().map(f64::to_bits),
@@ -2186,7 +2101,7 @@ mod visual_contract_tests {
     }
     #[test]
     fn deep_space_origin_preserves_vehicle_detail_before_float_conversion() {
-        for distance in [RADIUS + 220000.0, 1.0e8, 1.0e10, 1.0e12] {
+        for distance in [planet_radius() + 220000.0, 1.0e8, 1.0e10, 1.0e12] {
             let mut f = Flight::spacecraft();
             f.position = DVec3::Y * distance;
             assert_eq!(local(f.position, &f), Vec3::ZERO);

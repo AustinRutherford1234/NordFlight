@@ -51,21 +51,31 @@ pub fn ship_rotation(f:&Flight,ship:usize,t:f64)->DQuat {state_rotation(&f.carri
 pub fn ship_world(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3{ship_origin(f,ship,t)+ship_rotation(f,ship,t)*p}
 pub fn ship_relative(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3{state_relative(&f.carrier,ship,p,t)}
 pub fn ship_velocity(f:&Flight,ship:usize,p:DVec3,t:f64)->DVec3 {state_velocity(&f.carrier,ship,p,t)}
-pub fn origin(t:f64)->DVec3 {surface_point(20000.,-16000.-SPEED*t,0.)}
+pub fn origin(t:f64)->DVec3 {
+    if let Some(p)=crate::scenarios::position("carrier") {
+        let forward=crate::environment::geo_to_local(10.8,57.69,0.,planet_radius())-p;
+        return (p+forward.normalize()*SPEED*t).normalize()*planet_radius();
+    }
+    surface_point(20000.,-16000.-SPEED*t,0.)
+}
 pub fn rotation(t:f64)->DQuat {DQuat::from_rotation_arc(DVec3::Y,origin(t).normalize())}
 pub fn velocity(t:f64)->DVec3 {rotation(t)*DVec3::NEG_Z*SPEED}
 pub fn relative(p:DVec3,t:f64)->DVec3 {rotation(t).conjugate()*(p-origin(t))}
 pub fn world(p:DVec3,t:f64)->DVec3 {origin(t)+rotation(t)*p}
-pub fn sea(x:f64,z:f64)->bool {(x-20000.).abs()<7000. && z< -8000.}
+pub fn legacy_sea(x:f64,z:f64)->bool {(x-20000.).abs()<7000. && z< -8000.}
+pub fn sea(x:f64,z:f64)->bool {
+    if !crate::environment::real(){return legacy_sea(x,z);}
+    crate::environment::active().raw(crate::environment::point(x,z,0.,planet_radius())).2.is_some()
+}
 const HULL:&[(f64,f64)]=&[(-39.17,36.52),(-37.84,-60.21),(-12.52,-162.53),(-10.34,-165.6),(11.32,-165.6),(13.49,-162.53),(38.68,-51.23),(38.86,72.93),(37.53,115.04),(29.13,149.4),(24.06,163.14),(3.52,165.61),(-14.17,164.21),(-34.19,122.28)];
 pub fn inside(p:DVec3)->bool {(0..HULL.len()).all(|i| {let a=HULL[i];let b=HULL[(i+1)%HULL.len()];(b.0-a.0)*(p.z-a.1)-(b.1-a.1)*(p.x-a.0)>=0.})}
 pub fn deck(f:&Flight,p:DVec3)->Option<(f64,DVec3)> {
  if !f.carrier.active{return None;}
  let frame=ship_frame(&f.carrier,0,f.elapsed);
  let q=frame.rotation.conjugate()*(p-frame.origin);
- (inside(q)&&q.y>DECK-4.).then(||(((frame.origin+frame.rotation*DVec3::new(q.x,DECK,q.z)).length()-RADIUS),frame.rotation*DVec3::Y))
+ (inside(q)&&q.y>DECK-4.).then(||(((frame.origin+frame.rotation*DVec3::new(q.x,DECK,q.z)).length()-planet_radius()),frame.rotation*DVec3::Y))
 }
-pub fn ground(f:&Flight,p:DVec3)->f64 {deck(f,p).map_or_else(||terrain_height(p.x,p.z).max(0.),|v|v.0)}
+pub fn ground(f:&Flight,p:DVec3)->f64 {deck(f,p).map_or_else(||crate::physics::contact_height_at(p),|v|v.0)}
 pub fn normal(f:&Flight,p:DVec3)->DVec3 {deck(f,p).map_or_else(||crate::terrain::normal(p),|v|v.1)}
 pub fn ground_velocity(f:&Flight,p:DVec3)->DVec3 {if deck(f,p).is_some(){ship_velocity(f,0,p,f.elapsed)}else{DVec3::ZERO}}
 // Angled landing lane: target x=-8 at z=75; bow is -Z.
@@ -369,11 +379,11 @@ mod frame_cache_tests {
                 let (origin,rotation)=reference(&f.carrier,0,f.elapsed);
                 let p=origin+rotation*DVec3::new((k%11)as f64-5.,DECK+2.,(k%61)as f64-30.);
                 let q=rotation.conjugate()*(p-origin);
-                let expected=(world(DVec3::new(q.x,DECK,q.z),f.elapsed).length()-RADIUS,rotation*DVec3::Y);
+                let expected=(world(DVec3::new(q.x,DECK,q.z),f.elapsed).length()-planet_radius(),rotation*DVec3::Y);
                 let result=if cached {deck(&f,p).unwrap()}else {
                     // Original deck path recomputed each transform independently.
                     let q=reference(&f.carrier,0,f.elapsed).1.conjugate()*(p-reference(&f.carrier,0,f.elapsed).0);
-                    ((reference(&f.carrier,0,f.elapsed).0+reference(&f.carrier,0,f.elapsed).1*DVec3::new(q.x,DECK,q.z)).length()-RADIUS,reference(&f.carrier,0,f.elapsed).1*DVec3::Y)
+                    ((reference(&f.carrier,0,f.elapsed).0+reference(&f.carrier,0,f.elapsed).1*DVec3::new(q.x,DECK,q.z)).length()-planet_radius(),reference(&f.carrier,0,f.elapsed).1*DVec3::Y)
                 };
                 assert_eq!(result,expected);checksum+=result.0;
             }

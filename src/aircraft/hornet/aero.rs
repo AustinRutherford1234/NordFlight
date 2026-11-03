@@ -62,7 +62,7 @@ pub fn evaluate(f: &mut Flight, dt: f64) -> Loads {
     forces(f, dt)
 }
 pub(super) fn forces(f: &mut Flight, dt: f64) -> Loads {
-    let height = (f.position.length() - RADIUS - crate::carrier::ground(f, f.position)).max(0.);
+    let height = (f.position.length() - planet_radius() - crate::carrier::ground(f, f.position)).max(0.);
     let (cg, _) = mass::properties(f);
     let air = f.orientation.conjugate() * (f.velocity - f.wind);
     let mut loads = Loads::default();

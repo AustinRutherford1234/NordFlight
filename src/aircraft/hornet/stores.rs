@@ -118,7 +118,7 @@ pub fn advance(f: &mut Flight, dt: f64) {
     let mut dropped = std::mem::take(&mut f.hornet.tanks.dropped);
     for d in dropped.iter_mut().flatten().filter(|d| d.alive) {
         let air = d.velocity - f.wind;
-        let rho = atmosphere(d.position.length() - RADIUS).2;
+        let rho = atmosphere(d.position.length() - planet_radius()).2;
         d.velocity +=
             (-d.position.normalize() * 9.81 - air * air.length() * rho * 0.16 / d.mass) * dt;
         let before=d.position;
@@ -131,7 +131,7 @@ pub fn advance(f: &mut Flight, dt: f64) {
         .normalize();
         d.age += dt;
         d.alive = d.age < 45.
-            && d.position.length() - RADIUS - TANK_RADIUS > crate::carrier::ground(f, d.position);
+            && d.position.length() - planet_radius() - TANK_RADIUS > crate::carrier::ground(f, d.position);
     }
     f.hornet.tanks.dropped = dropped;
 }

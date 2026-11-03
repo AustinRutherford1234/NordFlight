@@ -53,6 +53,8 @@ mod spacecraft_detail;
 mod start_screen;
 mod structural;
 mod terrain;
+mod environment;
+mod scenarios;
 mod terrain_ready;
 mod warp;
 mod world;
@@ -240,7 +242,12 @@ struct UiFont(Handle<Font>);
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum FlightStage { Controls, Simulation, World, Camera, Presentation, Interface, Capture }
 fn main() {
+    if let Err(error)=environment::initialize().and_then(|_|scenarios::validate()){eprintln!("Environment configuration: {error}");std::process::exit(2);}
     if std::env::args().any(|a|a=="--export-f22-nozzle"){aircraft::visual::raptor_detail::export_nozzle_preview();return;}
+    if std::env::args().any(|a|a=="--study-sr71-engines"){
+        let output=std::env::args().find_map(|a|a.strip_prefix("--sr71-output=").map(str::to_owned)).unwrap_or_else(||"tests/sr71-engine-study".into());
+        if let Err(e)=aircraft::sr71::flight::engine::study::run(std::path::Path::new(&output)){eprintln!("SR-71 engine study failed: {e}");std::process::exit(1);}return;
+    }
     if std::env::args().any(|a|a=="--study-sr71"){
         let output=std::env::args().find_map(|a|a.strip_prefix("--sr71-output=").map(str::to_owned)).unwrap_or_else(||"tests/sr71-aero-study".into());
         if let Err(e)=aircraft::sr71::flight::study::run(std::path::Path::new(&output)){eprintln!("SR-71 study failed: {e}");std::process::exit(1);}return;
@@ -261,6 +268,9 @@ fn main() {
     if std::env::args().any(|a| a == "--study-bvr") {
         combat::bvr::study();
         return;
+    }
+    if std::env::args().any(|a|a=="--verify-environment"){
+        if let Err(error)=environment::verify::run(){eprintln!("Environment verification: {error}");std::process::exit(1);}return;
     }
     if std::env::args().any(|a| a == "--study-audio") {
         sound::study();
@@ -299,6 +309,7 @@ fn main() {
         .nth(1);
     let mut initial_flight = Flight::default();
     let mut initial_view = ViewState::default();
+    initial_view.high_quality=environment::active().graphics.terrain_error_pixels<=2.;
     let mut initial_environment = Environment::default();
     if let Some(mode) = &render_benchmark {
         initial_flight.paused = true;
@@ -517,7 +528,7 @@ fn main() {
             initial_flight = Flight::runway();
             initial_flight.paused = true;
             let altitude = if mode == "terrain-field" { 63.48 } else { 650. };
-            initial_flight.position = surface_point(6500., 3200., altitude);
+            initial_flight.position = if mode=="terrain-field"{scenarios::position("offfield").unwrap_or_else(||surface_point(6500.,3200.,altitude))}else{surface_point(6500.,3200.,altitude)};
             initial_flight.velocity = DVec3::ZERO;
             initial_flight.airspeed = 0.;
             initial_flight.mach = 0.;
@@ -930,7 +941,7 @@ fn main() {
     {
         if let Ok(km) = mode.split('-').next().unwrap_or("").parse::<f64>() {
             initial_flight = Flight::spacecraft();
-            initial_flight.position = DVec3::Y * (RADIUS + km * 1000.0);
+            initial_flight.position = DVec3::Y * (planet_radius() + km * 1000.0);
             let (t, p, rho, a) = atmosphere(km * 1000.0);
             initial_flight.temperature = t;
             initial_flight.pressure = p;
@@ -1172,7 +1183,7 @@ fn main() {
                 initial_flight.paused=true;initial_view.simple=true;initial_view.index=0;
             }
             if mode.starts_with("escape-") {
-                initial_flight.position=initial_flight.up()*(physics::RADIUS+1200.);initial_flight.velocity=initial_flight.forward()*120.;
+                initial_flight.position=initial_flight.up()*(physics::planet_radius()+1200.);initial_flight.velocity=initial_flight.forward()*120.;
                 initial_flight.paused=false;
                 ejection::start(&mut initial_flight);
                 let age=mode.strip_prefix("escape-").and_then(|s|s.parse::<f64>().ok()).unwrap_or(0.);
@@ -1449,6 +1460,9 @@ fn main() {
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
         .add_systems(PostUpdate,(combat::naval::smoke::update,combat::cannon_visual::update).before(bevy::transform::TransformSystems::Propagate))
         .add_plugins(terrain_ready::TerrainReadyPlugin)
+        .add_plugins(terrain::material::TerrainMaterialPlugin)
+        .add_plugins(terrain::vegetation::VegetationPlugin)
+        .add_plugins(environment::graphics::GraphicsPlugin)
         .add_systems(
             PostStartup,
             (mesh_reuse::share, render_batch::build,cockpit::link_repeaters).chain(),
@@ -1655,7 +1669,7 @@ fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<Vi
     let image_bytes=cpu_images.iter().map(|p|p.1).sum::<usize>();
     let mesh_bytes=meshes.iter().map(|(_,m)|performance::retained_mesh_bytes(m)).sum::<usize>();
     let asset_memory=serde_json::json!({"cpu_image_bytes":image_bytes,"cpu_mesh_bytes":mesh_bytes,"largest_cpu_images":&cpu_images[..cpu_images.len().min(12)],"note":"Retained main-world asset bytes, not total process or GPU footprint"});
-    let report = serde_json::json!({"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"asset_memory":asset_memory,"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
+    let report = serde_json::json!({"environment":environment::active().preset.id,"terrain_bytes":environment::active().data.bytes,"world_render_scale":environment::active().graphics.render_scale,"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"asset_memory":asset_memory,"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
         "simulated_seconds":simulated_seconds,"simulation_rate":simulated_seconds/(elapsed-warmup),"over_25_ms":frames.iter().filter(|&&t|t>25.).count(),"over_50_ms":frames.iter().filter(|&&t|t>50.).count(),"measurements":performance::report(&diagnostics),
         "workers":{"compute":bevy::tasks::ComputeTaskPool::get().thread_num(),"async_compute":bevy::tasks::AsyncComputeTaskPool::get().thread_num(),"io":bevy::tasks::IoTaskPool::get().thread_num()},
         "note":"Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed"});
@@ -1678,9 +1692,11 @@ fn setup_view(
     mut meshes: ResMut<Assets<Mesh>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut atmosphere = Atmosphere::earthlike(medium.add(ScatteringMedium::default()));
-    atmosphere.bottom_radius = RADIUS as f32;
-    atmosphere.top_radius = (RADIUS + 100000.0) as f32;
+    let planet=&environment::active().preset.planet;
+    let scattering=environment::scattering_medium(1.);
+    let mut atmosphere = Atmosphere::earthlike(medium.add(scattering));
+    atmosphere.bottom_radius = planet_radius() as f32;
+    atmosphere.top_radius = (planet_radius() + match planet.atmosphere{environment::AtmosphereProfile::Dry{top,..}=>top,_=>100000.}) as f32;
     c.insert_resource(SkyProfile(atmosphere.clone()));
     let camera=c.spawn((
         Camera3d::default(),
@@ -1729,7 +1745,7 @@ fn setup_view(
         },
         CascadeShadowConfigBuilder {
             first_cascade_far_bound: 180.0,
-            maximum_distance: 2500.0,
+            maximum_distance: if environment::real(){environment::active().graphics.shadow_distance}else{2500.},
             num_cascades: 2,
             ..default()
         }
@@ -2503,7 +2519,7 @@ fn update_camera(
         (old - density).abs() > 0.003 || (old != density && (density == 0.0 || density == 1.0))
     }) {
         if let Some(medium) = media.get_mut(&sky.0.medium) {
-            *medium = ScatteringMedium::default().with_density_multiplier(density);
+            *medium = environment::scattering_medium(density);
         }
         *last_sky_density = Some(density);
     }
@@ -2619,7 +2635,7 @@ fn update_camera(
     }
     if f.ejection.active {target=local((f.ejection.pilots[0].position+f.ejection.pilots[1].position)*0.5,&f);let d=(f.ejection.pilots[0].position.distance(f.ejection.pilots[1].position)as f32*0.75+7.).clamp(7.,50.);p=target+Vec3::new(d*0.75,d*0.32,d*0.9);up_view=f.ejection.pilots[0].position.normalize().as_vec3();}
     if let Ok(mode)=std::env::var("NORD_FLEET_CAPTURE") {
-        if mode.starts_with("water-") {target=local(if mode.contains("settled")||mode.contains("sunk"){f.position.normalize()*physics::RADIUS}else{f.water.origin},&f);p=target+rot*Vec3::new(-24.,14.,-26.);up_view=f.up().as_vec3();}
+        if mode.starts_with("water-") {target=local(if mode.contains("settled")||mode.contains("sunk"){f.position.normalize()*physics::planet_radius()}else{f.water.origin},&f);p=target+rot*Vec3::new(-24.,14.,-26.);up_view=f.up().as_vec3();}
         if mode.starts_with("stores-") {
             target=pos+rot*Vec3::new(0.,-0.4,0.7);p=target+rot*Vec3::new(12.,-7.,-16.);up_view=rot*Vec3::Y;
         }
@@ -2811,7 +2827,7 @@ fn update_camera(
         target=local(carrier::ship_origin(&f,ship,f.elapsed),&f)+q*Vec3::Y*if ship==0{20.}else{12.};
         p=target+q*(look*Vec3::new(0.,if ship==0{110.}else{65.},if ship==0{300.}else{180.}))*v.zoom;
         up_view=q*Vec3::Y;
-        let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*RADIUS,&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
+        let origin=carrier::ship_origin(&f,ship,f.elapsed);let sea=local(origin.normalize()*planet_radius(),&f);let up=(frame(&f).conjugate()*origin.normalize()).as_vec3();let clearance=(p-sea).dot(up);if clearance<3.{p+=up*(3.-clearance);}
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE") {
         if mode=="defense-cannon-firing-external" {
@@ -2916,7 +2932,7 @@ fn update_camera(
         if let Some(mut generated) = generated_light {
             if generated.intensity!=sky_intensity { generated.intensity=sky_intensity; }
         }
-        let no_atmosphere = v.map
+        let no_atmosphere = matches!(environment::active().preset.planet.atmosphere,environment::AtmosphereProfile::Vacuum)||v.map
             || (f.vehicle == Vehicle::Spacecraft
                 && (f.space.body == space::Body::Moon || f.altitude() > 100000.0));
         if no_atmosphere && atmosphere.is_some() {
@@ -2954,7 +2970,7 @@ fn update_camera(
             pp.near = near;
             pp.far = far;
         }
-        let fog_density = if v.map {
+        let fog_density = if v.map||matches!(environment::active().preset.planet.atmosphere,environment::AtmosphereProfile::Vacuum) {
                 0.0
             } else if e.weather == 2 {
                 0.00006 * (f.density / 1.225).clamp(0.0, 1.0) as f32
@@ -2980,7 +2996,7 @@ fn update_camera(
         if let Some(pose) = sun_pose { t.set_if_neq(pose); }
         // Atmospheric scattering already supplies its own solar disk. Once it
         // has faded away, retain a geometric disk in flight and orbital maps.
-        let show = v.index == 9 || v.map || f.space.body == space::Body::Moon
+        let show = matches!(environment::active().preset.planet.atmosphere,environment::AtmosphereProfile::Vacuum)||v.index == 9 || v.map || f.space.body == space::Body::Moon
             || (f.vehicle == Vehicle::Spacecraft && earth::sky_density(f.altitude()) == 0.0);
         vis.set_if_neq(if show && sun_pose.is_some() {
             Visibility::Visible
@@ -3432,7 +3448,7 @@ mod lunar_warp_regression {
 }
 fn orbital_energy(f: &Flight) -> f64 {
     let v = f.velocity + physics::rotation().cross(f.position);
-    0.5 * v.length_squared() - MU / f.position.length()
+    0.5 * v.length_squared() - planet_mu() / f.position.length()
 }
 
 // App-native render capture avoids OS input automation and makes visual checks repeatable.
@@ -3492,7 +3508,7 @@ fn capture_visual_check(
     *captured = true;
     if mode.starts_with("terrain-") {
         println!("terrain capture: position={:?}, agl={}, forest={}, ground={}",
-            f.position,f.agl(),terrain::forest(f.position.x,f.position.z),terrain_height(f.position.x,f.position.z));
+            f.position,f.agl(),terrain::forest(f.position.x,f.position.z),crate::physics::terrain_height_at(f.position));
     }
     if mode.starts_with("earth-flight-") {
         for (t, global, visibility, in_view) in &suns {

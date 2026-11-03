@@ -643,7 +643,7 @@ pub fn finish(state: &mut State, loads: &Loads) {
 pub fn begin(f: &mut Flight, c: Conditions, b: DVec3, dt: f64) {
     let world_normal = crate::carrier::normal(f, f.position);
     let ground = crate::carrier::ground(f, f.position);
-    let origin = f.up() * (crate::physics::RADIUS + ground);
+    let origin = f.up() * (crate::physics::planet_radius() + ground);
     let surface = landing::Surface {
         normal_body: f.orientation.conjugate() * world_normal,
         distance_m: (f.position - origin).dot(world_normal),
