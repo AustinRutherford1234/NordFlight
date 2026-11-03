@@ -23,3 +23,7 @@ Local evidence (not committed): `tests/cannon-firing-visuals/defense-cannon-firi
 `./build-mac.sh dev` rebuilt the existing Mac application. `codesign --verify --deep --strict 'Nord Flight.app'` succeeded. Executable SHA-256: `ed61bfd297eb1b1195ef2c89f3278fe9a7dec08d641be229cfef9fda8c6f7257`.
 
 These are automated and scripted visual checks; the user's interactive flight review remains separate.
+
+## Follow-up: HUD-only sight and direct shortcuts
+
+Removed the external-view gun funnel, lead director, aiming cross and 30 m marker. Ballistic calculations remain available to the cockpit HUD. In the Hornet, 8 selects GUN and 9 selects NAV. Option+8 retains the Hard Combat scenario shortcut and Option+9 opens audio settings; other aircraft retain their existing 8/9 controls. F7 mode cycling remains available. This follow-up uses automated HUD/control checks and a rebuilt signed app; no additional live-flight diagnostic was run. The executable hash above identifies the earlier presentation build, not this follow-up build.

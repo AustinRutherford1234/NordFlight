@@ -1415,6 +1415,7 @@ fn panel(c: &mut Commands) {
     });
 }
 pub fn ui(
+    flight: Option<Res<Flight>>,
     keys: Res<ButtonInput<KeyCode>>,
     warp: Res<crate::warp::Warp>,
     mut settings: ResMut<Settings>,
@@ -1424,7 +1425,7 @@ pub fn ui(
 ) {
     let mut save = false;
     if !warp.editing {
-        if keys.just_pressed(KeyCode::Digit9) {
+        if keys.just_pressed(KeyCode::Digit9) && (!flight.as_ref().is_some_and(|f|f.vehicle==Vehicle::Gripen && f.aircraft==crate::aircraft::Aircraft::Hornet) || keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)) {
             settings.open = !settings.open;
         }
         if keys.just_pressed(KeyCode::Digit0) {
@@ -2213,6 +2214,13 @@ mod tests {
             .press(KeyCode::Digit9);
         a.update();
         assert!(a.world().resource::<Settings>().open);
+        a.world_mut().resource_mut::<crate::warp::Warp>().editing = false;
+        let mut f=Flight::approach();f.aircraft=crate::aircraft::Aircraft::Hornet;
+        a.insert_resource(f);a.world_mut().resource_mut::<Settings>().open=false;
+        {let mut keys=a.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::Digit9);}
+        a.update();assert!(!a.world().resource::<Settings>().open);
+        {let mut keys=a.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::AltLeft);keys.press(KeyCode::Digit9);}
+        a.update();assert!(a.world().resource::<Settings>().open);
     }
     fn scene(f: Flight) -> App {
         let mut a = App::new();

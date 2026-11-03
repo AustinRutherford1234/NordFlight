@@ -2160,7 +2160,7 @@ fn input(
         (KeyCode::Digit5, 6),
         (KeyCode::Digit8, 7),
     ] {
-        if keys.just_pressed(key) {
+        if keys.just_pressed(key) && !(key==KeyCode::Digit8 && f.vehicle==Vehicle::Gripen && f.aircraft==aircraft::Aircraft::Hornet && !option) {
             reset(&mut f, id, &mut v);
         }
     }
@@ -2245,6 +2245,8 @@ fn input(
     let hornet = f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet;
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     if hornet {
+        if !alt && keys.just_pressed(KeyCode::Digit8) {f.hornet.hud.mode=cockpit::hornet_hud::MasterMode::Gun;}
+        if !alt && keys.just_pressed(KeyCode::Digit9) {f.hornet.hud.mode=cockpit::hornet_hud::MasterMode::Nav;}
         f.hornet.nws_high = keys.pressed(KeyCode::KeyS) && f.landed && aircraft::hornet::ground::speed(&f) < 8. && !v.map && !f.ejection.active;
         if keys.just_pressed(KeyCode::F7) {
             if alt {f.hornet.hud.reject=(f.hornet.hud.reject+1)%3;}
@@ -3322,7 +3324,7 @@ fn update_hud(
                 }
             }
         };
-        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\nF7 HUD NAV/A/A/GUN/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles\nF6 external loadout: 3 tanks · Alt+J drop tanks · Alt+Shift+J all stores\nSERVICE  Backslash then 1: refuel / rearm while idle and stopped");}text}else{updated};
+        let updated=if f.vehicle==Vehicle::Gripen&&f.aircraft==aircraft::Aircraft::Hornet {let mut text=updated.replace("Alt+F6 approach · ","");if tag.0==6 {text.push_str(&format!("\n{}",aircraft::hornet::fbw::summary(&f)));}if tag.0==9&&v.help {text.push_str("\nS nose up / W nose down · F manual flaps · T normal/direct\nFBW stabilizes and trims; fly the approach and throttle manually\n8 GUN HUD · 9 NAV HUD · Alt+9 audio · Alt+8 hard combat\nF7 HUD NAV/A/A/GUN/A/G · Alt+F7 declutter · Alt+End cage · Alt+Delete BALT/RALT\nAlt+PgUp/PgDn HUD brightness · HUD uses knots, feet, nautical miles\nF6 external loadout: 3 tanks · Alt+J drop tanks · Alt+Shift+J all stores\nSERVICE  Backslash then 1: refuel / rearm while idle and stopped");}text}else{updated};
         let updated = if tag.0 == 9 && v.help && v.scenario >= 4 && f.vehicle == Vehicle::Gripen && f.aircraft == aircraft::Aircraft::Hornet {
             let mut text = updated.replace("HELP   H", "HELP   Shift+H");
             text.push_str("\nH hook · Shift+H help · Alt+O canopy · Alt+F wing fold · Option+C x3 eject\nLIGHTS  Alt+I nav · Alt+Shift+I strobe · Alt+L landing");
@@ -3852,9 +3854,15 @@ mod camera_input_tests {
             app.update();
         }
         let f=app.world().resource::<Flight>();assert_eq!(f.throttle,0.);assert_eq!(f.hornet.hud.mode,MasterMode::Air);assert_eq!(f.hornet.hud.reject,1);assert!(f.hornet.hud.caged&&f.hornet.hud.radar_alt);assert!(f.systems.stores.iter().any(|s|*s));
+        let generation=app.world().resource::<ViewState>().generation;
+        for (key,mode) in [(KeyCode::Digit8,MasterMode::Gun),(KeyCode::Digit9,MasterMode::Nav)] {
+            {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(key);}
+            app.update();assert_eq!(app.world().resource::<Flight>().hornet.hud.mode,mode);
+            assert_eq!(app.world().resource::<ViewState>().generation,generation);
+        }
         app.world_mut().resource_mut::<Flight>().aircraft=aircraft::Aircraft::F22;
         {let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();keys.reset_all();keys.press(KeyCode::F7);}
-        app.update();assert_eq!(app.world().resource::<Flight>().hornet.hud.mode,MasterMode::Air);
+        app.update();assert_eq!(app.world().resource::<Flight>().hornet.hud.mode,MasterMode::Nav);
     }
     #[test]
     fn hornet_keyboard_pitch_and_direct_override_and_removed_ap() {

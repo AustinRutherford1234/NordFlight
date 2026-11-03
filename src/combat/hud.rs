@@ -259,12 +259,6 @@ impl Ink {
             );
         }
     }
-    fn cross(&mut self, p: Vec2, color: Color) {
-        for axis in [Vec2::X, Vec2::Y] {
-            self.line(p - axis * 14.0, p - axis * 5.0, color);
-            self.line(p + axis * 5.0, p + axis * 14.0, color);
-        }
-    }
 }
 
 pub fn draw(
@@ -369,79 +363,8 @@ pub fn draw(
                     AMBER,
                 ));
             }
-            if combat.fight.is_some() {
-                if let Some(solution) = gun_solution(&f, target) {
-                    let muzzle = f.position + f.orientation * crate::aircraft::gun_origin(f.aircraft);
-                    if let Some(p) = project(muzzle + solution.direction * solution.range)
-                        .filter(|p| p.cmpge(min).all() && p.cmple(max).all())
-                    {
-                        let color = if solution.aligned { GREEN } else { AMBER };
-                        ink.ring(p, 11.0, 1.0, color);
-                        ink.line(p - Vec2::Y * 17.0, p - Vec2::Y * 12.0, color);
-                        ink.line(p - Vec2::X * 2.0, p + Vec2::X * 2.0, color);
-                        if let Some(target_p) = screen {
-                            if target_p.distance(p) > 40.0 {
-                                for i in 1..=5 {
-                                    ink.line(
-                                        p.lerp(target_p, i as f32 / 7.0),
-                                        p.lerp(target_p, (i as f32 + 0.30) / 7.0),
-                                        DIM,
-                                    );
-                                }
-                            }
-                        }
-                        labels[1] = Some((
-                            (p + Vec2::new(if p.x > max.x - 160.0 { -175.0 } else { 18.0 }, -42.0))
-                                .max(min),
-                            format!(
-                                "GUN  {:.2}s\n{}",
-                                solution.time,
-                                if combat.fight.as_ref().is_some_and(|fight| fight.gun == 0) {
-                                    "EMPTY"
-                                } else if solution.aligned {
-                                    "ON SOLUTION / U"
-                                } else {
-                                    "STEER TO PIPPER"
-                                }
-                            ),
-                            color,
-                        ));
-                    }
-                }
-            }
         }
         if combat.fight.is_some() {
-            let rails=funnel(&f,8.4);let near=rails[0];
-            let mut previous: Option<[Vec2; 2]> = None;
-            for rails in rails {
-                let projected = [project(rails[0]), project(rails[1])];
-                if let [Some(left), Some(right)] = projected {
-                    let pair = [left, right];
-                    if pair
-                        .iter()
-                        .all(|p| p.cmpge(min).all() && p.cmple(max).all())
-                    {
-                        if let Some(old) = previous {
-                            ink.line(old[0], left, DIM);
-                            ink.line(old[1], right, DIM);
-                        }
-                        previous = Some(pair);
-                    } else {
-                        previous = None;
-                    }
-                } else {
-                    previous = None;
-                }
-            }
-            if let Some(p)=project((near[0]+near[1])*0.5).filter(|p|p.cmpge(min).all()&&p.cmple(max).all()) {
-                ink.ring(p,4.,1.,GREEN);
-                labels[4]=Some((p+Vec2::new(9.,9.),"GUN 30 M".into(),DIM));
-            }
-            if let Some(p) = project(f.position + f.forward() * 2000.0)
-                .filter(|p| p.cmpge(min).all() && p.cmple(max).all())
-            {
-                ink.cross(p, GREEN);
-            }
             let portrait =
                 crate::crew::layout::portrait_bounds(crew.as_deref(), &f, &v, &combat, size);
             let weapon_height = panel_sizes
