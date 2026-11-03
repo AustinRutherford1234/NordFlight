@@ -404,7 +404,7 @@ pub fn controls(
                 menu.space = id == 2;
                 menu.scenario = if menu.space { 3 } else { 1 };
             }
-            10..=14 => menu.aircraft = Aircraft::ALL[(id - 10) as usize],
+            id if (10..10 + Aircraft::ALL.len() as u16).contains(&id) => menu.aircraft = Aircraft::ALL[(id - 10) as usize],
             100..=114 => {menu.scenario = (id - 100) as u8;if matches!(id,111..=114){menu.aircraft=Aircraft::Hornet;}},
             200..=202 => {
                 menu.difficulty = match id {
@@ -915,6 +915,20 @@ mod tests {
         assert!(!app.world().resource::<Menu>().open);
         assert!(!app.world().resource::<Flight>().paused);
         assert!(!app.world().resource::<ButtonInput<KeyCode>>().just_pressed(KeyCode::Escape));
+    }
+    #[test]
+    fn every_aircraft_button_selects_and_sr71_starts_from_the_menu() {
+        let mut app=app();
+        {let mut menu=app.world_mut().resource_mut::<Menu>();menu.open=true;menu.page=Page::Setup;menu.space=false;menu.scenario=1;}
+        for (i,aircraft) in Aircraft::ALL.into_iter().enumerate() {
+            click(&mut app,10+i as u16);
+            assert_eq!(app.world().resource::<Menu>().aircraft,aircraft);
+        }
+        assert_eq!(app.world().resource::<Menu>().aircraft,Aircraft::Sr71);
+        click(&mut app,900);
+        let f=app.world().resource::<Flight>();
+        assert_eq!(f.aircraft,Aircraft::Sr71);assert_eq!(f.damage.aircraft,Aircraft::Sr71);
+        assert!(!f.paused);assert!(!app.world().resource::<Menu>().open);
     }
     #[test]
     fn launch_uses_selected_aircraft_bvr_and_space_configuration() {
