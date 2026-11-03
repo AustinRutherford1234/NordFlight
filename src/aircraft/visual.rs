@@ -3,6 +3,7 @@ use super::*;
 use bevy::{asset::RenderAssetUsages, mesh::Indices, render::render_resource::PrimitiveTopology};
 mod raptor_mesh;
 pub mod sr71;
+pub mod sr71_exhaust;
 pub(crate) mod hornet_stores;
 mod raptor_intake;
 mod raptor_finish;

@@ -1146,6 +1146,15 @@ fn main() {
                 if mode.contains("single") {initial_flight.systems.engine_on[0]=false;}
                 if mode.contains("motion") {initial_flight.elapsed=2.375;}
             }
+            if a==aircraft::Aircraft::Sr71 && mode.starts_with("sr71-exhaust-") {
+                initial_flight.engine=!mode.contains("off");initial_flight.throttle=if mode.contains("dry"){0.70}else if mode.contains("partial"){0.94}else{1.};
+                initial_flight.gear=false;initial_flight.gear_extension=0.;initial_flight.gear_door=0.;initial_flight.elapsed=2.375;
+                if mode.contains("single"){initial_flight.systems.engine_on[0]=false;}
+                aircraft::sr71::flight::engine::initialize(&mut initial_flight);
+                initial_environment.day_phase=if mode.contains("night"){std::f64::consts::PI}else{-0.7};
+                initial_view.simple=true;initial_flight.paused=true;
+                println!("SR71 EXHAUST {mode}: thrust={} burners={:?}",initial_flight.thrust,initial_flight.systems.sr71.propulsion.sides.map(|e|e.afterburner_fraction));
+            }
             if mode.starts_with("nozzle-burner-") {
                 initial_flight.engine=mode!="nozzle-burner-off";initial_flight.spool=if mode=="nozzle-burner-idle"{0.25}else{1.};
                 initial_flight.throttle=initial_flight.spool;initial_flight.thrust=if initial_flight.engine{312000.*initial_flight.spool}else{0.};
@@ -1455,6 +1464,7 @@ fn main() {
         .add_plugins(performance::PerformancePlugin)
         .add_systems(Last, warp::ground_pacing)
         .add_plugins(aircraft::visual::hornet::HeatPlugin)
+        .add_plugins(aircraft::visual::sr71_exhaust::ExhaustPlugin)
         .add_plugins(earth_gpu::EarthGpuPlugin)
         .add_plugins(ocean::OceanPlugin)
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
@@ -2706,6 +2716,13 @@ fn update_camera(
         if matches!(mode.as_str(),"nozzle-top"|"nozzle-up-top"|"nozzle-down-top") {target=pos+rot*Vec3::new(0.,0.,7.6);p=target+rot*Vec3::new(2.4,4.0,4.0);up_view=rot*Vec3::Y;}
         if mode=="nozzle-side" {target=pos+rot*Vec3::new(0.,0.,6.7);p=target+rot*Vec3::new(5.0,2.2,3.0);up_view=rot*Vec3::Y;}
         if mode=="nozzle-down-under" {target=pos+rot*Vec3::new(0.,0.,7.3);p=target+rot*Vec3::new(2.4,-3.5,4.0);up_view=rot*Vec3::Y;}
+        if mode.starts_with("sr71-exhaust-") {
+            let (at,offset)=if mode.contains("beauty"){(Vec3::new(0.,0.6,5.),Vec3::new(27.,8.,22.))}
+                else if mode.contains("close"){(Vec3::new(4.355,0.489,11.2),Vec3::new(0.7,0.3,4.0))}
+                else if mode.contains("side"){(Vec3::new(0.,0.489,15.),Vec3::new(19.,3.5,1.))}
+                else{(Vec3::new(0.,0.489,13.8),Vec3::new(7.5,4.,21.))};
+            target=pos+rot*at;p=target+rot*offset;up_view=rot*Vec3::Y;
+        }
         if mode.starts_with("nozzle-burner-") {target=pos+rot*Vec3::new(0.93,-0.12,7.0);p=target+rot*Vec3::new(0.05,0.04,4.5);up_view=rot*Vec3::Y;}
         if mode.starts_with("stabilator-") {target=pos+rot*Vec3::new(0.,0.25,6.0);p=target+rot*Vec3::new(10.,1.3,5.);up_view=rot*Vec3::Y;}
         if mode.starts_with("exhaust-") {target=pos+rot*Vec3::new(0.,0.,10.2);p=target+rot*Vec3::new(7.5,1.2,5.5);up_view=rot*Vec3::Y;}

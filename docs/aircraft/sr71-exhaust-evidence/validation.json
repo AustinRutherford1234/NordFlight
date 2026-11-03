@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "passed": 882,
+    "failed": 0,
+    "ignored": 1,
+    "seconds": 28.4
+  },
+  "capture_seconds": 175.6707522910001,
+  "captures_total": 12,
+  "final_version_captures": 3,
+  "capture_source_sha256": "f2072cf64fdeb748334f481271c9f494ef69677488ad930195c1029f3a305690",
+  "app_sha256": "e33acb8bd33062af3440f4b1fb8220264b59d7d0be34d5974243c4b9301897be",
+  "signature_verified": true,
+  "renderer": "native Metal, normal quality",
+  "gpu_performance_benchmark": false
+}

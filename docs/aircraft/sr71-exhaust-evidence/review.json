@@ -1,0 +1,66 @@
+{
+  "seconds": 175.6707522910001,
+  "captures": [
+    {
+      "mode": "sr71-exhaust-wet-side-day",
+      "image": "wet-side-day.png",
+      "binary_sha256": "750fd2c30f5a1337d1e174c3125d6811809dbb64da0663cb9df30e6686be045b"
+    },
+    {
+      "mode": "sr71-exhaust-wet-rear-night",
+      "image": "wet-rear-night.png",
+      "binary_sha256": "750fd2c30f5a1337d1e174c3125d6811809dbb64da0663cb9df30e6686be045b"
+    },
+    {
+      "mode": "sr71-exhaust-wet-side-day",
+      "image": "wet-side-day-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-wet-rear-night",
+      "image": "wet-rear-night-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-dry-close-night",
+      "image": "dry-close-night-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-wet-close-day",
+      "image": "wet-close-day-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-partial-rear-day",
+      "image": "partial-rear-day-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-single-rear-night",
+      "image": "single-rear-night-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-off-close-day",
+      "image": "off-close-day-efc30c35.png",
+      "binary_sha256": "efc30c35c6a604ed6836099e21f84057e646d514486d7619669dfa25ec4d6f77"
+    },
+    {
+      "mode": "sr71-exhaust-wet-beauty-day",
+      "image": "wet-beauty-day-f2072cf6.png",
+      "binary_sha256": "f2072cf64fdeb748334f481271c9f494ef69677488ad930195c1029f3a305690"
+    },
+    {
+      "mode": "sr71-exhaust-dry-close-night",
+      "image": "dry-close-night-f2072cf6.png",
+      "binary_sha256": "f2072cf64fdeb748334f481271c9f494ef69677488ad930195c1029f3a305690"
+    },
+    {
+      "mode": "sr71-exhaust-wet-close-day",
+      "image": "wet-close-day-f2072cf6.png",
+      "binary_sha256": "f2072cf64fdeb748334f481271c9f494ef69677488ad930195c1029f3a305690"
+    }
+  ],
+  "restoration_handler_completed": true
+}

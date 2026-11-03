@@ -323,3 +323,5 @@ pack management, limitations and measured performance.
 ### SR-71 propulsion diagnostics
 
 The SR-71 now uses independent J58-class inlet/core/bleed/ejector dynamics, fuel and ignition states, shaft inertia, nozzle control and condition-driven failures. See the [engine model and validation notes](docs/aircraft/SR71_ENGINE_MODEL_2026-11-03.md) for estimates, controls, headless study commands and limitations.
+
+The imported Blackbird also has reference-informed engine glow and volumetric afterburner effects; see the [exhaust implementation and visual review](docs/aircraft/SR71_EXHAUST_2026-11-03.md).
