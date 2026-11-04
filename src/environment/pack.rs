@@ -64,6 +64,18 @@ pub struct TerrainData {
     pub bytes: usize,
 }
 impl TerrainData {
+    /// Categorical lookup for visual mask preparation; avoid interpolating
+    /// elevation four times for every land-cover footprint sample.
+    pub(crate) fn cover_at(&self, lon: f64, lat: f64) -> u8 {
+        let lon=(lon+180.).rem_euclid(360.)-180.;
+        let lat=lat.clamp(-89.999999,89.999999);
+        let key=(lon.floor()as i32,lat.floor()as i32);
+        if let Some(g)=self.grids.get(&key){
+            let x=((lon-key.0 as f64)*(g.cover_n-1)as f64).round()as usize;
+            let y=((1.-(lat-key.1 as f64))*(g.cover_n-1)as f64).round()as usize;
+            g.cover[y*g.cover_n+x]
+        }else{self.sample(lon,lat).1}
+    }
     pub fn load(root: &Path, packs: &[String], budget: usize) -> Result<Self, String> {
         let mut data = Self::default();
         let global = root.join("global/global.bin");

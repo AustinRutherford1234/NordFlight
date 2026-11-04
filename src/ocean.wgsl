@@ -17,7 +17,7 @@ fn filtered_water(map:texture_2d<f32>,uv:vec2<f32>)->vec2<f32>{
 fn water(p:vec2<f32>)->vec2<f32>{
     if ocean.water_grid.w<0.5{return vec2<f32>(0.0,1.0);}
     let uv=(p-ocean.water_grid.xy)/ocean.water_grid.z;
-    if all(uv>vec2<f32>(1.0))&&all(uv<vec2<f32>(382.0)){return filtered_water(water_map,uv);}
+    if all(uv>=vec2<f32>(0.0))&&all(uv<=vec2<f32>(383.0)){return filtered_water(water_map,uv);}
     return filtered_water(coarse_map,(p-ocean.water_coarse.xy)/ocean.water_coarse.z);
 }
 
@@ -25,7 +25,11 @@ fn strength(p:vec2<f32>)->f32 {if ocean.water_grid.w>0.5{return 0.65;}return 0.1
 @vertex fn vertex(v:Vertex)->VertexOutput {
     var out:VertexOutput;
     let model=mesh_functions::get_world_from_local(v.instance_index);
-    let xz=v.position.xz;let absolute=xz+ocean.center.xy;
+    var xz=v.position.xz;var absolute=xz+ocean.center.xy;
+    var level=ocean.detail.w;
+#ifdef VERTEX_UVS_B
+    if v.uv_b.y>0.5 {absolute=v.uv; xz=absolute-ocean.center.xy;level=v.uv_b.x;}
+#endif
     let y=sqrt(max(ocean.center.w*ocean.center.w-dot(absolute,absolute),1.0));
     // Algebraic difference of roots avoids metre-scale cancellation at Earth's radius.
     let curve=-(2.0*dot(ocean.center.xy,xz)+dot(xz,xz))/(y+ocean.center.z);
@@ -33,7 +37,10 @@ fn strength(p:vec2<f32>)->f32 {if ocean.water_grid.w>0.5{return 0.65;}return 0.1
     var height=0.0;var slope=vec2<f32>(0.0);var curvature=0.0;
     // Short waves fade from geometry before their local grid cells undersample
     // them; fine normal detail is filtered independently in the fragment stage.
-    let cell=max(0.10,length(xz)*0.055);
+    var cell=max(0.10,length(xz)*0.055);
+#ifdef VERTEX_UVS_B
+    if v.uv_b.y>0.5{cell=max(cell,128.0);}
+#endif
     for(var i=0u;i<24u;i+=1u){let w=ocean.waves[i];let wavelength=6.2831853/length(w.xy);
         let resolved=1.0-smoothstep(wavelength*0.18,wavelength*0.48,cell);
         let phase=dot(w.xy,xz)+ocean.phases[i].x;let s=sin(phase);let c=cos(phase);
@@ -41,12 +48,22 @@ fn strength(p:vec2<f32>)->f32 {if ocean.water_grid.w>0.5{return 0.65;}return 0.1
     let weight=strength(absolute);
     let grad=vec2<f32>(strength(absolute+vec2<f32>(1.0,0.0))-strength(absolute-vec2<f32>(1.0,0.0)),strength(absolute+vec2<f32>(0.0,1.0))-strength(absolute-vec2<f32>(0.0,1.0)))*0.5;
     slope=slope*weight+height*grad;
-    let position=vec3<f32>(xz.x,curve,xz.y)+radial*(water(absolute).x+0.12+height*weight);
+    var position=vec3<f32>(xz.x,curve,xz.y)+radial*(level+0.12+height*weight);
+#ifdef VERTEX_UVS_B
+    if v.uv_b.y>0.5 {
+        // The lake mesh has its own fixed world anchor. Recover its base local
+        // position and add waves without the camera-centered ring transform.
+        position=v.position+radial*(0.12+height*weight);
+    }
+#endif
     out.world_position=mesh_functions::mesh_position_local_to_world(model,vec4<f32>(position,1.0));
     out.position=position_world_to_clip(out.world_position.xyz);
     out.world_normal=mesh_functions::mesh_normal_local_to_world(normalize(radial-vec3<f32>(slope.x,0.0,slope.y)),v.instance_index);
     out.uv=absolute;
-    out.color=vec4<f32>(height*weight,curvature*weight,weight,water(absolute).x);
+#ifdef VERTEX_UVS_B
+    out.uv_b=v.uv_b;
+#endif
+    out.color=vec4<f32>(height*weight,curvature*weight,weight,level);
 #ifdef VERTEX_OUTPUT_INSTANCE_INDEX
     out.instance_index=v.instance_index;
 #endif
@@ -54,6 +71,13 @@ fn strength(p:vec2<f32>)->f32 {if ocean.water_grid.w>0.5{return 0.65;}return 0.1
 }
 @fragment fn fragment(in:VertexOutput,@builtin(front_facing) is_front:bool)->FragmentOutput {
     let actual_water=water(in.uv);
+#ifdef VERTEX_UVS_B
+    // Exact shared boundary between fixed near/far lake grids. The coarse
+    // surface supplies large inland lakes all the way to the horizon.
+    let lake_uv=(in.uv-ocean.water_grid.xy)/ocean.water_grid.z;
+    let in_near=all(lake_uv>=vec2<f32>(0.0))&&all(lake_uv<=vec2<f32>(383.0));
+    if (in.uv_b.y>1.5&&in_near)||(in.uv_b.y>0.5&&in.uv_b.y<1.5&&!in_near){discard;}
+#endif
     // A ring triangle may span unrelated lakes at different elevations. Never
     // draw the interpolated sheet above another lake or the sea; finer rings
     // resolve the boundary as the camera approaches.

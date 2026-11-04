@@ -14,20 +14,16 @@ use bevy::{
 };
 use std::collections::{HashMap, HashSet};
 const CELL: i32 = 256;
+struct Cell { entity:Option<Entity>, near:Handle<Mesh>, far:Handle<Mesh>, props:Handle<Mesh> }
+struct BuiltCell { near:Mesh, far:Mesh, props:Mesh, anchor:DVec3 }
+struct Models { near:Vec<Mesh>, far:Vec<Mesh>, rock:Mesh, building:Mesh }
 #[derive(Resource)]
-struct Vegetation {
-    cells: HashMap<(i32, i32), Entity>,
-    models: Vec<Handle<Mesh>>,
-    far: Vec<Handle<Mesh>>,
-    material: Handle<StandardMaterial>,
-    last: (i32, i32, i32),
-    rock: Handle<Mesh>,
-    building: Handle<Mesh>,
-    prop_material: Handle<StandardMaterial>,
-}
-#[derive(Component)]
-struct TreeVisual {
-    species: usize,
+pub(crate) struct Vegetation {
+    cells:HashMap<(i32,i32),Cell>,
+    radius:f64,
+    jobs:HashMap<(i32,i32),bevy::tasks::Task<BuiltCell>>,
+    source:std::sync::Arc<Models>,
+    material:Handle<StandardMaterial>,prop_material:Handle<StandardMaterial>,
 }
 pub struct VegetationPlugin;
 impl Plugin for VegetationPlugin {
@@ -138,230 +134,149 @@ fn model(species: usize, far: bool) -> Mesh {
     m.compute_smooth_normals();
     m
 }
-fn setup(
-    mut c: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    if !environment::real() {
-        return;
+#[derive(Default)]
+struct Batch { positions:Vec<[f32;3]>, normals:Vec<[f32;3]>, colors:Vec<[f32;4]>, indices:Vec<u32> }
+impl Batch {
+    fn append(&mut self, mesh:&Mesh, transform:Transform) {
+        use bevy::mesh::VertexAttributeValues;
+        let Some(VertexAttributeValues::Float32x3(p))=mesh.attribute(Mesh::ATTRIBUTE_POSITION)else{return;};
+        let Some(VertexAttributeValues::Float32x3(n))=mesh.attribute(Mesh::ATTRIBUTE_NORMAL)else{return;};
+        let color=match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {Some(VertexAttributeValues::Float32x4(c))=>Some(c),_=>None};
+        let base=self.positions.len()as u32;
+        for (i,(p,n))in p.iter().zip(n).enumerate() {
+            self.positions.push(transform.transform_point(Vec3::from_array(*p)).to_array());
+            self.normals.push((transform.rotation*(Vec3::from_array(*n)/transform.scale)).normalize_or_zero().to_array());
+            self.colors.push(color.map_or([1.;4],|c|c[i]));
+        }
+        if let Some(indices)=mesh.indices(){self.indices.extend(indices.iter().map(|i|base+i as u32));}
+        else{self.indices.extend(base..self.positions.len()as u32);}
     }
-    let rock = meshes.add(Sphere::new(1.).mesh().ico(1).unwrap());
-    let building = meshes.add(Cuboid::new(2., 2., 2.));
-    let prop_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.35, 0.34, 0.31),
-        perceptual_roughness: 0.93,
-        ..default()
-    });
+    fn mesh(self)->Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::RENDER_WORLD)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION,self.positions)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL,self.normals)
+            .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR,self.colors)
+            .with_inserted_indices(Indices::U32(self.indices))
+    }
+}
+fn build_cell(cx:i32,cz:i32,models:&Models)->BuiltCell {
+    let x=cx*CELL;let z=cz*CELL;
+    let anchor=environment::point((x+CELL/2)as f64,(z+CELL/2)as f64,0.,environment::radius());
+    let(mut near,mut far,mut props)=(Batch::default(),Batch::default(),Batch::default());
+    for iz in z/32..(z+CELL)/32 {for ix in x/32..(x+CELL)/32 {
+        let Some((tx,tz,h,size))=environment::tree(ix,iz)else{continue;};
+        let species=environment::tree_species(ix,iz);
+        let origin=environment::point(tx,tz,h,environment::radius());
+        let rotation=DQuat::from_rotation_arc(DVec3::Y,origin.normalize())
+            *DQuat::from_rotation_y(environment::hash(ix+7,iz,9)*std::f64::consts::TAU);
+        let transform=Transform::from_translation((origin-anchor).as_vec3())
+            .with_rotation(rotation.as_quat()).with_scale(Vec3::splat(size as f32));
+        near.append(&models.near[species],transform);far.append(&models.far[species],transform);
+    }}
+    for iz in z/128..(z+CELL)/128 {for ix in x/128..(x+CELL)/128 {
+        if let Some(prop)=environment::prop(ix,iz){
+            props.append(if prop.rock{&models.rock}else{&models.building},
+                Transform::from_translation((prop.position-anchor).as_vec3())
+                .with_rotation(DQuat::from_rotation_arc(DVec3::Y,prop.position.normalize()).as_quat())
+                .with_scale(prop.half.as_vec3()));
+        }
+    }}
+    BuiltCell{near:near.mesh(),far:far.mesh(),props:props.mesh(),anchor}
+}
+fn setup(mut c:Commands,mut materials:ResMut<Assets<StandardMaterial>>) {
+    if !environment::real(){return;}
     c.insert_resource(Vegetation {
-        rock,
-        building,
-        prop_material,
-        cells: HashMap::new(),
-        models: (0..3).map(|s| meshes.add(model(s, false))).collect(),
-        far: (0..3).map(|s| meshes.add(model(s, true))).collect(),
-        material: materials.add(StandardMaterial {
-            perceptual_roughness: 0.95,
-            ..default()
-        }),
-        last: (i32::MAX, 0, 0),
+        cells:HashMap::new(),jobs:HashMap::new(),radius:0.,
+        source:std::sync::Arc::new(Models{near:(0..3).map(|s|model(s,false)).collect(),
+            far:(0..3).map(|s|model(s,true)).collect(),rock:Sphere::new(1.).mesh().ico(1).unwrap(),
+            building:Cuboid::new(2.,2.,2.).into()}),
+        material:materials.add(StandardMaterial{perceptual_roughness:0.95,..default()}),
+        prop_material:materials.add(StandardMaterial{base_color:Color::srgb(0.35,0.34,0.31),perceptual_roughness:0.93,..default()}),
     });
 }
-fn update(
-    mut c: Commands,
-    f: Res<Flight>,
-    graphics: Res<environment::graphics::Graphics>,
-    state: Option<ResMut<Vegetation>>,
-    mut trees: Query<(Entity, &TreeVisual, &GlobalTransform, &mut Mesh3d)>,
-) {
-    let Some(mut state) = state else {
-        return;
-    };
-    let cell = (
-        (f.position.x / CELL as f64).floor() as i32,
-        (f.position.z / CELL as f64).floor() as i32,
-        (f.agl() / 300.) as i32,
-    );
-    let radius = if f.agl() > 3500. || f.vehicle == crate::physics::Vehicle::Spacecraft {
-        0.
-    } else {
-        graphics
-            .0
-            .vegetation_distance
-            .min(2400. + f.agl().max(0.) * 0.2)
-    };
-    let n = (radius / CELL as f64).ceil() as i32;
-    let mut wanted = HashSet::new();
-    for dz in -n..=n {
-        for dx in -n..=n {
-            if ((dx * dx + dz * dz) as f64).sqrt() * CELL as f64 <= radius {
-                wanted.insert((cell.0 + dx, cell.1 + dz));
+#[derive(Component)]struct Canopy {near:Handle<Mesh>,far:Handle<Mesh>,distant:bool,anchor:DVec3}
+fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graphics>,
+    state:Option<ResMut<Vegetation>>,mut meshes:ResMut<Assets<Mesh>>,
+    mut canopy:Query<(Entity,&mut Canopy,&mut Mesh3d)>) {
+    use bevy::tasks::{block_on,poll_once,AsyncComputeTaskPool};
+    let Some(mut state)=state else{return;};
+    let cell=((f.position.x/CELL as f64).floor()as i32,(f.position.z/CELL as f64).floor()as i32);
+    let radius=if f.agl()>3500.||f.vehicle==crate::physics::Vehicle::Spacecraft{0.}
+        else{graphics.0.vegetation_distance.min(2400.+f.agl().max(0.)*0.2)};
+    state.radius=radius;
+    let n=(radius/CELL as f64).ceil()as i32;
+    let mut wanted=HashSet::new();
+    for z in -n..=n {for x in -n..=n {if radius>0.&&((x*x+z*z)as f64).sqrt()*CELL as f64<=radius{wanted.insert((cell.0+x,cell.1+z));}}}
+    let old:Vec<_>=state.cells.keys().filter(|k|!wanted.contains(k)).copied().take(4).collect();
+    let retired=!old.is_empty();
+    for key in old {if let Some(cell)=state.cells.remove(&key){if let Some(entity)=cell.entity{c.entity(entity).despawn();}
+        meshes.remove(cell.near.id());meshes.remove(cell.far.id());meshes.remove(cell.props.id());}}
+    state.jobs.retain(|key,_|wanted.contains(key));
+    // No commands may target children removed by the same deferred despawn.
+    if retired{return;}
+    let completed=state.jobs.iter_mut().find_map(|(key,task)|block_on(poll_once(task)).map(|built|(*key,built)));
+    if let Some((key,built))=completed {
+        state.jobs.remove(&key);
+        let has_trees=built.near.count_vertices()>0;let has_props=built.props.count_vertices()>0;
+        if !has_trees&&!has_props {
+            state.cells.insert(key,Cell{entity:None,near:Handle::default(),far:Handle::default(),props:Handle::default()});
+        }else{
+            let near=if has_trees{meshes.add(built.near)}else{Handle::default()};
+            let far=if has_trees{meshes.add(built.far)}else{Handle::default()};
+            let props=if has_props{meshes.add(built.props)}else{Handle::default()};
+            let distant=built.anchor.distance(f.position)>850.;
+            let root=c.spawn((Transform::from_translation(world::local(built.anchor,&f))
+                .with_rotation(world::local_rot(DQuat::IDENTITY,&f)),Visibility::Inherited,
+                WorldObject{position:built.anchor,rotation:DQuat::IDENTITY})).id();
+            if has_trees {
+                let tree=c.spawn((Mesh3d(if distant{far.clone()}else{near.clone()}),MeshMaterial3d(state.material.clone()),
+                    Transform::default(),Canopy{near:near.clone(),far:far.clone(),distant,anchor:built.anchor},ChildOf(root))).id();
+                if distant{c.entity(tree).insert(bevy::light::NotShadowCaster);}
             }
+            if has_props{c.spawn((Mesh3d(props.clone()),MeshMaterial3d(state.prop_material.clone()),Transform::default(),ChildOf(root)));}
+            state.cells.insert(key,Cell{entity:Some(root),near,far,props});
         }
     }
-    let old: Vec<_> = state
-        .cells
-        .keys()
-        .filter(|key| !wanted.contains(key))
-        .copied()
-        .collect();
-    let retired = !old.is_empty();
-    for key in old.into_iter().take(8) {
-        if let Some(e) = state.cells.remove(&key) {
-            c.entity(e).despawn();
-        }
+    let mut missing:Vec<_>=wanted.into_iter().filter(|k|!state.cells.contains_key(k)&&!state.jobs.contains_key(k)).collect();
+    missing.sort_by_key(|(x,z)|(x-cell.0).pow(2)+(z-cell.1).pow(2));
+    // At most two jobs and one cell upload per frame; construction never blocks flight.
+    for key in missing.into_iter().take(2usize.saturating_sub(state.jobs.len())) {
+        let source=state.source.clone();state.jobs.insert(key,AsyncComputeTaskPool::get().spawn(async move{build_cell(key.0,key.1,&source)}));
     }
-    // Despawn commands also remove children. Never queue LOD/shadow commands
-    // for those children later in this same deferred command buffer.
-    if retired {
-        return;
+    for(entity,mut tree,mut mesh)in &mut canopy {
+        let distance=tree.anchor.distance(f.position);
+        let distant=if tree.distant{distance>750.}else{distance>950.};
+        if distant!=tree.distant {tree.distant=distant;mesh.0=if distant{tree.far.clone()}else{tree.near.clone()};
+            if distant{c.entity(entity).insert(bevy::light::NotShadowCaster);}else{c.entity(entity).remove::<bevy::light::NotShadowCaster>();}}
     }
-    if state.last == cell && wanted.iter().all(|k| state.cells.contains_key(k)) {
-        return;
+}
+#[cfg(test)]mod tests {
+    use super::*;
+    #[test]fn cell_batch_preserves_geometry_and_transforms(){
+        let mesh=Mesh::from(Cuboid::new(2.,2.,2.));let mut batch=Batch::default();
+        batch.append(&mesh,Transform::from_xyz(10.,20.,30.).with_scale(Vec3::splat(2.)));
+        batch.append(&mesh,Transform::from_xyz(-10.,0.,0.));
+        assert_eq!(batch.positions.len(),mesh.count_vertices()*2);
+        assert_eq!(batch.indices.len(),mesh.indices().unwrap().len()*2);
+        assert!(batch.positions[..mesh.count_vertices()].iter().all(|p|(8. ..=12.).contains(&p[0])));
+        assert!(batch.normals.iter().all(|n|(Vec3::from_array(*n).length()-1.).abs()<1e-6));
+        assert!(batch.indices.iter().all(|i|(*i as usize)<batch.positions.len()));
     }
-    let mut missing: Vec<_> = wanted
-        .into_iter()
-        .filter(|k| !state.cells.contains_key(k))
-        .collect();
-    missing.sort_by_key(|(x, z)| (x - cell.0).pow(2) + (z - cell.1).pow(2));
-    for (cx, cz) in missing.into_iter().take(4) {
-        let x = cx * CELL;
-        let z = cz * CELL;
-        let anchor = environment::point(
-            (x + CELL / 2) as f64,
-            (z + CELL / 2) as f64,
-            0.,
-            environment::radius(),
-        );
-        let root = c
-            .spawn((
-                Transform::from_translation(world::local(anchor, &f))
-                    .with_rotation(world::local_rot(DQuat::IDENTITY, &f)),
-                Visibility::Inherited,
-                WorldObject {
-                    position: anchor,
-                    rotation: DQuat::IDENTITY,
-                },
-            ))
-            .id();
-        for iz in z / 32..(z + CELL) / 32 {
-            for ix in x / 32..(x + CELL) / 32 {
-                let Some((tx, tz, h, size)) = environment::tree(ix, iz) else {
-                    continue;
-                };
-                let species = environment::tree_species(ix, iz);
-                let origin = environment::point(tx, tz, h, environment::radius());
-                let rot = DQuat::from_rotation_arc(DVec3::Y, origin.normalize())
-                    * DQuat::from_rotation_y(
-                        environment::hash(ix + 7, iz, 9) * std::f64::consts::TAU,
-                    );
-                let distant = origin.distance(f.position) > 1100.;
-                let entity = c
-                    .spawn((
-                        Mesh3d(if distant {
-                            state.far[species].clone()
-                        } else {
-                            state.models[species].clone()
-                        }),
-                        MeshMaterial3d(state.material.clone()),
-                        Transform::from_translation((origin - anchor).as_vec3())
-                            .with_rotation(rot.as_quat())
-                            .with_scale(Vec3::splat(size as f32)),
-                        TreeVisual { species },
-                        ChildOf(root),
-                    ))
-                    .id();
-                if distant {
-                    c.entity(entity).insert(bevy::light::NotShadowCaster);
-                }
-            }
-        }
-        for iz in z / 128..(z + CELL) / 128 {
-            for ix in x / 128..(x + CELL) / 128 {
-                let Some(prop) = environment::prop(ix, iz) else {
-                    continue;
-                };
-                c.spawn((
-                    Mesh3d(if prop.rock {
-                        state.rock.clone()
-                    } else {
-                        state.building.clone()
-                    }),
-                    MeshMaterial3d(state.prop_material.clone()),
-                    Transform::from_translation((prop.position - anchor).as_vec3())
-                        .with_rotation(
-                            DQuat::from_rotation_arc(DVec3::Y, prop.position.normalize()).as_quat(),
-                        )
-                        .with_scale(prop.half.as_vec3()),
-                    ChildOf(root),
-                ));
-            }
-        }
-        state.cells.insert((cx, cz), root);
-    }
-    // LOD changes are shared-handle substitutions, not mesh reconstruction.
-    let local = world::local(f.position, &f);
-    for (entity, tree, global, mut mesh) in &mut trees {
-        let far = global.translation().distance(local) > 1100.;
-        let desired = if far {
-            &state.far[tree.species]
-        } else {
-            &state.models[tree.species]
-        };
-        if mesh.0 != *desired {
-            mesh.0 = desired.clone();
-            if far {
-                c.entity(entity).insert(bevy::light::NotShadowCaster);
-            } else {
-                c.entity(entity).remove::<bevy::light::NotShadowCaster>();
-            }
-        }
-    }
-    state.last = cell;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn retiring_cell_does_not_queue_commands_for_despawned_children() {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
-        let mut meshes = Assets::<Mesh>::default();
-        let a = meshes.add(Cuboid::default());
-        let b = meshes.add(Sphere::new(1.).mesh().uv(4, 3));
-        let mut materials = Assets::<StandardMaterial>::default();
-        let material = materials.add(StandardMaterial::default());
-        let root = app
-            .world_mut()
-            .spawn((Transform::default(), Visibility::Inherited))
-            .id();
-        let child = app
-            .world_mut()
-            .spawn((
-                Mesh3d(a.clone()),
-                TreeVisual { species: 0 },
-                GlobalTransform::from_translation(Vec3::splat(100000.)),
-                ChildOf(root),
-            ))
-            .id();
-        let state = Vegetation {
-            cells: HashMap::from([((1000, 1000), root)]),
-            models: vec![a.clone(); 3],
-            far: vec![b; 3],
-            material: material.clone(),
-            last: (0, 0, 0),
-            rock: a.clone(),
-            building: a,
-            prop_material: material,
-        };
-        app.insert_resource(state)
-            .insert_resource(Flight::approach())
-            .insert_resource(environment::graphics::Graphics(Default::default()))
-            .add_systems(Update, update);
-        app.update();
-        assert!(app.world().get_entity(root).is_err());
-        assert!(app.world().get_entity(child).is_err());
-        assert!(app.world().resource::<Vegetation>().cells.is_empty());
-    }
+pub(crate) fn loading_resources(f:&Flight,state:Option<&Vegetation>)->Option<crate::loading::Resources>{
+    let mut result=crate::loading::Resources::default();
+    if !environment::real()||f.vehicle==crate::physics::Vehicle::Spacecraft||f.agl()>3500.{return Some(result);}
+    let state=state?;
+    let cell=((f.position.x/CELL as f64).floor()as i32,(f.position.z/CELL as f64).floor()as i32);
+    let n=(state.radius/CELL as f64).ceil()as i32;
+    for z in -n..=n {for x in -n..=n {
+        if ((x*x+z*z)as f64).sqrt()*CELL as f64>state.radius{continue;}
+        let entry=state.cells.get(&(cell.0+x,cell.1+z))?;
+        if entry.entity.is_some(){for handle in [&entry.near,&entry.far,&entry.props]{
+            if *handle!=Handle::default(){result.meshes.push(handle.id());}
+        }}
+    }}
+    result.materials.extend([state.material.id().untyped(),state.prop_material.id().untyped()]);
+    Some(result)
 }

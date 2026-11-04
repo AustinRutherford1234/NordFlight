@@ -42,7 +42,7 @@ impl TerrainReady {
     pub(crate) fn poll(&self, prepared: impl Fn(AssetId<Mesh>) -> bool) {
         self.poll_all(prepared, |_| true, |_| true);
     }
-    fn poll_all(
+    pub(crate) fn poll_all(
         &self,
         meshes: impl Fn(AssetId<Mesh>) -> bool,
         images: impl Fn(AssetId<Image>) -> bool,

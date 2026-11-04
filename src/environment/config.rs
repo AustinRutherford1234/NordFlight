@@ -197,6 +197,8 @@ impl EnvironmentPreset {
 pub struct GraphicsSettings {
     pub version: u32,
     pub render_scale: f32,
+    #[serde(default = "default_frame_limit")]
+    pub frame_rate_limit: u32,
     pub terrain_error_pixels: f64,
     pub vegetation_distance: f64,
     pub shadow_distance: f32,
@@ -205,11 +207,13 @@ pub struct GraphicsSettings {
     pub gpu_cache_mib: usize,
     pub staging_mib: usize,
 }
+fn default_frame_limit()->u32{0}
 impl Default for GraphicsSettings {
     fn default() -> Self {
         Self {
             version: 1,
             render_scale: 0.5,
+            frame_rate_limit: default_frame_limit(),
             terrain_error_pixels: 4.,
             vegetation_distance: 4500.,
             shadow_distance: 1800.,
@@ -234,6 +238,7 @@ impl GraphicsSettings {
     }
     pub fn validate(&self) -> Result<(), String> {
         if self.version != 1
+            || (self.frame_rate_limit != 0 && !(30..=240).contains(&self.frame_rate_limit))
             || !self.render_scale.is_finite()
             || !(0.35..=1.).contains(&self.render_scale)
             || !self.terrain_error_pixels.is_finite()

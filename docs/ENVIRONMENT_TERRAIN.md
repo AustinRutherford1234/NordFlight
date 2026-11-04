@@ -129,14 +129,19 @@ remapping is not implemented. Steep terrain blends toward granite color and uses
 projections; flatter surfaces retain the cheaper single-projection path.
 
 Forests use land-cover-constrained, clustered deterministic cells. Pine/spruce
-branch whorls and birch crown clusters share opaque meshes and materials for
-Bevy batching. Distant meshes reduce geometry and shadows; forest color remains
+branch whorls and birch crown clusters use opaque meshes. Background jobs combine
+them into spatial-cell meshes, with at most two builds and one cell publication
+per frame. Each cell shares one transform, and canopy LOD uses hysteresis. This
+avoids updating thousands of separate tree entities as the flight origin moves. Distant meshes reduce geometry and shadows; forest color remains
 on the terrain. Sparse rocks and settlement blocks share placement with contact
 queries. These are generated meshes, not photogrammetric tree assets or baked
 impostor atlases. Grass is currently material detail, not individual grass blades.
 
-Near/far water masks preserve the existing wave/shading model while placing
-lakes at their actual source elevations. Mask construction is asynchronous;
+Near/far water masks preserve the existing wave/shading model. Sea geometry stays
+at the configured sea level; fixed world-space lake grids carry their own source
+elevations. Shared shore vertices extend wet heights onto dry banks instead of
+interpolating toward zero. Water replacements wait for meshes, images and
+material bindings before publishing. Mask construction is asynchronous;
 interpolation avoids the earlier square mask edges. Coastline precision remains
 limited by source and runtime sampling. The wave field and ditching model remain
 game estimates, not a calibrated hydrodynamic simulation.
@@ -170,3 +175,103 @@ The summary explicitly distinguishes retained CPU assets from total GPU residenc
 `capture.py ... --case forest-dense` captures a WorldCover-selected forest region
 at approximately 12.4321° E, 59.2125° N; the original default route is mixed
 farmland and woodland rather than a dense-canopy stress test.
+
+Standard graphics now uses 2× MSAA plus FXAA. Camera debanding dither is disabled
+to avoid magnifying screen-space noise when compositing a reduced-resolution
+world. Ground detail fades according to its pixel footprint and distance.
+
+The optional frame-rate limiter is disabled by default: testing showed a
+regression when combining timer-based limiting with Vsync on this Mac. It runs
+before Bevy updates simulation time when explicitly enabled.
+`GraphicsSettings.frame_rate_limit` accepts 0 (unlimited) or 30–240 Hz in a
+custom graphics JSON. This is a ceiling, not a guarantee that rendering meets
+the chosen rate. The limit is preserved when switching Standard/High.
+
+
+## Mountain flying start
+
+In flight setup, choose **Atmospheric Flight → Mountain Flying / Norway**, select
+an aircraft, and press **Fly**. The unopposed scenario starts near 61.25° N,
+7.70° E at 190 m/s, gear up. Starting height is at least 600 m above the local
+surface and increased if necessary to clear ridges along the next 8 km by 300 m.
+The pilot controls the flight after launch; this is not automatic terrain following.
+It uses the Norway pack on both Earth and sci-fi Earth. The geographic starting
+point is separate from the BVR scenario, so combat starts keep their existing setup.
+
+
+## Scene loading
+
+Starting or resetting a flight now shows an opaque loading screen with an animated
+spinner and a description of the current stage. The destination aircraft state
+is held while terrain coverage, water boundaries, vegetation cells, aircraft
+scenes and GPU meshes/materials/textures are prepared. Flight controls are blocked
+during loading; the previous pause setting is restored only after readiness and
+visibility settle. Loading time is excluded from simulation advancement, so the
+aircraft does not fall or consume flight time while waiting. A newer scenario
+reset invalidates the previous readiness acknowledgement. Distant terrain can
+continue normal view-dependent streaming after launch.
+
+
+Loading validation: the full suite passed with 887 tests and one ignored test;
+the final loading regressions passed separately. A native home-region-to-Norway
+transition took 4.42 seconds (455 update frames) with aircraft simulation time
+still 0.000 seconds at release. The loading overlay and released scene were
+captured under `tests/scene-loading/`. This measurement describes that transition
+on the current Mac, not a fixed loading-time guarantee for every scene.
+
+The loading overlay fades in over 2 seconds of wall-clock time. The outgoing
+world image remains frozen during that fade; destination rendering starts behind
+the opaque overlay, preventing unfinished terrain from showing through. Once the
+scene is ready, the overlay fades out over 2 seconds. Aircraft simulation remains
+paused throughout both fades and resumes only after the overlay has disappeared.
+
+Flight UI is hidden from the first loading frame through the end of the fade-out.
+This includes explicitly visible child widgets and panels created during loading.
+Their normal visibility rules resume afterward; intentionally hidden panels stay
+hidden. The loading artwork and world-image compositor remain visible.
+
+Flat-ground surface colors now use a geographic classification atlas rather than
+interpolated mesh vertex colors inside installed packs. A conservative 3×3
+categorical majority removes isolated vegetation/field flecks while preserving
+mixed edges, water, snow, and building classes. Palette colors are reconstructed
+per pixel with a sharpened bilinear transition confined to class texels. Numeric
+material IDs are never interpolated. Large triangles therefore no longer spread
+field colors across unrelated ground or invent intermediate material types.
+
+When class texels become smaller than a screen pixel, the shader transitions to
+an area-filtered, linear-light color mip pyramid. Two-texel neighboring-data halos
+and continuous geographic derivatives avoid degree-boundary sampling jumps.
+Near texture contrast is reduced so it does not obscure land-cover boundaries.
+The active preset supplies the palette, including sci-fi Earth. Heights, water
+masks and collision classifications retain their existing authority.
+
+Shared atlas resolution is selected once at flight startup and capped by the
+smaller of half the configured GPU environment budget and the staging allowance.
+Near classifications use R8Uint storage; only distant colors need RGBA mipmaps.
+GPU publication waits for these textures along with the existing terrain assets.
+Rock blending uses the interpolated authoritative slope attribute, rather than
+triangle face derivatives, to avoid coloring coarse terrain as individual facets.
+Boundary sharpening is applied to accumulated class weights, not independently
+to the two texture axes, which reduces square corners in the reconstructed mask.
+Geographic UVs are prepared by mesh workers. The fragment shader performs no
+spherical coordinate conversion, skips boundary reconstruction in uniform land
+cover, and stops high-resolution classification filtering for subpixel texels.
+Geographic UVs are stored relative to the home-region origin, subtracting in f64
+before conversion to f32. This retains centimetre-scale variation for near-ground
+texture derivatives; absolute latitude in f32 can quantize these derivatives and
+incorrectly select the finest mip, causing grain and moire.
+
+Validation for this surface-color change: 18 terrain tests and 11 environment
+tests passed. Packaged native captures cover Earth at 50 m and 260 m AGL, sci-fi
+Earth, and the Norway mountain scenario. The final bundle passed strict signature
+verification. Artifacts and executable hashes are under
+`tests/surface-color/delivery/`.
+
+The final paired battery-powered paused-render study used a 2880×1800 interface
+and 1440×900 world image, 20 seconds warm-up and 30 seconds sampling. The old
+build averaged 47.6 FPS (p95 38.20 ms); the delivered build averaged 103.4 FPS
+(p95 25.02 ms, p99 27.43 ms). This is one noisy desktop comparison, not proof
+of a general speedup. The p95/p99 acceptance targets are still unmet in that
+sample. Earlier AC-power and different-display runs are recorded separately;
+live-flight timing and long-duration soak acceptance are outside this focused
+surface-color validation.

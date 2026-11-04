@@ -1,10 +1,13 @@
 //! AI pilots command the same Flight plant as the player. No velocity/attitude steering.
 use super::*;
 use dogfight::Difficulty;
+mod terrain;
 
 #[derive(Clone, Default)]
 pub struct Brain {
+    pub terrain_guard:terrain::Guard,
     pub naval:bool,
+    pub energy_recovery:bool,
     pub id: usize,
     pub long_range: bool,
     pub mode: &'static str,
@@ -172,6 +175,10 @@ pub fn initialize(t: &mut Target) {
 }
 /// Explicit command boundary: only throttle and controls may be changed by a pilot.
 pub fn command(f: &mut Flight, desired: DVec3, speed: f64, d: Difficulty, dt: f64) -> &'static str {
+    let advice=terrain::preview(f,desired,contact_height_at);
+    command_with_terrain(f,desired,speed,d,dt,advice)
+}
+fn command_with_terrain(f:&mut Flight,desired:DVec3,speed:f64,d:Difficulty,dt:f64,advice:terrain::Advice)->&'static str {
     let up = f.up();
     let forward = f.forward();
     let right = forward.cross(up).normalize_or(DVec3::X);
@@ -180,16 +187,12 @@ pub fn command(f: &mut Flight, desired: DVec3, speed: f64, d: Difficulty, dt: f6
     let air = f.velocity - f.wind;
     let airspeed = air.length();
     let path = air.dot(up).atan2((air - up * air.dot(up)).length().max(1.));
-    let recovery = f.stall() || f.alpha > 0.34 || airspeed < 100.;
-    let clearance = f.agl();
-    let lookahead = terrain_height(
-        (f.position + f.velocity * 5.).x,
-        (f.position + f.velocity * 5.).z,
-    );
-    let terrain =
-        clearance < 450. + (-f.vertical_speed()).max(0.) * 5. || f.altitude() < lookahead + 450.;
-    let bank = if recovery || terrain {
+    let recovery = f.stall() || f.alpha.abs() > 0.28 || airspeed < 160.;
+    let terrain=advice.active;
+    let bank = if recovery {
         0.
+    } else if terrain {
+        advice.bank
     } else {
         let limit = if airspeed > 220. && f.alpha.abs() < 0.20 {
             1.45
@@ -203,7 +206,7 @@ pub fn command(f: &mut Flight, desired: DVec3, speed: f64, d: Difficulty, dt: f6
     let target_path = if recovery {
         -0.10
     } else if terrain {
-        0.24
+        advice.path
     } else {
         desired.dot(up).clamp(-0.3, 0.3).asin()
     };
@@ -213,8 +216,16 @@ pub fn command(f: &mut Flight, desired: DVec3, speed: f64, d: Difficulty, dt: f6
     } else {
         (1. / f.roll().cos().max(0.12) + (target_path - path) * 4.).clamp(-1., 8.5)
     };
-    let pitch = ((desired_g - f.g_load) * 0.14 + (target_path - path) * 0.5).clamp(-0.7, 1.);
-    let roll = (roll_error * 2.4).clamp(-1., 1.);
+    let mut pitch = ((desired_g - f.g_load) * 0.14 + (target_path - path) * 0.5).clamp(-0.7, 1.);
+    if recovery {
+        // Retain the established unloaded recovery path. Incidence protection
+        // must cap pull-up feedback when descent would otherwise demand lift
+        // from an already separated wing.
+        pitch=pitch.clamp(-0.35,0.15);
+        if f.alpha>0.22 {pitch=pitch.min((0.12-f.alpha)*0.6).max(-0.35);}
+    }
+    if f.alpha>0.18 {pitch=pitch.min(((0.26-f.alpha)*2.).max(-0.2));}
+    let roll = (roll_error * 2.4+f.rates.z*0.45).clamp(-1., 1.);
     let yaw = (-f.beta * 1.8).clamp(-0.4, 0.4);
     let target = DVec3::new(pitch, yaw, roll);
     let response = if recovery || terrain { 1. } else { skill(d) };
@@ -265,12 +276,13 @@ pub fn fly(t: &mut Target, e: &Environment, desired: DVec3, speed: f64, d: Diffi
     while left > 1e-10 {
         let h = left.min(1. / 120.);
         if !t.dynamics.crashed {
-            let safety = if t.dynamics.ai_bomber {crate::aircraft::tu160::pilot(&mut t.dynamics,desired,speed,h);"BOMBER FBW"}else{command(
+            let safety = if t.dynamics.ai_bomber {crate::aircraft::tu160::pilot(&mut t.dynamics,desired,speed,h);"BOMBER FBW"}else{let desired=desired.normalize_or(t.orientation * -DVec3::Z);let advice=t.brain.terrain_guard.update(&t.dynamics,desired);command_with_terrain(
                 &mut t.dynamics,
                 desired.normalize_or(t.orientation * -DVec3::Z),
                 speed,
                 d,
                 h,
+                advice,
             )};
             t.brain.mode = if safety != "TRACK" {
                 safety
@@ -452,6 +464,12 @@ mod tests {
         c.targets.remove(0)
     }
     #[test]
+    fn stalled_descending_pilot_unloads_before_climbing(){
+        let mut f=airframe();f.position=crate::terrain::point(0.,0.,1000.);f.alpha=0.7;f.velocity=f.forward()*130.-f.up()*50.;f.controls=DVec3::ZERO;
+        let goal=f.forward();let mode=command(&mut f,goal,250.,Difficulty::Hard,1./120.);
+        assert_eq!(mode,"STALL RECOVERY");assert!(f.controls.x<0.);
+    }
+    #[test]
     fn ai_uses_identical_player_plant_for_every_difficulty_and_surface_failure() {
         let mut e = Environment::default();
         e.wind_enabled = false;
@@ -466,8 +484,10 @@ mod tests {
                 sync(&mut t);
                 let mut player = t.dynamics.clone();
                 let desired = (player.forward() + player.orientation * DVec3::X * 0.4).normalize();
+                let mut guard=terrain::Guard::default();
                 for _ in 0..120 {
-                    command(&mut player, desired, 260., difficulty, 1. / 120.);
+                    let advice=guard.update(&player,desired);
+                    command_with_terrain(&mut player, desired, 260., difficulty, 1. / 120.,advice);
                     simulate(&mut player, &e, 1. / 120.);
                     fly(&mut t, &e, desired, 260., difficulty, 1. / 120.);
                     assert!(t.velocity.distance(player.velocity) < 1e-10);
@@ -541,7 +561,7 @@ mod tests {
             for _ in 0..7200 {
                 fly(&mut t, &e, desired, 250., Difficulty::Hard, 1. / 120.);
                 peak = peak.max(t.dynamics.g_load.abs());
-                assert!(t.alive);
+                assert!(t.alive,"time={} cause={} speed={} alpha={} bank={} pitch={}",t.dynamics.elapsed,t.dynamics.status,t.dynamics.airspeed,t.dynamics.alpha,t.dynamics.roll(),t.dynamics.pitch());
                 assert!(t.dynamics.rates.is_finite());
             }
             println!("TURN stalled={stalled} heading={} speed={} alpha={} G={peak} bank={}",t.dynamics.forward().dot(desired).acos().to_degrees(),t.dynamics.airspeed,t.dynamics.alpha,t.dynamics.roll());

@@ -91,11 +91,14 @@ fn estimated_error(tile: Tile) -> f64 {
     }
     let step = tile.size as f64 / 64.;
     let mut error = 0f64;
+    let(mut wet,mut dry)=(false,false);
     for j in 0..=4 {
         for i in 0..=4 {
             let x = tile.x as f64 + tile.size as f64 * i as f64 / 4.;
             let z = tile.z as f64 + tile.size as f64 * j as f64 / 4.;
             let h = terrain_height(x, z);
+            let water=crate::environment::active().raw(crate::environment::point(x,z,h,crate::environment::radius())).2.is_some();
+            wet|=water;dry|=!water;
             let hx = (terrain_height(x - step * 0.5, z) + terrain_height(x + step * 0.5, z)) * 0.5;
             let hz = (terrain_height(x, z - step * 0.5) + terrain_height(x, z + step * 0.5)) * 0.5;
             error = error.max((hx - h).abs()).max((hz - h).abs());
@@ -103,6 +106,10 @@ fn estimated_error(tile: Tile) -> f64 {
     }
     // A small spacing-dependent floor avoids undersampling unsurveyed features.
     error = error.max(step * 0.035);
+    // A flat DEM on both sides can hide an important shoreline from geometric
+    // error samples. Retain finer geometry there so water/land intersections
+    // do not move hundreds of metres on a quadtree split or merge.
+    if wet&&dry{error=error.max(tile.size as f64*0.01);}
     let mut cache = cache.lock().unwrap();
     if cache.len() > 8192 {
         cache.clear();

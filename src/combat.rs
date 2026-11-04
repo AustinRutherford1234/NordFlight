@@ -10,6 +10,7 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 pub mod ai;
+pub mod mountain;
 pub mod cannon_visual;
 pub mod servicing;
 pub mod jettison;
@@ -1495,6 +1496,8 @@ pub fn controls(
     if combat.generation != v.generation {
         if (13..=18).contains(&v.scenario) {
             naval::start(&mut combat,&f,v.generation,((v.scenario-13)/2) as usize);
+        } else if let Some(setup)=mountain::Setup::decode(v.scenario) {
+            mountain::start(&mut combat,&f,v.generation,setup);
         } else if v.scenario == 8 {
             bvr::start(
                 &mut combat,

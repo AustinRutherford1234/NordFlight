@@ -20,6 +20,15 @@ pub struct SurfaceExtension {
     #[texture(103, dimension = "2d_array")]
     #[sampler(104)]
     pub normal: Handle<Image>,
+    #[texture(105, dimension = "2d_array")]
+    #[sampler(106)]
+    pub cover: Handle<Image>,
+    #[texture(107, sample_type = "u_int")]
+    pub cover_lookup: Handle<Image>,
+    #[texture(111, dimension = "2d_array", sample_type = "u_int")]
+    pub cover_classes: Handle<Image>,
+    #[uniform(112)]
+    pub palette: [Vec4;8],
 }
 impl MaterialExtension for SurfaceExtension {
     fn fragment_shader() -> ShaderRef {

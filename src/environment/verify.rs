@@ -51,6 +51,14 @@ pub fn run() -> Result<(), String> {
         ));
     }
     records.push(serde_json::json!({"case":"takeoff","airborne":airborne,"crashed":f.crashed,"agl_m":f.agl(),"airspeed_m_s":f.airspeed,"simulation_s":f.elapsed}));
+    let mut mountain=crate::scenarios::mountain_flight(crate::aircraft::Aircraft::Gripen);
+    let start_agl=mountain.agl();let mut minimum_agl=start_agl;
+    for _ in 0..240*30 {
+        simulate(&mut mountain,&atmosphere,1./240.);
+        minimum_agl=minimum_agl.min(mountain.agl());
+        if mountain.crashed||!mountain.position.is_finite(){return Err("mountain free flight failed".into());}
+    }
+    records.push(serde_json::json!({"case":"mountain_freeflight","start_agl_m":start_agl,"minimum_agl_m":minimum_agl,"simulation_s":mountain.elapsed,"crashed":mountain.crashed}));
     let report = serde_json::json!({"environment":super::active().preset.id,"revision":super::active().revision,"terrain_bytes":super::active().data.bytes,"cases":records});
     let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
     if let Ok(path) = std::env::var("NORD_ENVIRONMENT_REPORT") {

@@ -56,6 +56,7 @@ mod terrain;
 mod environment;
 mod scenarios;
 mod terrain_ready;
+mod loading;
 mod warp;
 mod world;
 use bevy::{
@@ -261,6 +262,7 @@ fn main() {
         space::study();
         return;
     }
+    if std::env::args().any(|a|a=="--study-mountain-combat"){combat::bvr::close::study();return;}
     if std::env::args().any(|a| a == "--study-ai") {
         combat::ai::study();
         return;
@@ -1377,6 +1379,15 @@ fn main() {
     }
     if let Ok(mode)=std::env::var("NORD_NAVAL_CAPTURE"){combat::naval::prepare_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);if mode.starts_with("map-"){bvr_menu.reveal=mode=="map-reveal"||mode=="map-120km";}}
     if let Ok(mode)=std::env::var("NORD_RADAR_CAPTURE") {combat::bvr::prepare_hornet_review(&mode,&mut initial_flight,&mut combat,&mut initial_view);}
+    if preview.as_deref()==Some("terrain-mountain-freeflight") {
+        reset(&mut initial_flight,19,&mut initial_view);
+        initial_flight.paused=true;initial_view.index=1;initial_view.help=false;
+    }
+    if preview.as_deref()==Some("terrain-mountain-combat") {
+        reset(&mut initial_flight,combat::mountain::Setup{force:4,entry:0,difficulty:combat::dogfight::Difficulty::Balanced}.id(),&mut initial_view);
+        combat::mountain::start(&mut combat,&initial_flight,initial_view.generation,combat::mountain::Setup::decode(initial_view.scenario).unwrap());
+        initial_flight.paused=true;initial_view.index=1;initial_view.help=false;
+    }
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
     let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
     App::new()
@@ -1469,6 +1480,7 @@ fn main() {
         .add_plugins(ocean::OceanPlugin)
         .add_plugins(combat::smoke_gpu::SmokeGpuPlugin)
         .add_systems(PostUpdate,(combat::naval::smoke::update,combat::cannon_visual::update).before(bevy::transform::TransformSystems::Propagate))
+        .add_plugins(loading::LoadingPlugin)
         .add_plugins(terrain_ready::TerrainReadyPlugin)
         .add_plugins(terrain::material::TerrainMaterialPlugin)
         .add_plugins(terrain::vegetation::VegetationPlugin)
@@ -1738,9 +1750,10 @@ fn setup_view(
             falloff: FogFalloff::Exponential { density: 0.000015 },
             ..default()
         },
-        Msaa::Off,
+        Msaa::Sample2,
         Fxaa::default(),
     )).id();
+    c.entity(camera).insert(bevy::core_pipeline::tonemapping::DebandDither::Disabled);
     // Developer comparison: reject hidden opaque fragments before their full
     // material shaders, without changing geometry, MSAA or lighting quality.
     if std::env::var_os("NORD_TERRAIN_DEPTH_PREPASS").is_some() {
@@ -2075,12 +2088,14 @@ fn reset(f: &mut Flight, scenario: u8, v: &mut ViewState) {
         9 | 10 => space::scenario(scenario),
         11 | 12 => carrier::scenario(scenario==12),
         13..=18 => combat::naval::flight(scenario%2==1),
+        19 => scenarios::mountain_flight(aircraft),
+        20..=64 => combat::mountain::flight(aircraft),
         _ => Flight::spacecraft(),
     };
     f.best_landing = best;
     let aircraft=if matches!(scenario,11..=18){aircraft::Aircraft::Hornet}else{aircraft};
-    if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11..=18) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
-    if aircraft==aircraft::Aircraft::Hornet && matches!(scenario,4..=8) {
+    if f.vehicle==Vehicle::Gripen && aircraft!=aircraft::Aircraft::Gripen && !matches!(scenario,11..=64) {aircraft::select(f,aircraft);}else{f.aircraft=aircraft;}
+    if aircraft==aircraft::Aircraft::Hornet && (matches!(scenario,4..=8)||(20..=64).contains(&scenario)) {
         f.hornet.hud.mode=cockpit::hornet_hud::MasterMode::Air;
     }
     if aircraft==aircraft::Aircraft::F22{f.systems.external_stores=external_stores;}
@@ -2931,7 +2946,7 @@ fn update_camera(
         } else if v.benchmark_msaa {
             Msaa::Sample2
         } else {
-            Msaa::Off
+            Msaa::Sample2
         };
         if *msaa != target_msaa {
             *msaa = target_msaa;
@@ -3192,6 +3207,8 @@ fn update_hud(
                         f.space.body.label(),
                         f.space.stage.label()
                     )
+                } else if v.scenario==19 || (20..=64).contains(&v.scenario) {
+                    format!("{}  |  NORWEGIAN MOUNTAINS  |  61.25° N, 7.70° E",f.aircraft.name())
                 } else {
                     format!(
                         "{}  |  SÅTENÄS F7  /  ESIB  |  58.4283° N, 12.7111° E",
@@ -3473,7 +3490,9 @@ fn orbital_energy(f: &Flight) -> f64 {
 struct VisualCheck(Option<String>);
 fn capture_visual_check(
     mut c: Commands,
+    menu:Res<start_screen::Menu>,
     preview: Res<VisualCheck>,
+    loading: Res<loading::Loading>,
     mut f: ResMut<Flight>,
     mut view: ResMut<ViewState>,
     mut canopy_reset: Local<(u8,f32)>,
@@ -3519,7 +3538,9 @@ fn capture_visual_check(
         }
         if canopy_reset.0<3 {return;}
     }
-    if *captured || time.elapsed_secs() < 8.0 {
+    if std::env::var("NORD_LOADING_TRANSITION").as_deref()==Ok("mountains") && view.scenario!=19 {return;}
+    if std::env::var_os("NORD_MENU_CAPTURE").is_some()&&!start_screen::preview_ready(&menu){return;}
+    if loading.active || *captured || time.elapsed_secs() < 8.0 {
         return;
     }
     *captured = true;

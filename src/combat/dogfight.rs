@@ -83,6 +83,7 @@ pub struct Decoy {
 }
 #[derive(Clone)]
 pub struct Round {
+    pub(super) shooter:Option<usize>,
     pub position: DVec3,
     pub previous: DVec3,
     pub(super) velocity: DVec3,
@@ -589,7 +590,7 @@ impl Combat {
                     fight.difficulty.spread(),
                 );
                 let position = t.position + t.orientation * DVec3::new(0.35, -0.1, -6.0);
-                fight.rounds.push(Round {
+                fight.rounds.push(Round {shooter:None,
                     position,
                     previous: position,
                     velocity: t.velocity + shot_direction * CANNON_MUZZLE_SPEED,
@@ -613,7 +614,7 @@ impl Combat {
         {
             let direction = spread(f.forward(), f.up(), fight.gun as f64, 0.0025);
             let position = f.position + f.orientation * crate::aircraft::gun_origin(f.aircraft);
-            fight.rounds.push(Round {
+            fight.rounds.push(Round {shooter:None,
                 position,
                 previous: position,
                 velocity: f.velocity + direction * CANNON_MUZZLE_SPEED,
@@ -1809,7 +1810,7 @@ mod tests {
         let t = &c.targets[0];
         let direction = t.orientation * -DVec3::Z;
         let position = t.position - direction * 20.;
-        c.fight.as_mut().unwrap().rounds.push(Round {
+        c.fight.as_mut().unwrap().rounds.push(Round {shooter:None,
             position,
             previous: position,
             velocity: t.velocity + direction * CANNON_MUZZLE_SPEED,
@@ -1832,7 +1833,7 @@ mod tests {
         let mut c = Combat::default();
         c.start_air(&f, 1, 5);
         let position = f.position - f.forward() * 20.0;
-        c.fight.as_mut().unwrap().rounds.push(Round {
+        c.fight.as_mut().unwrap().rounds.push(Round {shooter:None,
             position,
             previous: position,
             velocity: f.forward() * 1200.0,

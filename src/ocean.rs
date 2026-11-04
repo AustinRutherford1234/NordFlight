@@ -18,6 +18,8 @@ use bevy::{
     },
     shader::{Shader, ShaderRef},
 };
+mod shore;
+
 const SHADER: Handle<Shader> = uuid_handle!("2a9ec418-a6c8-430c-8d24-58bff5863856");
 const COUNT: usize = 24;
 const TAU: f64 = std::f64::consts::TAU;
@@ -165,18 +167,41 @@ impl MaterialExtension for Extension {
 type OceanMaterial = ExtendedMaterial<StandardMaterial, Extension>;
 #[derive(Component)]
 pub(crate) struct Ocean;
+#[derive(Component)]
+pub(crate) struct Lakes;
 #[derive(Resource)]
 pub(crate) struct WaterGrid {
     image:Handle<Image>,coarse:Handle<Image>,cell:(i32,i32),bounds:Vec4,far:Vec4,
-    task:Option<bevy::tasks::Task<(Image,Image,Vec4,Vec4)>>,
+    task:Option<bevy::tasks::Task<shore::BuiltWater>>,
+    lake_entity:Entity, lake_mesh:Handle<Mesh>, lake_anchor:DVec3,
+    pending:Option<WaterPublication>,material:Handle<OceanMaterial>,
+}
+struct WaterPublication {
+    water:Handle<Image>,coarse:Handle<Image>,mesh:Handle<Mesh>,material:Handle<OceanMaterial>,
+    bounds:Vec4,far:Vec4,anchor:DVec3,
+}
+#[derive(Resource,Clone,Default)]
+pub(crate) struct WaterReady(crate::terrain_ready::TerrainReady);
+fn water_ready(state:Res<WaterReady>,
+    meshes:Res<bevy::render::render_asset::RenderAssets<bevy::render::mesh::RenderMesh>>,
+    images:Res<bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>>,
+    materials:Res<bevy::render::erased_render_asset::ErasedRenderAssets<bevy::pbr::PreparedMaterial>>) {
+    state.0.poll_all(|id|meshes.get(id).is_some(),|id|images.get(id).is_some(),|id|materials.get(id).is_some());
+}
+fn water_at_xz(environment:&crate::environment::EnvironmentSnapshot,x:f64,z:f64)->Option<f64> {
+    let h=environment.height_xz(x,z);
+    environment.raw(crate::environment::point(x,z,h,environment.preset.planet.radius)).2
 }
 fn water_image(x:f64,z:f64,n:usize,step:f64)->(Image,Vec4) {
     let west=(x/1024.).floor()*1024.-n as f64*step*0.5;
     let south=(z/1024.).floor()*1024.-n as f64*step*0.5;
     let mut bytes=Vec::with_capacity(n*n*8);
     for j in 0..n {for i in 0..n {
-        let p=crate::environment::point(west+i as f64*step,south+j as f64*step,0.,planet_radius());
-        let(_,_,water,_)=crate::environment::active().raw(p);
+        let x=west+i as f64*step;let z=south+j as f64*step;
+        // Terrain vertices retain Cartesian x/z when lifted. Sample the mask at
+        // that same lifted geographic coordinate; sea-level sampling shifts
+        // mountain lake shorelines by tens of metres relative to the ground.
+        let water=water_at_xz(crate::environment::active(),x,z);
         bytes.extend((water.unwrap_or(0.) as f32).to_le_bytes());
         bytes.extend((if water.is_some(){1f32}else{0f32}).to_le_bytes());
     }}
@@ -189,6 +214,12 @@ impl Plugin for OceanPlugin {
         load_internal_asset!(app, SHADER, "ocean.wgsl", Shader::from_wgsl);
         app.add_plugins(MaterialPlugin::<OceanMaterial>::default())
             .add_systems(PostStartup, setup);
+        let ready=WaterReady::default();app.insert_resource(ready.clone());
+        if let Some(render)=app.get_sub_app_mut(bevy::render::RenderApp) {
+            render.insert_resource(ready).add_systems(bevy::render::Render,water_ready
+                .in_set(bevy::render::RenderSystems::PrepareAssets)
+                .after(bevy::render::render_asset::prepare_assets::<bevy::render::mesh::RenderMesh>));
+        }
     }
 }
 fn parameters(center: DVec3, time: f64, quality: bool) -> Parameters {
@@ -270,6 +301,7 @@ fn mesh() -> Mesh {
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![[1f32; 4]; points.len()]);
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, points);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[0f32;2];uv.len()]);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uv);
     mesh.insert_indices(Indices::U32(indices));
     mesh
@@ -374,9 +406,9 @@ fn setup(
     if !enabled() {
         return;
     }
-    let (near,bounds)=water_image(0.,0.,384,64.);let (far,far_bounds)=water_image(0.,0.,256,1024.);
-    let water=images.add(near);let coarse=images.add(far);
-    c.insert_resource(WaterGrid{image:water.clone(),coarse:coarse.clone(),cell:(i32::MIN,i32::MIN),bounds,far:far_bounds,task:None});
+    let built=shore::build(0.,0.);
+    let water=images.add(built.near);let coarse=images.add(built.coarse);
+    let lake_mesh=meshes.add(built.lakes);
     let material = materials.add(OceanMaterial {
         base: StandardMaterial {
             base_color: Color::srgb(0.018, 0.095, 0.125),
@@ -390,9 +422,14 @@ fn setup(
         extension: Extension {
             parameters: parameters(DVec3::Y * planet_radius(), 0., false),
             detail: images.add(detail_image()),
-            water,coarse,
+            water:water.clone(),coarse:coarse.clone(),
         },
     });
+    let lake_entity=c.spawn((Lakes,Mesh3d(lake_mesh.clone()),MeshMaterial3d(material.clone()),
+        Transform::default(),Visibility::Hidden,NotShadowCaster,NotShadowReceiver,
+        bevy::camera::visibility::NoFrustumCulling)).id();
+    c.insert_resource(WaterGrid{image:water,coarse,cell:(0,0),bounds:built.bounds,far:built.far,
+        task:None,lake_entity,lake_mesh,lake_anchor:built.anchor,pending:None,material:material.clone()});
     c.spawn((
         Ocean,
         Mesh3d(meshes.add(mesh())),
@@ -407,21 +444,24 @@ fn setup(
 pub fn update(
     f: Res<Flight>,
     v: Res<crate::ViewState>,
-    camera: Query<&Transform, (With<FlightCamera>, Without<Ocean>)>,
+    camera: Query<&Transform, (With<FlightCamera>, Without<Ocean>,Without<Lakes>)>,
     mut surfaces: Query<
         (
             &mut Transform,
             &mut Visibility,
-            &MeshMaterial3d<OceanMaterial>,
+            &mut MeshMaterial3d<OceanMaterial>,
         ),
-        With<Ocean>,
+        (With<Ocean>,Without<Lakes>),
     >,
     mut materials: ResMut<Assets<OceanMaterial>>,
     mut images:ResMut<Assets<Image>>,
     grid:Option<ResMut<WaterGrid>>,
+    mut meshes:ResMut<Assets<Mesh>>,
+    ready:Res<WaterReady>,
+    mut lakes:Query<(&mut Transform,&mut Visibility,&mut Mesh3d,&mut MeshMaterial3d<OceanMaterial>),(With<Lakes>,Without<Ocean>,Without<FlightCamera>)>,
 ) {
     let Some(mut grid)=grid else{return;};
-    for (mut transform, mut visible, handle) in &mut surfaces {
+    for (mut transform, mut visible, mut handle) in &mut surfaces {
         let opacity = crate::earth::terrain_opacity(f.altitude());
         let show = opacity > 0.001 && !v.map && f.position.y > planet_radius() * 0.5
             && !(f.vehicle==crate::physics::Vehicle::Spacecraft&&f.space.body==crate::space::Body::Moon);
@@ -431,6 +471,7 @@ pub fn update(
             Visibility::Hidden
         });
         if !show {
+            if let Ok((_,mut visibility,_,_))=lakes.get_mut(grid.lake_entity){*visibility=Visibility::Hidden;}
             continue;
         }
         let eye = camera
@@ -449,22 +490,41 @@ pub fn update(
         if crate::environment::real() {
             use bevy::tasks::{block_on,poll_once,AsyncComputeTaskPool};
             if let Some(task)=grid.task.as_mut() {
-                if let Some((near,far,bounds,far_bounds))=block_on(poll_once(task)){
-                    if let Some(image)=images.get_mut(&grid.image){*image=near;}
-                    if let Some(image)=images.get_mut(&grid.coarse){*image=far;}
-                    grid.bounds=bounds;grid.far=far_bounds;grid.task=None;
+                if let Some(built)=block_on(poll_once(task)){
+                    let water=images.add(built.near);let coarse=images.add(built.coarse);
+                    let mesh=meshes.add(built.lakes);
+                    if let Some(source)=materials.get(&handle.0).cloned(){
+                        let mut next=source;next.extension.water=water.clone();next.extension.coarse=coarse.clone();
+                        next.extension.parameters.water_grid=built.bounds;next.extension.parameters.water_coarse=built.far;
+                        let material=materials.add(next);
+                        ready.0.request(vec![mesh.id()]);
+                        ready.0.dependencies(vec![water.id(),coarse.id()],vec![material.id().untyped()]);
+                        grid.pending=Some(WaterPublication{water,coarse,mesh,material,bounds:built.bounds,far:built.far,anchor:built.anchor});
+                    }
+                    grid.task=None;
                 }
             }
-            let cell=((x/1024.).floor()as i32,(z/1024.).floor()as i32);
-            if grid.task.is_none()&&cell!=grid.cell {
+            let cell=((x/4096.).floor()as i32,(z/4096.).floor()as i32);
+            if grid.pending.is_some()&&ready.0.ready(){
+                let next=grid.pending.take().unwrap();
+                grid.image=next.water;grid.coarse=next.coarse;grid.lake_mesh=next.mesh;
+                grid.bounds=next.bounds;grid.far=next.far;grid.lake_anchor=next.anchor;
+                handle.0=next.material;grid.material=handle.0.clone();ready.0.clear();
+            }
+            if grid.task.is_none()&&grid.pending.is_none()&&cell!=grid.cell {
                 grid.cell=cell;
                 grid.task=Some(AsyncComputeTaskPool::get().spawn(async move{
-                    let(near,bounds)=water_image(x,z,384,64.);let(far,far_bounds)=water_image(x,z,256,1024.);
-                    (near,far,bounds,far_bounds)
+                    shore::build((x/4096.).floor()*4096.,(z/4096.).floor()*4096.)
                 }));
             }
         }
+        if let Ok((mut t,mut visibility,mut mesh,mut material))=lakes.get_mut(grid.lake_entity) {
+            *t=Transform::from_translation(world::local(grid.lake_anchor,&f))
+                .with_rotation(world::local_rot(DQuat::IDENTITY,&f));
+            mesh.0=grid.lake_mesh.clone();material.0=handle.0.clone();visibility.set_if_neq(*visible);
+        }
         let mut desired = parameters(center, f.elapsed, v.high_quality);
+        desired.detail.w=crate::environment::active().preset.planet.sea_level as f32;
         if crate::environment::real(){desired.water_grid=grid.bounds;desired.water_coarse=grid.far;}
         desired.axis_x = (world::frame(&f).conjugate() * DVec3::X)
             .as_vec3()
@@ -494,6 +554,22 @@ pub fn update(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mountain_water_mask_samples_the_same_lifted_surface_as_terrain() {
+        let mut environment=crate::environment::EnvironmentSnapshot::legacy();
+        environment.preset.legacy=false;
+        let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/environment/packs");
+        environment.data=crate::environment::pack::TerrainData::load(&root,&["norway-mountains".into()],384*1024*1024).unwrap();
+        let mut regressions=0;
+        for j in 0..100 {for i in 0..100 {
+            let(x,z)=(289000.+i as f64*96.,297000.+j as f64*96.);
+            let h=environment.height_xz(x,z);
+            let expected=environment.raw(crate::environment::point(x,z,h,environment.preset.planet.radius)).2;
+            let old=environment.raw(crate::environment::point(x,z,0.,environment.preset.planet.radius)).2;
+            if old!=expected {assert_eq!(water_at_xz(&environment,x,z),expected);regressions+=1;}
+        }}
+        assert!(regressions>0,"fixture must exercise the shifted mountain shoreline");
+    }
     #[test]
     fn gaussian_spectrum_is_bounded_and_has_requested_variance() {
         let variance = spectrum()
@@ -555,4 +631,16 @@ mod tests {
                 .sum::<usize>()
         );
     }
+}
+
+pub(crate) fn loading_resources(f:&Flight,grid:Option<&WaterGrid>)->Option<crate::loading::Resources>{
+    let mut result=crate::loading::Resources::default();
+    if !enabled()||!crate::environment::real()||f.altitude()>100000.||f.position.y<planet_radius()*0.5{return Some(result);}
+    let grid=grid?;
+    let center=Vec2::new(grid.bounds.x+384.*32.,grid.bounds.y+384.*32.);
+    if (center.x as f64-f.position.x).abs()>6000.||(center.y as f64-f.position.z).abs()>6000.
+        ||grid.task.is_some()||grid.pending.is_some(){return None;}
+    result.meshes.push(grid.lake_mesh.id());
+    result.images.extend([grid.image.id(),grid.coarse.id()]);result.materials.push(grid.material.id().untyped());
+    Some(result)
 }

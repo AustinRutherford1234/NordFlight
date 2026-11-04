@@ -257,6 +257,7 @@ pub fn controls(
 ) {
     combat.map_reveal=menu.reveal;
     for (action,mut node) in &mut spawn_buttons {
+        if action.0==0 {node.display=if combat.bvr.as_ref().is_some_and(|b|b.mountain){Display::None}else{Display::Flex};}
         if action.0==13 {node.display=if combat.naval.is_some(){Display::Flex}else{Display::None};}
     }
     if warp.editing {
@@ -281,6 +282,7 @@ pub fn controls(
         }
         match a.0 {
             0 => {
+                if combat.bvr.as_ref().is_some_and(|b|b.mountain){continue;}
                 if menu.open {
                     super::setup_screen::cancel(&mut menu, &mut f);
                 } else {
@@ -346,9 +348,10 @@ pub fn controls(
     };
     let (origin, size) = rect(w);
     if menu.last_generation != v.generation {
-        menu.center = Vec2::new(f.position.x as f32, f.position.z as f32 - if combat.bvr.is_some(){50000.}else{0.});
+        menu.center = Vec2::new(f.position.x as f32, f.position.z as f32 - if combat.bvr.as_ref().is_some_and(|b|!b.mountain){50000.}else{0.});
         if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("map-")){menu.span=if std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.contains("120km")){300000.}else{40000.};}
         if combat.naval.is_some() && std::env::var_os("NORD_NAVAL_CAPTURE").is_none(){menu.span=1000000.;}
+        if combat.bvr.as_ref().is_some_and(|b|b.mountain){menu.span=20000.;}
         menu.last_generation = v.generation;
         menu.dirty = true;
     }
@@ -519,7 +522,8 @@ pub fn draw(
                 })
                 .count();
             let value = format!(
-                "BVR {} / {} · {}    M MAP\n{}\nLR-AAM {} · IR {} · INCOMING {} · {}\nFORCE {} vs {} / START {:.0} km",
+                "{} {} / {} · {}    M MAP\n{}\nLR-AAM {} · IR {} · INCOMING {} · {}\nFORCE {} vs {} / START {:.0} km",
+                if b.mountain{"MOUNTAIN COMBAT"}else{"BVR"},
                 b.difficulty.label(),
                 if b.defense { "DEFEND" } else { "ELIMINATE" },
                 b.radar.mode.label(),

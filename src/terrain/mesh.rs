@@ -1,5 +1,11 @@
 //! Ground mesh construction; source coordinates stay in f64 until anchoring.
 use super::*;
+fn geographic_uv(position: DVec3) -> [f32; 2] {
+    let (lon, lat) = crate::environment::local_to_geo(position);
+    // Subtract in f64 before upload: absolute latitude loses ~0.4 m of
+    // precision in f32 and makes near-ground texture derivatives collapse.
+    [(lon - 12.711111) as f32, (lat - 58.428333) as f32]
+}
 pub(crate) fn terrain_mesh(x: f64, z: f64, size: f64, n: usize, anchor: DVec3) -> Mesh {
     let mut p = Vec::new();
     let mut colors = Vec::new();
@@ -17,13 +23,14 @@ pub(crate) fn terrain_mesh(x: f64, z: f64, size: f64, n: usize, anchor: DVec3) -
                     .as_vec3()
                     .to_array(),
             );
-            let uv_scale = if crate::environment::real() {
-                1.
-            } else {
-                0.025
-            };
-            uv.push([xx as f32 * uv_scale, zz as f32 * uv_scale]);
             let position = crate::terrain::point(xx, zz, h);
+            if crate::environment::real() {
+                // Geographic interpolation happens per vertex, not through
+                // millions of atan2 evaluations in the fragment shader.
+                uv.push(geographic_uv(position));
+            } else {
+                uv.push([xx as f32 * 0.025, zz as f32 * 0.025]);
+            }
             let sample = crate::environment::active().sample_surface(position);
             let slope = 1. - sample.normal.dot(position.normalize());
             let normal = if crate::environment::real() {
@@ -37,24 +44,9 @@ pub(crate) fn terrain_mesh(x: f64, z: f64, size: f64, n: usize, anchor: DVec3) -
             } else {
                 crate::terrain::color(xx, zz, h)
             });
-            let layer = if crate::environment::real()
-                && h > crate::environment::active().preset.terrain.snow_line
-            {
-                5.
-            } else if slope > 0.12 {
-                2.
-            } else {
-                match sample.land_cover {
-                    crate::environment::LandCover::Rock => 2.,
-                    crate::environment::LandCover::Snow => 5.,
-                    crate::environment::LandCover::Water => 4.,
-                    crate::environment::LandCover::Built => 3.,
-                    crate::environment::LandCover::Cropland
-                    | crate::environment::LandCover::Wetland => 1.,
-                    _ => 0.,
-                }
-            };
-            surface_uv.push([layer, h as f32]);
+            // Slope is a continuous geographic attribute. A face derivative
+            // would expose mesh triangles when blending rock at coarse LOD.
+            surface_uv.push([slope as f32, h as f32]);
         }
     }
     for j in 0..n {
@@ -106,4 +98,19 @@ pub(crate) fn terrain_mesh(x: f64, z: f64, size: f64, n: usize, anchor: DVec3) -
         normals[..surface_normals.len()].copy_from_slice(&surface_normals);
     }
     m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn regional_uvs_resolve_centimetres_before_gpu_upload() {
+        let p = crate::environment::geo_to_local(12.711111, 58.428333, 0., 6371000.);
+        let q = crate::environment::geo_to_local(12.711111 + 1e-7, 58.428333 + 1e-7, 0., 6371000.);
+        let a = geographic_uv(p);
+        let b = geographic_uv(q);
+        for i in 0..2 {
+            assert!(((b[i] - a[i]) as f64 - 1e-7).abs() < 1e-11);
+        }
+    }
 }

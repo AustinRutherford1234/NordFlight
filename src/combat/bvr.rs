@@ -5,6 +5,7 @@ use guidance::{Contact, Support};
 pub mod cockpit_radar;
 pub mod setup_screen;
 pub mod ui;
+pub(crate) mod close;
 pub use ui::{Menu, controls, draw, setup};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -123,10 +124,13 @@ struct Ai {
     memory: Option<(Option<usize>, DVec3, DVec3, f64)>,
     launch: f64,
     ammo: u8,
+    heat:u8,gun:u16,gun_at:f64,
     decoys: u8,
     decoy_at: f64,
 }
 pub struct Battle {
+    pub mountain:bool,
+    pub mountain_entry:usize,
     pub enemies: usize,
     pub allies: usize,
     pub defense: bool,
@@ -185,11 +189,20 @@ pub fn envelope(position: DVec3, velocity: DVec3, c: Contact) -> (f64, f64) {
     (max, max * 0.48)
 }
 pub fn start(c: &mut Combat, f: &Flight, generation: u64, m: &Menu) {
+    start_counts(c,f,generation,m,FORMATIONS[m.formation.min(3)]);
+}
+pub(super) fn start_close(c:&mut Combat,f:&Flight,generation:u64,difficulty:Difficulty,counts:(usize,usize)){
+    start_counts(c,f,generation,&Menu{difficulty,..default()},counts);
+    c.ammo=f.aircraft.spec().ammo;
+    let b=c.bvr.as_mut().unwrap();b.mountain=true;b.defense=false;
+    for(a,t)in b.ai.iter_mut().zip(&c.targets){a.ammo=t.dynamics.aircraft.spec().ammo[1];a.heat=t.dynamics.aircraft.spec().ammo[0];a.gun=t.dynamics.aircraft.spec().gun;}
+}
+fn start_counts(c: &mut Combat, f: &Flight, generation: u64, m: &Menu,counts:(usize,usize)) {
     c.start_air(f, generation, 6);
     c.targets.truncate(1);
     let template = c.targets[0].clone();
     c.targets.clear();
-    let (enemies, allies) = FORMATIONS[m.formation.min(3)];
+    let (enemies, allies) = counts;
     let distance = 125000.;
     let right = f.orientation * DVec3::X;
     for i in 0..enemies + allies {
@@ -224,6 +237,7 @@ pub fn start(c: &mut Combat, f: &Flight, generation: u64, m: &Menu) {
     c.weapon = Weapon::Radar;
     c.fight.as_mut().unwrap().difficulty = m.difficulty;
     c.bvr = Some(Battle {
+        mountain:false,mountain_entry:0,
         enemies,
         allies,
         defense: m.defense,
@@ -240,7 +254,7 @@ pub fn start(c: &mut Combat, f: &Flight, generation: u64, m: &Menu) {
         shots: vec![],
         ai: vec![
             Ai {
-                ammo: 4,
+                ammo: 4,heat:0,gun:0,gun_at:0.,
                 decoys: 24,
                 ..default()
             };
@@ -671,6 +685,10 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             |(_, p, v, at)| p + v * (c.clock - at),
         );
         let mut desired = (goal - t.position).normalize_or(dir);
+        if b.mountain {if let Some((_,_,velocity,_))=memory {
+            let range=goal.distance(t.position);let lead=(range/CANNON_MUZZLE_SPEED).clamp(0.,2.);
+            if range<2500. {desired=(goal+velocity*lead-t.position).normalize_or(dir);}
+        }}
         if memory.is_none() {
             if friend {
                 let station = f.position - f.forward() * 1800.
@@ -697,13 +715,24 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
         } else if supporting {
             desired = (desired + right * if i % 2 == 0 { 0.65 } else { -0.65 }).normalize();
         }
+        if b.mountain&&b.mountain_entry==2&&c.clock<10.&& !friend &&incoming.is_none(){
+            desired=(dir-up*dir.dot(up)).normalize_or(dir);
+        }
+        if b.mountain {
+            if t.dynamics.airspeed<195.||t.dynamics.alpha.abs()>0.24 {t.brain.energy_recovery=true;}
+            if t.dynamics.airspeed>235.&&t.dynamics.alpha.abs()<0.14 {t.brain.energy_recovery=false;}
+            if t.brain.energy_recovery {
+                let tangent=(dir-up*dir.dot(up)).normalize_or(dir);
+                desired=(tangent+up*if t.dynamics.agl()>700.{-0.04}else{0.02}).normalize_or(dir);
+            }
+        }
         let clearance = t.position.length() - planet_radius() - crate::physics::terrain_height_at(t.position);
-        if clearance < 900. {
+        if !b.mountain && clearance < 900. {
             desired = (dir + up).normalize();
         }
         // Pair tactics: a supporting shooter cranks; an available wingman
         // presses an offset intercept. Flight control still obeys the same plant.
-        if incoming.is_none() && !supporting && i % 2 == 1 {
+        if incoming.is_none() && !supporting && i % 2 == 1 && (!b.mountain||goal.distance(t.position)>2500.) {
             desired = (desired + right * 0.18).normalize_or(dir);
         }
         let obstacles = neighbours
@@ -715,7 +744,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             .map(|(_, contact)| (contact.position, contact.velocity));
         desired = (desired + ai::avoidance_iter(t.position, t.velocity, obstacles) * 1.6)
             .normalize_or(dir);
-        t.brain.mode = if dragging {
+        t.brain.mode = if b.mountain&&t.brain.energy_recovery {"ENERGY EXTENSION"}else if dragging {
             "DRAG / EXTEND"
         } else if incoming.is_some() {
             "NOTCH / DEFEND"
@@ -728,7 +757,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
         };
         t.brain.elapsed = c.clock;
         t.brain.observed = memory.is_some_and(|m| c.clock - m.3 < 0.1);
-        let speed = if incoming.is_some() { 330. } else { 300. };
+        let speed = if b.mountain{if incoming.is_some(){300.}else{260.}}else if incoming.is_some() { 330. } else { 300. };
         decisions.push(Some(FlightDecision {
             desired,
             speed,
@@ -804,6 +833,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
                             0.9
                         }
                 && range > 700.
+                && (!b.mountain||range>=4500.||b.ai[i].heat==0)
                 && !incoming
                 && t.damage.radar > 0.25
                 && dir.dot((p - t.position).normalize()) > 50_f64.to_radians().cos()
@@ -827,6 +857,8 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
                     velocity: t.velocity - dir * 35.,
                     age: 0.,
                 });
+                if b.mountain {let heat_id=fight.next_decoy;fight.next_decoy+=1;fight.decoys.push(dogfight::Decoy{owner:Some(i),id:heat_id,kind:Weapon::Heat,position:t.position,velocity:t.velocity-dir*35.,age:0.});}
+
             }
         }
     }
@@ -972,6 +1004,7 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
             m.alive = false;
         }
     }
+    if b.mountain {close::advance(c,&mut b,f,dt);}
     cannon(c, f, dt, b.enemies);
     for impact in &mut c.impacts {
         impact.age += dt;
@@ -1004,13 +1037,13 @@ pub fn advance(c: &mut Combat, f: &mut Flight, dt: f64) {
     }
 }
 
-fn cannon(c: &mut Combat, f: &Flight, dt: f64, enemies: usize) {
+fn cannon(c: &mut Combat, f: &mut Flight, dt: f64, enemies: usize) {
     let Some(fight) = &mut c.fight else {
         return;
     };
     if fight.gun_held && !f.crashed && f.battery && fight.gun > 0 && c.clock >= fight.gun_at {
         let position = f.position + f.orientation * crate::aircraft::gun_origin(f.aircraft);
-        fight.rounds.push(dogfight::Round {
+        fight.rounds.push(dogfight::Round {shooter:None,
             position,
             previous: position,
             velocity: f.velocity + f.forward() * CANNON_MUZZLE_SPEED,
@@ -1040,7 +1073,14 @@ fn cannon(c: &mut Combat, f: &Flight, dt: f64, enemies: usize) {
         if let Some(hit)=crate::carrier::collider::sweep(f,r.previous,r.position,dt,0.02) {
             r.position=hit.point;r.alive=false;continue;
         }
+        if r.position.length()-planet_radius()<contact_height_at(r.position){r.alive=false;continue;}
+        if r.hostile&&!f.crashed {
+            let start=f.orientation.conjugate()*(r.previous-(f.position-f.velocity*dt));
+            let end=f.orientation.conjugate()*(r.position-f.position);
+            if let Some(body)=dogfight::bullet_hit(f,start,end){dogfight::apply_hit(f,body,r.damage,false);r.alive=false;continue;}
+        }
         for (index, t) in c.targets.iter_mut().enumerate().filter(|(_, t)| t.alive) {
+            if let Some(owner)=r.shooter {if index==owner||(index>=enemies)==(owner>=enemies){continue;}}
             if let Some(body) = dogfight::target_bullet_hit(t, r.previous, r.position, dt) {
                 if index < enemies {
                     damage::enemy_projectile(&mut t.damage, &mut t.health, body, r.damage);
@@ -1518,14 +1558,14 @@ mod tests {
     }
     #[test]
     fn bvr_cannon_reports_enemy_damage_and_does_not_boost_friendly_damage() {
-        let (mut c, f) = scene(1);
+        let (mut c, mut f) = scene(1);
         let enemies = c.bvr.as_ref().unwrap().enemies;
         for index in [0, enemies] {
             c.recent_hit = None;
             let t = &c.targets[index];
             let direction = t.orientation * -DVec3::Z;
             let position = t.position - direction * 20.;
-            c.fight.as_mut().unwrap().rounds.push(dogfight::Round {
+            c.fight.as_mut().unwrap().rounds.push(dogfight::Round {shooter:None,
                 position,
                 previous: position,
                 velocity: t.velocity + direction * 4250.,
@@ -1534,7 +1574,7 @@ mod tests {
                 damage: 0.075,
                 alive: true,
             });
-            cannon(&mut c, &f, 0.01, enemies);
+            cannon(&mut c, &mut f, 0.01, enemies);
             assert!(c.targets[index].health < 1.);
             if index == 0 {
                 let r = c.recent_hit.as_ref().unwrap();

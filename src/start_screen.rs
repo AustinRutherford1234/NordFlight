@@ -18,6 +18,9 @@ pub struct Menu {
     page: Page,
     back: Page,
     space: bool,
+    mountain:bool,
+    mountain_force:usize,
+    mountain_entry:usize,
     aircraft: Aircraft,
     scenario: u8,
     difficulty: Difficulty,
@@ -28,7 +31,7 @@ pub struct Menu {
     fbw: bool,
     infinite: bool,
     dirty: bool,
-    preview: Option<(bool, Aircraft, bool)>,
+    preview: Option<(bool, bool, Aircraft, bool)>,
     environment_error: Option<String>,
 }
 impl Default for Menu {
@@ -39,7 +42,7 @@ impl Default for Menu {
             saved_pause: false,
             page: Page::Setup,
             back: Page::Setup,
-            space: false,
+            space: false,mountain:false,mountain_force:0,mountain_entry:0,
             aircraft: Aircraft::F22,
             scenario: 1,
             difficulty: Difficulty::Balanced,
@@ -63,7 +66,10 @@ impl Menu {
             || std::env::var_os("NORD_MENU_CAPTURE").is_some();
         if let Ok(mode) = std::env::var("NORD_MENU_CAPTURE") {
             m.space = mode == "space";
-            m.scenario = if m.space { 3 } else { 1 };
+            m.mountain=mode.starts_with("mountain");
+            if mode.ends_with("hornet"){m.aircraft=Aircraft::Hornet;}
+            if mode.ends_with("gripen"){m.aircraft=Aircraft::Gripen;}
+            m.scenario = if m.space { 3 } else if m.mountain{20}else{1};
             if mode == "settings" {
                 m.page = Page::Settings;
             }
@@ -74,6 +80,7 @@ impl Menu {
         m
     }
     fn scenario_id(&self) -> u8 {
+        if self.mountain&&self.scenario==20 {return crate::combat::mountain::Setup{force:self.mountain_force,entry:self.mountain_entry,difficulty:self.difficulty}.id();}
         if matches!(self.scenario,13|14){return 13+match self.difficulty{Difficulty::Training=>0,Difficulty::Balanced=>2,Difficulty::Hard=>4}+u8::from(self.scenario==14);}
         if self.scenario == 5 {
             match self.difficulty {
@@ -112,11 +119,14 @@ struct HangarProp;
 struct SpaceProp;
 #[derive(Component)]
 struct EarthProp;
+#[derive(Component)]struct MountainProp;
+#[derive(Component)]struct MountainTerrain;
 #[derive(Component, Clone, Copy)]
 pub(crate) struct Action(u16);
-pub fn flight_controls(menu: Res<Menu>) -> bool {
-    !menu.open
+pub fn flight_controls(menu: Res<Menu>,loading:Option<Res<crate::loading::Loading>>) -> bool {
+    !menu.open && !loading.is_some_and(|l|l.active)
 }
+pub(crate) fn preview_ready(menu:&Menu)->bool {menu.preview.is_some()}
 pub fn asset_path() -> String {
     let executable = std::env::current_exe().unwrap_or_default();
     if let Some(dir) = executable.parent() {
@@ -203,8 +213,10 @@ pub fn setup(
     c.spawn((
         MenuCamera,
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection{far:80000.,..default()}),
         Camera {
             order: 10,
+            msaa_writeback:bevy::camera::MsaaWriteback::Off,
             is_active: menu.open,
             clear_color: ClearColorConfig::Custom(ink()),
             ..default()
@@ -213,6 +225,7 @@ pub fn setup(
         Transform::from_xyz(29., 15., 32.).looking_at(Vec3::new(0., 3., 0.), Vec3::Y),
         bevy::camera::Exposure { ev100: 9.5 },
         Msaa::Sample4,
+        bevy::core_pipeline::tonemapping::DebandDither::Disabled,
     ));
     let floor = mats.add(StandardMaterial {
         base_color: Color::srgb(0.045, 0.065, 0.08),
@@ -341,6 +354,7 @@ pub fn setup(
 
 pub fn controls(
     mut menu: ResMut<Menu>,
+    loading:Option<Res<crate::loading::Loading>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     buttons: Query<(&Interaction, &Action), Changed<Interaction>>,
@@ -356,6 +370,7 @@ pub fn controls(
     scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
     mut panels: Query<&mut ScrollPosition, With<Root>>,
 ) {
+    if loading.is_some_and(|l|l.active){return;}
     let esc = keys.just_pressed(KeyCode::Escape) && !combat.naval.as_ref().is_some_and(|n|n.radio_open) && !combat.service_radio_open;
     if !menu.open {
         if esc && !hangar.open && !bvr.open {
@@ -367,6 +382,8 @@ pub fn controls(
             } else if (13..=18).contains(&view.scenario) {13+(view.scenario-13)%2} else {
                 view.scenario
             };
+            menu.mountain=view.scenario==19||crate::combat::mountain::Setup::decode(view.scenario).is_some();
+            if let Some(setup)=crate::combat::mountain::Setup::decode(view.scenario){menu.scenario=20;menu.mountain_force=setup.force;menu.mountain_entry=setup.entry;}
             menu.fbw = f.assist;
             menu.infinite = f.infinite_fuel;
             menu.external = f.systems.external_stores;
@@ -380,7 +397,7 @@ pub fn controls(
                 13|14 => Difficulty::Training,
                 15|16 => Difficulty::Balanced,
                 17|18 => Difficulty::Hard,
-                _ => bvr.difficulty,
+                _ => crate::combat::mountain::Setup::decode(view.scenario).map_or(bvr.difficulty,|s|s.difficulty),
             };
             f.paused = true;
             menu.open = true;
@@ -418,12 +435,16 @@ pub fn controls(
             true,
         );
         match id {
-            1 | 2 => {
-                menu.space = id == 2;
-                menu.scenario = if menu.space { 3 } else { 1 };
+            1 | 2 | 3 => {
+                menu.space = id == 2;menu.mountain=id==3;
+                menu.scenario = if menu.space { 3 }else if menu.mountain{19}else{1};
             }
             id if (10..10 + Aircraft::ALL.len() as u16).contains(&id) => menu.aircraft = Aircraft::ALL[(id - 10) as usize],
             100..=114 => {menu.scenario = (id - 100) as u8;if matches!(id,111..=114){menu.aircraft=Aircraft::Hornet;}},
+            119 => {menu.scenario=19;menu.mountain=true;menu.space=false;},
+            120 => {menu.scenario=20;menu.mountain=true;menu.space=false;},
+            260..=264 => menu.mountain_force=(id-260)as usize,
+            270..=272 => menu.mountain_entry=(id-270)as usize,
             200..=202 => {
                 menu.difficulty = match id {
                     200 => Difficulty::Training,
@@ -530,7 +551,7 @@ pub fn ui(
     audio: Res<crate::sound::Settings>,
     crew: Option<Res<crate::crew::Crew>>,
     camera: Query<Entity, With<MenuCamera>>,
-    roots: Query<Entity, With<Root>>,
+    roots: Query<(Entity,&ScrollPosition), With<Root>>,
     assets: Res<AssetServer>,
     mut hover: Query<(&Interaction, &mut BorderColor), With<Action>>,
     graphics:Option<Res<crate::environment::graphics::Graphics>>,
@@ -546,7 +567,8 @@ pub fn ui(
         return;
     }
     menu.dirty = false;
-    for e in &roots {
+    let offset=roots.iter().next().map(|(_,p)|p.clone()).unwrap_or_default();
+    for (e,_) in &roots {
         c.entity(e).despawn();
     }
     if !menu.open {
@@ -557,7 +579,7 @@ pub fn ui(
     };
     let control_loss=crew.as_ref().is_some_and(|c|c.control_loss);
     let cockpit_g_effects=crew.as_ref().is_none_or(|c|c.cockpit_g_effects);
-    c.spawn((Root,ScrollPosition::default(),UiTargetCamera(camera),GlobalZIndex(500),Node {position_type:PositionType::Absolute,
+    c.spawn((Root,offset,UiTargetCamera(camera),GlobalZIndex(500),Node {position_type:PositionType::Absolute,
         left:px(30),top:px(25),bottom:px(25),width:px(460),max_width:percent(48),padding:UiRect::all(px(22)),
         flex_direction:FlexDirection::Column,row_gap:px(8),overflow:Overflow::scroll_y(),border_radius:BorderRadius::all(px(12)),..default()},
         BackgroundColor(Color::srgba(0.009,0.019,0.033,0.95))))
@@ -611,7 +633,7 @@ pub fn ui(
             label(p,"Audio is saved locally. Graphics uses the existing two presets. In flight, Warp Settings configures timestep and warp rates without changing simulation fidelity here.",15.,Color::srgb(0.64,0.78,0.82));
         } else {
             heading(p,"01 / CHOOSE YOUR DOMAIN");
-            row(p,|p| {button(p,1,"ATMOSPHERIC FLIGHT",!menu.space);button(p,2,"SPACEFLIGHT",menu.space);});
+            row(p,|p| {button(p,1,"ATMOSPHERIC FLIGHT",!menu.space&&!menu.mountain);button(p,3,"MOUNTAIN FLYING",menu.mountain);button(p,2,"SPACEFLIGHT",menu.space);});
             heading(p,"02 / SELECT & CONFIGURE VEHICLE");
             if menu.space {
                 button(p,20,"LUNAR EXPEDITION / CAPSULE + LANDER",true);
@@ -631,6 +653,18 @@ pub fn ui(
             heading(p,"03 / SELECT STARTING SCENARIO");
             if menu.space {
                 for (id,name) in [(3,"EARTH ORBIT / LANDER ATTACHED"),(9,"LUNAR ORBIT"),(10,"LUNAR LANDING APPROACH")] {button(p,100+id,name,menu.scenario==id as u8);}
+            } else if menu.mountain {
+                heading(p,"NORWEGIAN MOUNTAINS");
+                row(p,|p|{button(p,119,"FREE FLIGHT",menu.scenario==19);button(p,120,"CLOSE COMBAT",menu.scenario==20);});
+                if menu.scenario==19 {label(p,"Airborne free flight over real Norwegian mountain terrain. No hostiles.",14.,Color::srgb(0.65,0.80,0.84));}
+                else {
+                    heading(p,"FORCE SIZE / FRIENDLY × HOSTILE");
+                    row(p,|p|{for(i,name)in crate::combat::mountain::FORCE_LABELS.iter().enumerate(){button(p,260+i as u16,name,menu.mountain_force==i);}});
+                    heading(p,"ENTRY SETUP");
+                    row(p,|p|{for(i,name)in crate::combat::mountain::ENTRY_LABELS.iter().enumerate(){button(p,270+i as u16,name,menu.mountain_entry==i);}});
+                    label(p,"Full aircraft loadout. Real terrain masks sensors and weapons. AI wingmen join 2-aircraft friendly formations.",14.,Color::srgb(0.65,0.80,0.84));
+                    row(p,|p|{for(i,d)in [Difficulty::Training,Difficulty::Balanced,Difficulty::Hard].into_iter().enumerate(){button(p,200+i as u16,d.label(),menu.difficulty==d);}});
+                }
             } else {
                 row(p,|p| {for (id,name) in [(0,"COLD & DARK"),(1,"TAKEOFF"),(2,"APPROACH")] {button(p,100+id,name,menu.scenario==id as u8);}});
                 heading(p,"CARRIER / F/A-18F");
@@ -657,26 +691,44 @@ pub fn ui(
 /// Snapshot render transforms under a temporary preview Flight, then restore
 /// the authoritative resource before any simulation system can run.
 pub fn presentation(world: &mut World) {
-    let (open, space, aircraft, refresh) = {
+    let (open, space, mountain, aircraft, refresh) = {
         let m = world.resource::<Menu>();
         (
             m.open,
             m.space,
+            m.mountain,
             m.aircraft,
-            m.preview != Some((m.space, m.aircraft, m.external)),
+            m.preview != Some((m.space,m.mountain, m.aircraft, m.external)),
         )
     };
-    let time = world.resource::<Time>().elapsed_secs();
+    let time = world.resource::<Time<Real>>().elapsed_secs();
+    let tint=crate::environment::active().preset.planet.sky_tint;
+    if open&&mountain {ensure_mountain_preview(world);}
+    for entity in world.query_filtered::<Entity,With<MenuCamera>>().iter(world).collect::<Vec<_>>(){
+        let fog=world.get::<DistanceFog>(entity).is_some();
+        let mut e=world.entity_mut(entity);
+        if mountain&&!fog {e.insert(DistanceFog{color:Color::srgb(0.47*tint[0],0.64*tint[1],0.80*tint[2]),falloff:FogFalloff::Linear{start:6000.,end:18000.},..default()});}
+        else if !mountain&&fog{e.remove::<DistanceFog>();}
+    }
+    for(mut visibility,terrain,mut transform)in world.query_filtered::<(&mut Visibility,Option<&MountainTerrain>,&mut Transform),With<MountainProp>>().iter_mut(world){
+        visibility.set_if_neq(if mountain&&open{Visibility::Inherited}else{Visibility::Hidden});
+        if terrain.is_some()&&mountain&&open{transform.translation.z=2500.*(1.-(time*0.012).cos());}
+    }
     let mut cameras = world.query::<(
         &mut Camera,
         Option<&MenuCamera>,
         Option<&crate::FlightCamera>,
         &mut Transform,
+        &mut bevy::camera::Exposure,
     )>();
-    for (mut camera, menu, flight, mut t) in cameras.iter_mut(world) {
+    for (mut camera, menu, flight, mut t,mut exposure) in cameras.iter_mut(world) {
         if menu.is_some() {
+            let desired=if mountain{10.5}else{9.5};if exposure.ev100!=desired{exposure.ev100=desired;}
             if camera.is_active!=open {camera.is_active = open;}
-            if open {*t = Transform::from_xyz(
+            let clear=ClearColorConfig::Custom(if mountain{Color::srgb(0.47*tint[0],0.64*tint[1],0.80*tint[2])}else{ink()});
+            if !matches!((camera.clear_color,clear),(ClearColorConfig::Custom(a),ClearColorConfig::Custom(b))if a==b) {camera.clear_color=clear;}
+            if open&&mountain{let d=(aircraft.spec().length.max(aircraft.spec().span)*1.45)as f32;*t=Transform::from_xyz(8.+d*0.9,d*0.38,d).looking_at(Vec3::new(-2.,3.,0.),Vec3::Y);}
+            else if open {*t = Transform::from_xyz(
                 26. + (time * 0.07).sin() * 3.,
                 12.,
                 27. + (time * 0.07).cos() * 2.,
@@ -699,7 +751,7 @@ pub fn presentation(world: &mut World) {
     ),Or<(With<HangarProp>,With<SpaceProp>,With<EarthProp>)>>();
     for (mut v, hangar, stars, earth, mut t) in props.iter_mut(world) {
         if hangar.is_some() {
-            v.set_if_neq(if space {
+            v.set_if_neq(if space||mountain {
                 Visibility::Hidden
             } else {
                 Visibility::Inherited
@@ -734,6 +786,7 @@ pub fn presentation(world: &mut World) {
             crate::aircraft::select(&mut preview, aircraft);
         }
         preview.systems.external_stores = world.resource::<Menu>().external;
+        if mountain {preview.gear=false;preview.gear_extension=0.;preview.gear_door=0.;preview.flaps=0.;preview.landed=false;}
         preview.engine = false;
         preview.spool = 0.;
         preview.thrust = 0.;
@@ -781,6 +834,8 @@ pub fn presentation(world: &mut World) {
                     PreviewVehicle,
                     if space {
                         Transform::from_xyz(15., 4., 0.).with_scale(Vec3::splat(0.65))
+                    } else if mountain {
+                        Transform::from_xyz(8.,3.,0.)
                     } else {
                         Transform::from_xyz(8., standing_height, 0.)
                     },
@@ -789,17 +844,34 @@ pub fn presentation(world: &mut World) {
                 .id();
             copy_children(world, source, root);
             let external = world.resource::<Menu>().external;
-            world.resource_mut::<Menu>().preview = Some((space, aircraft, external));
+            world.resource_mut::<Menu>().preview = Some((space,mountain, aircraft, external));
         }
     }
     let mut models = world.query_filtered::<&mut Transform, With<PreviewVehicle>>();
     for mut t in models.iter_mut(world) {
+        if mountain {t.translation.y=3.+(time*0.45).sin()*0.25;t.rotation=Quat::from_euler(EulerRot::YXZ,0.2+(time*0.06).sin()*0.14,0.015,(time*0.1).sin()*0.09);continue;}
         t.rotation = Quat::from_rotation_y(if space {
             -0.3 + (time * 0.04).sin() * 0.6
         } else {
             std::f32::consts::PI - 0.3 + (time * 0.04).sin() * 0.6
         });
     }
+}
+fn ensure_mountain_preview(world:&mut World){
+    if world.query_filtered::<Entity,With<MountainTerrain>>().iter(world).next().is_some(){return;}
+    let Some(material)=world.get_resource::<crate::terrain::Landscape>().and_then(crate::terrain::preview_material)else{return;};
+    let Some(mut instance)=world.resource::<Assets<crate::terrain::material::SurfaceMaterial>>().get(&material).cloned()else{return;};
+    // Opacity belongs to this preview, not to the paused flight's altitude.
+    // Texture arrays and geographic masks remain shared with the world.
+    instance.base.base_color=Color::WHITE;instance.base.alpha_mode=AlphaMode::Opaque;
+    let material=world.resource_mut::<Assets<crate::terrain::material::SurfaceMaterial>>().add(instance);
+    let flight=crate::scenarios::mountain_flight(Aircraft::Gripen);
+    let mesh=crate::terrain::mesh::terrain_mesh(flight.position.x-20000.,flight.position.z-20000.,40000.,128,flight.position);
+    let mesh=world.resource_mut::<Assets<Mesh>>().add(mesh);
+    world.spawn((MountainProp,MountainTerrain,Mesh3d(mesh),MeshMaterial3d(material),
+        Transform::from_rotation(flight.orientation.conjugate().as_quat()),Visibility::Hidden,RenderLayers::layer(LAYER)));
+    world.spawn((MountainProp,DirectionalLight{illuminance:18000.,shadows_enabled:false,..default()},
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ,-0.65,0.45,0.)),Visibility::Hidden,RenderLayers::layer(LAYER)));
 }
 fn copy_children(world: &mut World, source: Entity, parent: Entity) {
     let children = world
@@ -854,6 +926,18 @@ mod tests {
             .id();
         app.update();
         app.world_mut().entity_mut(entity).despawn();
+    }
+    #[test]
+    fn mountain_tab_routes_all_force_entry_and_difficulty_combinations(){
+        for force in 0..5 {for entry in 0..3 {for difficulty in 0..3 {
+            let mut a=app();a.world_mut().resource_mut::<Menu>().open=true;
+            click(&mut a,3);assert!(a.world().resource::<Menu>().mountain);
+            click(&mut a,120);click(&mut a,260+force);click(&mut a,270+entry);click(&mut a,200+difficulty);click(&mut a,900);
+            let view=a.world().resource::<ViewState>();let spec=crate::combat::mountain::Setup::decode(view.scenario).unwrap();
+            assert_eq!((spec.force,spec.entry),(force as usize,entry as usize));
+            assert_eq!(spec.difficulty,[Difficulty::Training,Difficulty::Balanced,Difficulty::Hard][difficulty as usize]);
+            let f=a.world().resource::<Flight>();assert!(!f.gear);assert!(!f.landed);
+        }}}
     }
     #[test]
     fn world_switch_launches_same_binary_with_explicit_preset_and_open_setup() {
@@ -983,6 +1067,19 @@ mod tests {
         let f=app.world().resource::<Flight>();
         assert_eq!(f.aircraft,Aircraft::Sr71);assert_eq!(f.damage.aircraft,Aircraft::Sr71);
         assert!(!f.paused);assert!(!app.world().resource::<Menu>().open);
+    }
+    #[test]
+    fn mountain_button_launches_airborne_with_selected_aircraft() {
+        let mut app=app();
+        {let mut m=app.world_mut().resource_mut::<Menu>();m.open=true;m.page=Page::Setup;m.aircraft=Aircraft::F22;}
+        click(&mut app,119);click(&mut app,900);
+        let f=app.world().resource::<Flight>();
+        assert_eq!(app.world().resource::<ViewState>().scenario,19);
+        assert_eq!(f.aircraft,Aircraft::F22);
+        assert!(!f.gear&&!f.landed&&!f.paused&&!f.crashed);
+        assert!(f.agl()>250.);
+        assert!((f.velocity.length()-190.).abs()<1e-6);
+        assert!(f.status.contains("MOUNTAINS"));
     }
     #[test]
     fn launch_uses_selected_aircraft_bvr_and_space_configuration() {

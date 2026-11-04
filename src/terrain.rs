@@ -1,4 +1,5 @@
 pub mod material;
+mod cover;
 pub(crate) mod mesh;
 pub mod vegetation;
 // Bounded terrain LOD, procedural surface detail, and shared off-field contacts.
@@ -641,11 +642,17 @@ pub fn setup(
         ..default()
     });
     let arrays=crate::environment::real().then(||material::load(images));
+    let cover=crate::environment::real().then(||cover::load(crate::environment::active(),images));
     let mut state = Landscape {
         tiles: HashMap::new(),
         surface: crate::environment::real().then(||surfaces.add(material::SurfaceMaterial {
             base: StandardMaterial{base_color:Color::WHITE,perceptual_roughness:0.94,..default()},
-            extension:material::SurfaceExtension{detail:Vec4::new(0.,0.,1.,0.),albedo:arrays.as_ref().unwrap().0.clone(),normal:arrays.as_ref().unwrap().1.clone()},
+            extension:material::SurfaceExtension{
+                detail:Vec4::new(crate::environment::radius()as f32,crate::environment::active().preset.terrain.tree_line as f32,1.,crate::environment::active().preset.terrain.snow_line as f32),
+                albedo:arrays.as_ref().unwrap().0.clone(),normal:arrays.as_ref().unwrap().1.clone(),
+                cover:cover.as_ref().unwrap().colors.clone(),cover_lookup:cover.as_ref().unwrap().lookup.clone(),cover_classes:cover.as_ref().unwrap().classes.clone(),
+                palette:crate::environment::active().preset.palette.map(|c|Vec3::from_array(c.map(crate::environment::srgb_to_linear)).extend(1.)),
+            },
         })),
         material,
         trees,
@@ -660,6 +667,8 @@ pub fn setup(
     }
     c.insert_resource(state);
 }
+/// Menu previews share the installed terrain surface arrays and GPU bindings.
+pub(crate) fn preview_material(state:&Landscape)->Option<Handle<material::SurfaceMaterial>>{state.surface.clone()}
 pub fn update(
     mut c: Commands,
     f: Res<Flight>,
@@ -730,7 +739,7 @@ pub fn update(
             let ids=preparing.ready.iter().flat_map(|(_,e)|std::iter::once(e.mesh.id()).chain(e.trees.iter().map(|(_,m)|m.id()))).collect();
             readiness.request(ids);
             if let (Some(handle),Some(surfaces))=(&state.surface,surfaces.as_ref()) {
-                if let Some(m)=surfaces.get(handle){readiness.dependencies(vec![m.extension.albedo.id(),m.extension.normal.id()],vec![handle.id().untyped(),state.trees.id().untyped()]);}
+                if let Some(m)=surfaces.get(handle){readiness.dependencies(vec![m.extension.albedo.id(),m.extension.normal.id(),m.extension.cover.id(),m.extension.cover_lookup.id(),m.extension.cover_classes.id()],vec![handle.id().untyped(),state.trees.id().untyped()]);}
             }
             preparing.requested=true;
             state.preparing=Some(preparing); return;
@@ -1202,4 +1211,16 @@ mod tests {
         let p = surface_point(6500., 3200., 64.);
         assert!(obstacles(p, p).is_empty());
     }
+}
+
+/// Destination coverage must be completely published before flight release.
+pub(crate) fn loading_resources(f:&Flight,state:Option<&Landscape>)->Option<crate::loading::Resources>{
+    let mut result=crate::loading::Resources::default();
+    if f.vehicle==Vehicle::Spacecraft{return Some(result);}
+    let state=state?;
+    if state.cell!=cell(f)||state.pending.is_some()||state.preparing.is_some()||!state.retiring.is_empty(){return None;}
+    result.meshes.extend(state.tiles.values().map(|e|e.mesh.id()));
+    if let Some(handle)=&state.surface {result.materials.push(handle.id().untyped());}
+    else{result.materials.push(state.material.id().untyped());}
+    Some(result)
 }

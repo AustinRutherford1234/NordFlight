@@ -1136,7 +1136,7 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
         let p=f.position+DVec3::X*1000.;let velocity=DVec3::Z*290.;
         assert!(n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,velocity));
         let position=p-DVec3::X*(crate::combat::CANNON_MUZZLE_SPEED*0.5/hz as f64)+f.up()*offset;
-        c.fight.as_mut().unwrap().rounds.push(dogfight::Round {position,previous:position,
+        c.fight.as_mut().unwrap().rounds.push(dogfight::Round {shooter:None,position,previous:position,
             velocity:velocity+DVec3::X*crate::combat::CANNON_MUZZLE_SPEED,hostile,age:0.,damage:0.075,alive:true});
         c.naval=Some(n);c.tick(&mut f,1./hz as f64);c
     }
@@ -1170,7 +1170,7 @@ pub(super) fn prepare_defense_review(mode:&str,f:&mut Flight,c:&mut Combat,v:&mu
             let mut n=State::new(1,2,false);n.ended=true;
             n.round(TargetId::Aircraft(1),TargetId::Ship(0),Kind::AntiShip,p,DVec3::ZERO);
             c.naval=Some(n);
-            c.fight.as_mut().unwrap().rounds.push(dogfight::Round{position:a,previous:a,
+            c.fight.as_mut().unwrap().rounds.push(dogfight::Round{shooter:None,position:a,previous:a,
                 velocity:(b-a)/0.01+a.normalize()*9.81*0.01,hostile:false,age:0.,damage:0.075,alive:true});
             c.tick(&mut f,0.01);
             assert_eq!(c.naval.as_ref().unwrap().interceptions,u32::from(!behind));

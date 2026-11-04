@@ -15,14 +15,30 @@ struct WorldTarget {
 }
 #[derive(Component)]
 struct Composite;
+/// The world-image compositor must remain visible when flight UI is suppressed.
+#[derive(Component)]pub(crate) struct WorldImage;
 pub struct GraphicsPlugin;
 impl Plugin for GraphicsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Graphics(super::active().graphics.clone()))
+            .add_systems(First, pace_frame.before(bevy::time::TimeSystems))
             .add_systems(PostStartup, setup)
             .add_systems(PreUpdate, (resize, apply_shadows).chain())
             .add_systems(PostUpdate, redirect_ui.before(bevy::ui::UiSystems::Prepare));
     }
+}
+// Vsync alone does not pace main-world updates with pipelined rendering on
+// Metal: several fast updates can bunch up before a long present wait. Pace
+// starts before Time updates, so ordinary simulation still receives real dt.
+fn pace_frame(graphics:Res<Graphics>,mut previous:Local<Option<std::time::Instant>>) {
+    let limit=graphics.0.frame_rate_limit;
+    if limit==0{*previous=None;return;}
+    let now=std::time::Instant::now();
+    if let Some(last)=*previous {
+        let target=last+std::time::Duration::from_secs_f64(1./limit as f64);
+        if target>now{std::thread::sleep(target-now);}
+    }
+    *previous=Some(std::time::Instant::now());
 }
 fn dimensions(window: &Window, scale: f32) -> UVec2 {
     UVec2::new(
@@ -84,6 +100,7 @@ fn setup(
         ))
         .id();
     c.spawn((
+        WorldImage,
         Node {
             position_type: PositionType::Absolute,
             width: percent(100),
@@ -123,12 +140,14 @@ fn resize(
     };
     if previous.is_some_and(|old| old != view.high_quality) {
         let scale = graphics.0.render_scale;
+        let frame_limit = graphics.0.frame_rate_limit;
         graphics.0 = if view.high_quality {
             GraphicsSettings::high()
         } else {
             GraphicsSettings::default()
         };
         graphics.0.render_scale = scale;
+        graphics.0.frame_rate_limit = frame_limit;
     }
     *previous = Some(view.high_quality);
     ERROR.store(
