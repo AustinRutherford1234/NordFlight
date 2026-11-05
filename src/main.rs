@@ -59,6 +59,7 @@ mod terrain_ready;
 mod loading;
 mod warp;
 mod world;
+mod window_mode;
 use bevy::{
     anti_alias::fxaa::Fxaa,
     camera::Exposure,
@@ -1472,6 +1473,7 @@ fn main() {
                 }),
         )
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
+        .add_plugins(window_mode::FullscreenPlugin)
         .add_plugins(performance::PerformancePlugin)
         .add_systems(Last, warp::ground_pacing)
         .add_plugins(aircraft::visual::hornet::HeatPlugin)
@@ -2283,7 +2285,7 @@ fn input(
         v.guide = !v.guide;
     }
     let carrier_alt=keys.pressed(KeyCode::AltLeft)||keys.pressed(KeyCode::AltRight);
-    if f.carrier.active && keys.just_pressed(KeyCode::Enter) {carrier::launch(&mut f);}
+    if f.carrier.active && !window_mode::requested(&keys) && keys.just_pressed(KeyCode::Enter) {carrier::launch(&mut f);}
     if f.carrier.active && carrier_alt && shift && keys.just_pressed(KeyCode::KeyC) {carrier::toggle_attachment(&mut f);}
     if f.carrier.active && carrier_alt && keys.just_pressed(KeyCode::KeyG) {f.carrier.guidance=!f.carrier.guidance;}
     if keys.just_pressed(KeyCode::KeyG) && !(f.carrier.active&&carrier_alt) {f.gear=!f.gear;}

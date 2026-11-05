@@ -421,7 +421,8 @@ pub fn controls(
     if esc {
         actions.push(902);
     }
-    if keys.just_pressed(KeyCode::Enter) && menu.page == Page::Setup {
+    if keys.just_pressed(KeyCode::Enter) && menu.page == Page::Setup
+        && !crate::window_mode::requested(&keys) {
         actions.push(900);
     }
     let mut leave = false;
@@ -619,6 +620,8 @@ pub fn ui(
             heading(p,"SPACECRAFT");
             label(p,"Use the in-flight SAS panel for attitude targets and the orbital map for maneuver planning. The warp panel edits rates and simulation timestep.",16.,Color::srgb(0.66,0.80,0.84));
         } else if menu.page==Page::Settings {
+            heading(p,"DISPLAY");
+            label(p,"Alt+Enter switches between fullscreen and windowed mode.",16.,Color::srgb(0.66,0.80,0.84));
             heading(p,"PILOT G-LOC / F-22 CREW");
             button(p,234,if cockpit_g_effects{"COCKPIT G EFFECTS: ON"}else{"COCKPIT G EFFECTS: OFF"},cockpit_g_effects);
             button(p,233,if control_loss{"G-LOC CONTROL LOSS: ON"}else{"G-LOC CONTROL LOSS: OFF"},control_loss);
@@ -903,6 +906,23 @@ fn copy_children(world: &mut World, source: Entity, parent: Entity) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fullscreen_shortcut_does_not_launch_the_setup_mission() {
+        let mut app=app();
+        app.add_plugins(crate::window_mode::FullscreenPlugin);
+        app.world_mut().resource_mut::<Menu>().open=true;
+        let window=app.world_mut().spawn((Window::default(),bevy::window::PrimaryWindow)).id();
+        let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.press(KeyCode::AltLeft);keys.press(KeyCode::Enter);
+        keys.release(KeyCode::AltLeft);
+        app.update();
+        assert!(app.world().resource::<Menu>().open);
+        assert!(matches!(app.world().get::<Window>(window).unwrap().mode,bevy::window::WindowMode::BorderlessFullscreen(_)));
+        let mut keys=app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.reset_all();keys.press(KeyCode::Enter);
+        app.update();
+        assert!(!app.world().resource::<Menu>().open);
+    }
     fn app() -> App {
         let mut app = App::new();
         app.init_resource::<Menu>()

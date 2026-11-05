@@ -34,6 +34,8 @@ The [roll-control correction](docs/F22_ROLL_CONTROL_FIX.md) aligns nozzle, stabi
 
 `build-windows.ps1` also automatically creates **`dist/installer/NordFlight-Setup.exe`**.
 Windows release builds open as GUI applications, without a terminal window.
+Press **Alt+Enter** to toggle borderless fullscreen on the current monitor.
+The shortcut works in menus and during flight; press it again to return to a window.
 Development builds retain the console for logs and diagnostics.
 This single installer includes the game, runtime assets, branding icon, Desktop and
 Start menu shortcuts, and an uninstaller. It installs into your local Programs
