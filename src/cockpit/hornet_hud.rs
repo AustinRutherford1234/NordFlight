@@ -502,16 +502,25 @@ fn target_direction(f:&Flight,delta:DVec3)->Vec2 {
 }
 /// Finite gun points include eye/muzzle parallax and the Hornet cabin scale.
 fn gun_point(f:&Flight,point:DVec3)->Option<Vec2> {
-    let eye=(crate::cockpit::eye(f.vehicle)+f.aircraft.cabin_offset()).as_dvec3();
-    let body=f.orientation.conjugate()*(point-f.position)-eye;
-    let (_,ray)=crate::cockpit::cockpit_ray(f,eye,body);
-    crate::cockpit::hud_projection(f.vehicle,ray.as_vec3()).map(|p|p*2.)
+    crate::cockpit::gun_projection(f,point).map(|p|p*2.)
+}
+/// Current aircraft position, distinct from the ballistic director's impact.
+/// This ranging aid remains present with optional cockpit icons disabled.
+fn gun_diamond(c:&mut Canvas,f:&Flight,combat:&Combat){
+    if let Some((_,target))=crate::combat::hud::cockpit_target(combat,f){
+        if let Some(p)=gun_point(f,target.position).filter(|p|in_field(*p)){
+            c.diamond(p,12.);
+        }
+    }
 }
 fn gun(c:&mut Canvas,f:&Flight,combat:&Combat) {
     let rounds=combat.fight.as_ref().map_or(0,|fight|fight.gun);
     c.text("20MM",20.,297.,1.6);c.text(&format!("{:04} RDS",rounds),20.,315.,1.4);
     c.text(if rounds==0 {"EMPTY"}else if combat.cannon_available(f){"ARM / U FIRE"}else{"SAFE"},200.,320.,1.3);
-    let funnel=crate::combat::hud::funnel(f,8.4);
+    let target=crate::combat::hud::gun_target(combat,f);
+    gun_diamond(c,f,combat);
+    let span=target.map_or(8.4,|(_,t)|t.dynamics.aircraft.spec().span);
+    let funnel=crate::combat::hud::funnel(f,span);
     let mut previous:Option<[Vec2;2]>=None;
     for rails in &funnel {
         if let [Some(left),Some(right)]=[gun_point(f,rails[0]),gun_point(f,rails[1])] {
@@ -524,13 +533,14 @@ fn gun(c:&mut Canvas,f:&Flight,combat:&Combat) {
     if let Some(p)=gun_point(f,near).filter(|p|in_field(*p)) {
         c.circle(p,4.5);c.line(p-Vec2::X*1.5,p+Vec2::X*1.5);c.text("30M",p.x+8.,p.y+7.,1.0);
     }
-    if let Some(t)=combat.targets.get(combat.selected).filter(|t|t.alive) {
-        if let Some(solution)=crate::combat::hud::gun_solution(f,t) {
-            let muzzle=f.position+f.orientation*crate::aircraft::gun_origin(f.aircraft);
-            if let Some(p)=gun_point(f,muzzle+solution.direction*solution.range).filter(|p|in_field(*p)) {
+    if let Some((index,t))=target {
+        if let Some(solution)=crate::combat::hud::gun_pipper(f,t) {
+            if let Some(p)=gun_point(f,solution.impact).filter(|p|in_field(*p)) {
                 c.circle(p,9.);c.line(p-Vec2::Y*14.,p-Vec2::Y*10.);
+                c.text(&format!("T{:02} DIRECTOR",index+1),345.,252.,1.0);
                 c.text(&format!("RNG {:04.0} M",solution.range),345.,270.,1.0);
                 c.text(&format!("TOF {:.2}",solution.time),365.,288.,1.0);
+                if solution.aligned&&combat.cannon_available(f){c.text("SHOOT",235.,80.,1.3);}
             }
         }
     }
@@ -550,6 +560,7 @@ fn air(c: &mut Canvas, f: &Flight, combat: &Combat) {
     );
     let bore = project(f, f.forward()).unwrap_or(Vec2::new(256., 192.));
     let track=acquisition(f,combat);
+    if f.hornet.hud.caged&&!track.locked{gun_diamond(c,f,combat);}
     // A tracking IR seeker follows the actual designated contact. Keeping
     // its reticle nailed to boresight falsely looks like a failed lock.
     let seeker=if heat&&track.reason.is_none() {
@@ -652,6 +663,34 @@ mod tests {
         let mut f = Flight::approach();
         crate::aircraft::select(&mut f, crate::aircraft::Aircraft::Hornet);
         f
+    }
+    #[test]
+    fn gun_diamond_marks_current_enemy_position_even_when_caged_without_a_radar_lock(){
+        let mut f=flight();f.position=f.position.normalize()*(planet_radius()+5000.);
+        let mut combat=Combat::default();combat.start_air(&f,1,5);
+        for t in &mut combat.targets{t.position=f.position-f.forward()*1000.;}
+        combat.targets[0].position=f.position+f.forward()*800.+f.orientation*DVec3::X*20.;
+        combat.targets[0].velocity=f.velocity+f.orientation*DVec3::X*100.;
+        let position=gun_point(&f,combat.targets[0].position).unwrap();assert!(in_field(position));
+        let impact=crate::combat::hud::gun_pipper(&f,&combat.targets[0]).unwrap().impact;
+        assert!(gun_point(&f,impact).unwrap().distance(position)>3.,"diamond must not follow the director");
+        for caged in [false,true]{
+            f.hornet.hud.caged=caged;
+            let mut data=vec![0;WIDTH*HEIGHT*4];
+            gun_diamond(&mut Canvas{data:&mut data,gain:1.},&f,&combat);
+            for tip in [Vec2::X,Vec2::Y,Vec2::NEG_X,Vec2::NEG_Y]{
+                let p=(position+tip*12.)*2.;let p=p.as_ivec2();
+                assert!((-2..=2).any(|y|(-2..=2).any(|x|data[(((p.y+y)as usize*WIDTH+(p.x+x)as usize)*4)+3]>0)));
+            }
+            combat.targets[0].alive=false;data.fill(0);
+            gun_diamond(&mut Canvas{data:&mut data,gain:1.},&f,&combat);
+            assert!(data.iter().all(|b|*b==0));combat.targets[0].alive=true;
+        }
+        combat.targets[0].position=f.position+f.forward()*3500.;
+        assert!(crate::combat::hud::gun_target(&combat,&f).is_none());
+        let mut data=vec![0;WIDTH*HEIGHT*4];
+        gun_diamond(&mut Canvas{data:&mut data,gain:1.},&f,&combat);
+        assert!(data.chunks_exact(4).any(|p|p[3]>0),"designation must remain visible outside cannon range");
     }
     #[test]
     fn compressible_cas_calibration_and_supersonic_continuity() {

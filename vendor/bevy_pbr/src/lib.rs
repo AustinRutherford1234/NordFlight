@@ -233,6 +233,12 @@ impl Plugin for PbrPlugin {
                 FogPlugin,
                 ExtractResourcePlugin::<DefaultOpaqueRendererMethod>::default(),
                 SyncComponentPlugin::<ShadowFilteringMethod>::default(),
+                bevy_render::extract_component::ExtractComponentPlugin::<
+                    DirectionalShadowLayers,
+                >::default(),
+                bevy_render::extract_component::ExtractComponentPlugin::<
+                    TerrainSunShadow,
+                >::default(),
                 LightmapPlugin,
                 LightProbePlugin,
                 GpuMeshPreprocessPlugin {

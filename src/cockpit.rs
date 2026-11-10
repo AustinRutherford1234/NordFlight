@@ -1038,19 +1038,23 @@ fn combat_combiner(data: &mut [u8], f: &Flight, combat: &crate::combat::Combat, 
                 green,
             );
         }
-        let inverse = f.orientation.conjugate();
         let projection = |p: bevy::math::DVec3| {
-            hud_projection(f.vehicle, (inverse * (p - f.position)).as_vec3())
+            gun_projection(f,p)
                 .filter(|p| p.x > 50.0 && p.x < 206.0 && p.y > 38.0 && p.y < 146.0)
         };
         if f.vehicle == Vehicle::Gripen {
             // Small fixed-direction ring: where the gun points now. Larger
             // director ring: where its rounds arrive relative to the selected
             // aircraft. Place the latter on the aircraft, not on a lead marker.
-            let cue = combat.targets.get(combat.selected)
-                .and_then(|target| crate::combat::hud::gun_pipper(f, target));
+            let target=crate::combat::hud::gun_target(combat,f);
+            if let Some(p)=crate::combat::hud::cockpit_target(combat,f).and_then(|(_,t)|projection(t.position)){
+                for(a,b)in [(Vec2::NEG_Y,Vec2::X),(Vec2::X,Vec2::Y),(Vec2::Y,Vec2::NEG_X),(Vec2::NEG_X,Vec2::NEG_Y)]{
+                    line(data,p+a*7.,p+b*7.,green);
+                }
+            }
+            let cue = target.and_then(|(_,target)| crate::combat::hud::gun_pipper(f, target));
             let bore = cue.as_ref().map_or(
-                f.position + f.orientation * bevy::math::DVec3::new(0.4, -0.1, -2006.), |cue| cue.bore);
+                f.position + f.orientation * (crate::aircraft::gun_origin(f.aircraft)-bevy::math::DVec3::Z*2000.), |cue| cue.bore);
             if let Some(p) = projection(bore) {
                 gun_ring(data, p, 3., [85, 180, 125, 230]);
             }
@@ -1425,6 +1429,12 @@ mod tests {
 
 /// Inverse of the actual cabin parent transform; direction is deliberately not
 /// normalized so screen/box ray intersections preserve their parameterization.
+pub(crate) fn gun_projection(f:&Flight,point:bevy::math::DVec3)->Option<Vec2>{
+ let eye=(eye(f.vehicle)+f.aircraft.cabin_offset()).as_dvec3();
+ let body=f.orientation.conjugate()*(point-f.position)-eye;
+ let (_,ray)=cockpit_ray(f,eye,body);
+ hud_projection(f.vehicle,ray.as_vec3())
+}
 pub(crate) fn cockpit_ray(f:&Flight,body_origin:bevy::math::DVec3,body_direction:bevy::math::DVec3)->(bevy::math::DVec3,bevy::math::DVec3){
  let scale=if f.aircraft==crate::aircraft::Aircraft::Hornet{bevy::math::DVec3::new(0.75,1.,1.)}else{bevy::math::DVec3::ONE};
  ((body_origin-f.aircraft.cabin_offset().as_dvec3())/scale,body_direction/scale)

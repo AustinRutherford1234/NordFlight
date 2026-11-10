@@ -28,6 +28,28 @@ remains available. AI wingmen and enemies can use radar missiles, short-range IR
 missiles, cannon, and countermeasures. Normal sensor visibility, terrain masking,
 weapon guidance, collision, and damage rules apply.
 
+External views show hostile-aircraft location aids: the selected aircraft has a
+ring, other hostiles have red diamonds, and arrows identify contacts outside the
+view or behind the camera. Labels include target number and range. **Tab** cycles
+live hostiles without requiring a radar track. **M** opens the map, where all live
+mountain-combat aircraft are shown; allies are blue and hostiles orange, with the
+designation highlighted. Click an enemy map contact to designate it. These are
+scenario location aids; they do not grant radar tracks or missile locks.
+
+Gun symbology is confined to the cockpit. External views retain enemy location
+markers and direction arrows. Gun ranging uses the designated hostile within 2 km and 60 degrees ahead, or the
+hostile nearest the firing axis when that designation is unsuitable. It excludes
+allies, destroyed aircraft, and terrain-masked targets. The cockpit director uses
+the same target policy and includes eye/muzzle parallax. The Hornet gun funnel
+uses the ranged aircraft's wingspan. Enemy mountain fighters use the same ballistic
+intercept for cannon aiming, including the shooter's inherited velocity.
+
+Cockpit gun sights automatically place a hollow diamond on the designated hostile's
+current position, even before it enters cannon range. When the gun ranges another
+usable hostile, the diamond follows that same aircraft. It remains separate from the ballistic director and
+works with optional enemy icons off. In the Hornet it also appears in caged Air
+mode before a missile lock, as well as in Gun mode with or without cage selected.
+
 Terrain avoidance previews the current flight path and an intended turn using
 body-fixed, double-precision terrain queries. The forecast includes speed,
 descent, roll recovery time, and water elevations. It checks 32 intervals over a

@@ -17,11 +17,20 @@ struct WorldTarget {
 struct Composite;
 /// The world-image compositor must remain visible when flight UI is suppressed.
 #[derive(Component)]pub(crate) struct WorldImage;
+/// Convert the scaled world image's viewport into native interface coordinates.
+pub(crate) fn project_to_ui(camera:&Camera,transform:&GlobalTransform,point:Vec3,size:Vec2)->Option<Vec2>{
+    let viewport=camera.logical_viewport_size()?;
+    if viewport.min_element()<=0.{return None;}
+    camera.world_to_viewport(transform,point).ok().map(|p|p/viewport*size)
+}
 pub struct GraphicsPlugin;
 impl Plugin for GraphicsPlugin {
     fn build(&self, app: &mut App) {
+        super::shadows::install(app);
+        super::relief_shadow::install(app);
         app.insert_resource(Graphics(super::active().graphics.clone()))
             .add_systems(First, pace_frame.before(bevy::time::TimeSystems))
+            .add_systems(PreStartup, initialize_render_height)
             .add_systems(PostStartup, setup)
             .add_systems(PreUpdate, (resize, apply_shadows).chain())
             .add_systems(PostUpdate, redirect_ui.before(bevy::ui::UiSystems::Prepare));
@@ -45,6 +54,12 @@ fn dimensions(window: &Window, scale: f32) -> UVec2 {
         ((window.physical_width() as f32 * scale).round() as u32).max(1),
         ((window.physical_height() as f32 * scale).round() as u32).max(1),
     )
+}
+fn initialize_render_height(windows: Query<&Window, With<PrimaryWindow>>, graphics: Res<Graphics>) {
+    if let Ok(window) = windows.single() {
+        let size = dimensions(window, graphics.0.render_scale);
+        HEIGHT.store(size.y, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 fn target(size: UVec2) -> Image {
     let mut image = Image::new_fill(
@@ -116,6 +131,7 @@ fn setup(
 }
 static ERROR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static HEIGHT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(900);
+static SHADOW_DISTANCE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 pub fn lod_error() -> f64 {
     let bits = ERROR.load(std::sync::atomic::Ordering::Relaxed);
     if bits == 0 {
@@ -126,6 +142,14 @@ pub fn lod_error() -> f64 {
 }
 pub fn render_height() -> f64 {
     HEIGHT.load(std::sync::atomic::Ordering::Relaxed) as f64
+}
+pub(crate) fn shadow_distance() -> f32 {
+    let bits = SHADOW_DISTANCE.load(std::sync::atomic::Ordering::Relaxed);
+    if bits == 0 {
+        super::active().graphics.shadow_distance
+    } else {
+        f32::from_bits(bits)
+    }
 }
 fn resize(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -141,6 +165,7 @@ fn resize(
     if previous.is_some_and(|old| old != view.high_quality) {
         let scale = graphics.0.render_scale;
         let frame_limit = graphics.0.frame_rate_limit;
+        let grass=(graphics.0.grass_distance,graphics.0.grass_density);
         graphics.0 = if view.high_quality {
             GraphicsSettings::high()
         } else {
@@ -148,6 +173,7 @@ fn resize(
         };
         graphics.0.render_scale = scale;
         graphics.0.frame_rate_limit = frame_limit;
+        (graphics.0.grass_distance,graphics.0.grass_density)=grass;
     }
     *previous = Some(view.high_quality);
     ERROR.store(
@@ -192,6 +218,10 @@ fn apply_shadows(
     if !graphics.is_changed() || !super::real() {
         return;
     }
+    SHADOW_DISTANCE.store(
+        graphics.0.shadow_distance.to_bits(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     map.size = if graphics.0.terrain_error_pixels <= 2. {
         2048
     } else {
@@ -225,6 +255,22 @@ fn redirect_ui(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn world_markers_stay_on_aircraft_at_every_render_scale_and_display_density(){
+        let ui=Vec2::new(1440.,900.);let transform=GlobalTransform::default();
+        let point=Vec3::new(100.,50.,-1000.);
+        let mut expected=None;
+        for density in [1.,2.]{for scale in [0.5,0.67,1.]{
+            let mut camera=Camera::default();
+            camera.computed.target_info=Some(bevy::camera::RenderTargetInfo{
+                physical_size:(ui*density*scale).as_uvec2(),scale_factor:1.});
+            camera.computed.clip_from_view=Mat4::perspective_infinite_reverse_rh(60_f32.to_radians(),ui.x/ui.y,0.1);
+            let p=project_to_ui(&camera,&transform,point,ui).unwrap();
+            assert!(p.x>720.&&p.y<450.);
+            if let Some(reference)=expected{assert!(p.distance(reference)<0.001);}else{expected=Some(p);}
+            assert!(project_to_ui(&camera,&transform,-point,ui).is_none());
+        }}
+    }
     #[test]
     fn explicit_flight_ui_is_native_but_menu_target_is_preserved() {
         let mut app = App::new();

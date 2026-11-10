@@ -2,6 +2,7 @@ pub mod material;
 mod cover;
 pub(crate) mod mesh;
 pub mod vegetation;
+pub(crate) mod grass;
 // Bounded terrain LOD, procedural surface detail, and shared off-field contacts.
 use crate::{
     physics::*,
@@ -133,6 +134,7 @@ struct Entry {
     anchor: DVec3,
     entity: Entity,
     mesh: Handle<Mesh>,
+    ground_bytes: usize,
     trees: Vec<(Entity, Handle<Mesh>)>,
 }
 struct Built {
@@ -143,7 +145,7 @@ struct Built {
     forest: Vec<(Mesh, Mesh)>,
 }
 struct Pending {
-    cell: (i32, i32, i32),
+    cell: LayoutCell,
     wanted: HashSet<Tile>,
     task: Build,
     coalesced: bool,
@@ -171,9 +173,11 @@ impl Build {
     fn tiles(missing: Vec<Tile>) -> Self {
         Build {batch:None,queue:missing.into(),running:None,done:vec![],waited:0}
     }
-    fn poll(&mut self, headroom: bool) -> Option<Vec<Built>> {
+    fn poll(&mut self, headroom: bool, loading: bool) -> Option<Vec<Built>> {
         if let Some(task)=self.batch.as_mut() {
-            return block_on(poll_once(task));
+            let built=block_on(poll_once(task))?;
+            self.done.extend(built);
+            return Some(std::mem::take(&mut self.done));
         }
         if let Some(task)=self.running.as_mut() {
             let built=block_on(poll_once(task))?;
@@ -182,6 +186,16 @@ impl Build {
         }
         if self.queue.is_empty() {
             return Some(std::mem::take(&mut self.done));
+        }
+        // The flight is frozen until this complete layout is GPU-ready. Keep
+        // the same single worker and meshes, but avoid one main-frame wakeup
+        // (or up to eight headroom waits) between every tile while loading.
+        if loading {
+            let queue=std::mem::take(&mut self.queue);
+            self.batch=Some(AsyncComputeTaskPool::get().spawn(async move {
+                queue.into_iter().map(build).collect()
+            }));
+            return None;
         }
         if headroom || self.waited >= BUILD_MAX_WAIT {
             let tile=self.queue.pop_front().unwrap();
@@ -205,7 +219,7 @@ fn retarget_built(mut built:Vec<Built>,wanted:HashSet<Tile>,active:HashSet<Tile>
     built
 }
 struct Preparing {
-    cell: (i32,i32,i32),
+    cell: LayoutCell,
     wanted: HashSet<Tile>,
     remaining: VecDeque<Built>,
     current: Option<StagingTile>,
@@ -325,17 +339,36 @@ pub struct Landscape {
     material: Handle<StandardMaterial>,
     surface: Option<Handle<material::SurfaceMaterial>>,
     trees: Handle<StandardMaterial>,
-    cell: (i32, i32, i32),
+    cell: LayoutCell,
     pending: Option<Pending>,
     preparing: Option<Preparing>,
     retiring: VecDeque<Entry>,
 }
-fn cell(f: &Flight) -> (i32, i32, i32) {
-    (
-        (f.position.x / 512.).floor() as i32,
-        (f.position.z / 512.).floor() as i32,
-        if crate::environment::real(){(f.agl().max(1.).log2()/2.).floor()as i32*64+(crate::environment::graphics::lod_error()*2.)as i32}else{(f.agl().max(1.).log2()/2.).floor()as i32},
-    )
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct LayoutCell {
+    x: i32,
+    z: i32,
+    altitude_band: i32,
+    shadow_detail: bool,
+    projected_detail: Option<(u64, u64, u32)>,
+}
+fn cell(f: &Flight) -> LayoutCell {
+    use crate::environment::graphics;
+    let real = crate::environment::real();
+    let agl = f.agl();
+    LayoutCell {
+        x: (f.position.x / 512.).floor() as i32,
+        z: (f.position.z / 512.).floor() as i32,
+        altitude_band: (agl.max(1.).log2() / 2.).floor() as i32,
+        shadow_detail: lod::shadow_detail(agl, lod::shadow_radius(real)),
+        projected_detail: real.then(|| {
+            (
+                graphics::render_height().to_bits(),
+                graphics::lod_error().to_bits(),
+                graphics::shadow_distance().to_bits(),
+            )
+        }),
+    }
 }
 fn forest_mesh(tile: Tile, anchor: DVec3) -> Option<Mesh> {
     if crate::environment::real(){return None;}
@@ -480,10 +513,10 @@ fn spawn(c: &mut Commands, meshes: &mut Assets<Mesh>, state: &Landscape, built: 
     } = built;
     // Streaming commits can be deferred until after update_world has run. A
     // visible tile must never spend its first frame at the camera-local origin.
-    let (entity,mesh)=spawn_piece(c,meshes,state,anchor,mesh,f,visible,false);
+    let (entity, mesh, ground_bytes) = spawn_ground(c, meshes, state, anchor, mesh, f, visible);
     let trees=forest.into_iter()
         .map(|m| spawn_forest(c,meshes,state,anchor,m,f,visible,entity)).collect();
-    (tile,Entry{anchor,entity,mesh,trees})
+    (tile,Entry{anchor,entity,mesh,ground_bytes,trees})
 }
 fn shared_transforms()->bool {
     static ENABLED:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
@@ -524,11 +557,7 @@ fn spawn_forest(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor
 }
 /// Render layer seen only by the sun: shadow-only forest proxies.
 pub const SHADOW_LAYER: usize = 1;
-/// Opt-in (`NORD_SHADOW_PROXIES=1`). Proxies reproduce the shadow maps
-/// exactly while transforms change every frame, but with the static render
-/// anchor (world.rs) Bevy 0.18 stops drawing these light-only meshes into the
-/// cascades between rebases, so forest shadows vanish. Keep them off until
-/// light-only visibility is handled in the vendored renderer.
+/// Opt-in position-only proxies for the legacy batched forest.
 pub fn shadow_proxies()->bool {
     static ENABLED:std::sync::OnceLock<bool>=std::sync::OnceLock::new();
     *ENABLED.get_or_init(||std::env::var_os("NORD_SHADOW_PROXIES").is_some())
@@ -555,6 +584,25 @@ fn spawn_piece(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,anchor:
     }
     (entity,mesh)
 }
+fn spawn_ground(
+    c: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    state: &Landscape,
+    anchor: DVec3,
+    mut mesh: Mesh,
+    f: &Flight,
+    visible: bool,
+) -> (Entity, Handle<Mesh>, usize) {
+    // Collision and grass use the source heightfield. Bevy retains the mesh
+    // bounds after transferring the immutable vertex and index buffers.
+    let bytes = mesh_bytes(&mesh);
+    mesh.asset_usage = RenderAssetUsages::RENDER_WORLD;
+    let (entity, handle) = spawn_piece(c, meshes, state, anchor, mesh, f, visible, false);
+    // The planet-fixed heightfield casts relief shadows. Feeding these
+    // view-dependent triangles to the local maps reintroduces a moving edge.
+    c.entity(entity).insert(bevy::light::NotShadowCaster);
+    (entity, handle, bytes)
+}
 fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Preparing,f:&Flight)->StreamBudget {
     let mut budget=StreamBudget::default();
     loop {
@@ -570,8 +618,8 @@ fn stage(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&Landscape,p:&mut Prepar
             continue;
         }
         if let Some(mesh)=tile.ground.take() {
-            let (entity,mesh)=spawn_piece(c,meshes,state,tile.anchor,mesh,f,false,false);
-            tile.entry=Some(Entry {anchor:tile.anchor,entity,mesh,trees:Vec::new()});
+            let (entity, mesh, ground_bytes) = spawn_ground(c, meshes, state, tile.anchor, mesh, f, false);
+            tile.entry=Some(Entry {anchor:tile.anchor,entity,mesh,ground_bytes,trees:Vec::new()});
         } else {
             let mesh=tile.forest.pop_front().unwrap();
             let root=tile.entry.as_ref().unwrap().entity;
@@ -585,8 +633,10 @@ fn reclaim(c:&mut Commands,meshes:&mut Assets<Mesh>,state:&mut Landscape)->Strea
     let mut budget=StreamBudget::default();
     if !state.retiring.is_empty() {crate::performance::frame_event(crate::performance::EV_RECLAIM);}
     while let Some(entry)=state.retiring.front_mut() {
-        let handle=entry.trees.last().map_or(&entry.mesh,|(_,m)|m);
-        if !budget.accept(meshes.get(handle).map_or(0,mesh_bytes)) {break;}
+        let bytes = entry.trees.last().map_or(entry.ground_bytes, |(_, mesh)| {
+            meshes.get(mesh).map_or(0, mesh_bytes)
+        });
+        if !budget.accept(bytes) {break;}
         if let Some((entity,mesh))=entry.trees.pop() {
             c.entity(entity).despawn();meshes.remove(mesh.id());
         } else {
@@ -678,6 +728,7 @@ pub fn update(
     mut surfaces: Option<ResMut<Assets<material::SurfaceMaterial>>>,
     readiness: Res<crate::terrain_ready::TerrainReady>,
     time: Option<Res<Time<Real>>>,
+    loading: Option<Res<crate::loading::Loading>>,
 ) {
     // Start another tile build only after a frame inside the 60 Hz budget.
     let headroom = time.is_none_or(|t| t.delta_secs() < 0.018);
@@ -692,9 +743,13 @@ pub fn update(
         }
     }
     if let (Some(handle),Some(surfaces))=(&state.surface,surfaces.as_mut()) {
-        if let Some(m)=surfaces.get_mut(handle) {
-            let desired=if opacity>0.999{AlphaMode::Opaque}else{AlphaMode::Blend};
-            if m.base.base_color.alpha()!=opacity||m.base.alpha_mode!=desired {m.base.base_color=Color::srgba(1.,1.,1.,opacity);m.base.alpha_mode=desired;}
+        let desired = if opacity > 0.999 { AlphaMode::Opaque } else { AlphaMode::Blend };
+        if surfaces.get(handle).is_some_and(|m| {
+            m.base.base_color.alpha() != opacity || m.base.alpha_mode != desired
+        }) {
+            let m = surfaces.get_mut(handle).unwrap();
+            m.base.base_color = Color::srgba(1., 1., 1., opacity);
+            m.base.alpha_mode = desired;
         }
     }
     if f.vehicle == Vehicle::Spacecraft {return;}
@@ -707,7 +762,9 @@ pub fn update(
     if reclaimed.meshes>0 {return;}
     if state.pending.is_some() {crate::performance::frame_event(crate::performance::EV_BUILDING);}
     if let Some(mut pending) = state.pending.take() {
-        let Some(built) = pending.task.poll(headroom) else {
+        let loading=loading.is_some_and(|s|s.active)
+            && std::env::var_os("NORD_LOADING_SERIAL").is_none();
+        let Some(built) = pending.task.poll(headroom,loading) else {
             state.pending = Some(pending);
             return;
         };
@@ -837,6 +894,29 @@ fn retire(
 mod tests {
     use super::*;
     #[test]
+    fn loading_build_finishes_without_frame_headroom_and_retains_in_progress_tiles(){
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(||bevy::tasks::TaskPool::new());
+        let a=Tile{x:0,z:0,size:128};let b=Tile{x:128,z:0,size:128};let c=Tile{x:256,z:0,size:128};
+        let mut job=Build::tiles(vec![c]);
+        job.done.push(build(a));
+        job.running=Some(AsyncComputeTaskPool::get().spawn(async move{build(b)}));
+        let deadline=std::time::Instant::now()+std::time::Duration::from_secs(10);
+        let result=loop {
+            if let Some(result)=job.poll(false,true){break result;}
+            assert!(std::time::Instant::now()<deadline,"loading task was starved by frame headroom");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        assert_eq!(result.iter().map(|b|b.tile).collect::<Vec<_>>(),vec![a,b,c]);
+        assert!(result.iter().all(|b|b.mesh.count_vertices()>0));
+        // Ordinary flight retains the existing frame budget and single-tile dispatch.
+        let mut flight=Build::tiles(vec![a,b]);
+        assert!(flight.poll(false,false).is_none());
+        assert!(flight.batch.is_none()&&flight.running.is_none());
+        assert_eq!(flight.queue.len(),2);assert_eq!(flight.waited,1);
+        assert!(flight.poll(true,false).is_none());
+        assert!(flight.batch.is_none()&&flight.running.is_some());assert_eq!(flight.queue.len(),1);
+    }
+    #[test]
     fn stale_worker_coalescing_reuses_useful_meshes_and_completes_coverage() {
         let a=Tile{x:0,z:0,size:512};let b=Tile{x:512,z:0,size:512};
         let c=Tile{x:1024,z:0,size:512};let d=Tile{x:1536,z:0,size:512};
@@ -889,9 +969,9 @@ mod tests {
         let old_entities:Vec<_>=std::iter::once(old).chain(old_trees.iter().map(|x|x.0)).collect();
         let tile=Tile{x:0,z:0,size:512};
         app.insert_resource(Landscape {surface:None,tiles:HashMap::from([(Tile{x:0,z:0,size:1024},Entry {
-            anchor:DVec3::ZERO,entity:old,mesh:old_mesh,trees:old_trees,
+            anchor:DVec3::ZERO,entity:old,mesh:old_mesh,ground_bytes:0,trees:old_trees,
         })]),material:material.clone(),trees:material,cell:cell(&f),pending:None,retiring:VecDeque::new(),
-            preparing:Some(Preparing {cell:(cell(&f).0-1,cell(&f).1,cell(&f).2),wanted:HashSet::from([tile]),remaining:VecDeque::from([Built {
+            preparing:Some(Preparing {cell:LayoutCell { x: cell(&f).x - 1, ..cell(&f) },wanted:HashSet::from([tile]),remaining:VecDeque::from([Built {
                 tile,anchor:f.position,mesh:Mesh::from(Cuboid::default()),
                 forest:(0..20).map(|_|(Mesh::from(Cuboid::default()),Mesh::from(Cuboid::default()))).collect(),
             }]),current:None,ready:vec![],requested:false,publishing:None})});
@@ -907,6 +987,14 @@ mod tests {
         app.world().resource::<crate::terrain_ready::TerrainReady>().poll(|_|true);
         app.update();
         assert!(app.world().resource::<Landscape>().tiles.contains_key(&tile));
+        let entry = &app.world().resource::<Landscape>().tiles[&tile];
+        let ground = entry.mesh.id();
+        let ground_bytes = entry.ground_bytes;
+        let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+        let ground = meshes.get_mut(ground).unwrap();
+        assert_eq!(ground.asset_usage, RenderAssetUsages::RENDER_WORLD);
+        assert_eq!(mesh_bytes(&ground.take_gpu_data().unwrap()), ground_bytes);
+        assert_eq!(crate::performance::retained_mesh_bytes(ground), 0);
         assert_eq!(app.world().resource::<Assets<Mesh>>().len(),staged(21)+(old_tree_count+1).saturating_sub(4));
         assert!(app.world().resource::<Landscape>().pending.is_none(),"cleanup must finish the update even if the completed cell is stale");
         for entity in &old_entities {
@@ -1000,12 +1088,13 @@ mod tests {
                     anchor: DVec3::ZERO,
                     entity: old,
                     mesh,
+                    ground_bytes: 0,
                     trees: Vec::new(),
                 },
             )]),
             material: material.clone(),
             trees: material,
-            cell: (next.0 - 1, next.1, next.2),
+            cell: LayoutCell { x: next.x - 1, ..next },
             pending: Some(Pending {
                 cell: next,
                 wanted: wanted.clone(),
@@ -1077,7 +1166,7 @@ mod tests {
             let wanted=layout_from(p,10.,Some(&|t:&Tile|active.contains(t)));
             let old:Vec<_>=active.iter().filter(|t|!wanted.contains(t)).copied().collect();
             let new:Vec<_>=wanted.iter().filter(|t|!active.contains(t)).map(|t|(*t,Entry{
-                anchor:DVec3::ZERO,entity:Entity::PLACEHOLDER,mesh:Handle::default(),trees:vec![]})).collect();
+                anchor:DVec3::ZERO,entity:Entity::PLACEHOLDER,mesh:Handle::default(),ground_bytes:0,trees:vec![]})).collect();
             let (old_count,new_count)=(old.len(),new.len());
             let groups=swap_groups(old,new,p);
             assert_eq!(groups.iter().map(|g|g.old.len()).sum::<usize>(),old_count);

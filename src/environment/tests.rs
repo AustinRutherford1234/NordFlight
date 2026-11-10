@@ -53,6 +53,16 @@ fn bad_presets_and_graphics_fail_before_flight() {
     assert!(g.validate().is_err());
 }
 #[test]
+fn ground_cover_settings_are_optional_in_older_files_and_bounded(){
+    let mut json=serde_json::to_value(GraphicsSettings::default()).unwrap();
+    json.as_object_mut().unwrap().remove("grass_distance");json.as_object_mut().unwrap().remove("grass_density");
+    let old:GraphicsSettings=serde_json::from_value(json).unwrap();
+    assert_eq!((old.grass_distance,old.grass_density),(112.,0.65));old.validate().unwrap();
+    for(distance,density)in [(193.,0.65),(112.,f64::NAN),(112.,1.1)]{
+        let mut settings=old.clone();settings.grass_distance=distance;settings.grass_density=density;assert!(settings.validate().is_err());
+    }
+}
+#[test]
 fn grid_interpolation_is_continuous_and_classes_are_categorical() {
     let g = pack::Grid {
         n: 2,

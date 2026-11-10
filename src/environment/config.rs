@@ -201,6 +201,10 @@ pub struct GraphicsSettings {
     pub frame_rate_limit: u32,
     pub terrain_error_pixels: f64,
     pub vegetation_distance: f64,
+    #[serde(default="default_grass_distance")]
+    pub grass_distance: f64,
+    #[serde(default="default_grass_density")]
+    pub grass_density: f64,
     pub shadow_distance: f32,
     pub texture_detail: u32,
     pub cpu_cache_mib: usize,
@@ -208,6 +212,8 @@ pub struct GraphicsSettings {
     pub staging_mib: usize,
 }
 fn default_frame_limit()->u32{0}
+fn default_grass_distance()->f64{112.}
+fn default_grass_density()->f64{0.65}
 impl Default for GraphicsSettings {
     fn default() -> Self {
         Self {
@@ -216,6 +222,7 @@ impl Default for GraphicsSettings {
             frame_rate_limit: default_frame_limit(),
             terrain_error_pixels: 4.,
             vegetation_distance: 4500.,
+            grass_distance:default_grass_distance(),grass_density:default_grass_density(),
             shadow_distance: 1800.,
             texture_detail: 512,
             cpu_cache_mib: 384,
@@ -230,6 +237,7 @@ impl GraphicsSettings {
             render_scale: 1.,
             terrain_error_pixels: 2.,
             vegetation_distance: 8000.,
+            grass_distance:160.,grass_density:0.85,
             shadow_distance: 3500.,
             texture_detail: 1024,
             gpu_cache_mib: 768,
@@ -245,6 +253,8 @@ impl GraphicsSettings {
             || !(1. ..=16.).contains(&self.terrain_error_pixels)
             || !self.vegetation_distance.is_finite()
             || !(500. ..=12000.).contains(&self.vegetation_distance)
+            || !self.grass_distance.is_finite()||!(0. ..=192.).contains(&self.grass_distance)
+            || !self.grass_density.is_finite()||!(0. ..=1.).contains(&self.grass_density)
             || !self.shadow_distance.is_finite()
             || !(100. ..=5000.).contains(&self.shadow_distance)
             || ![256, 512, 1024, 2048].contains(&self.texture_detail)

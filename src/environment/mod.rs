@@ -1,6 +1,9 @@
 //! Immutable planet and surface authority shared by simulation and terrain jobs.
 pub mod config;
 pub mod graphics;
+pub(crate) mod relief_shadow;
+pub(crate) mod shadows;
+pub(crate) mod ground_cover;
 pub mod legacy;
 pub mod pack;
 #[cfg(test)]
@@ -426,20 +429,23 @@ pub struct Prop {
 /// Sparse large props use the same fixed cells for rendering and contacts.
 /// Buildings are representative settlement detail, not cadastral footprints.
 pub fn prop(ix: i32, iz: i32) -> Option<Prop> {
-    if !real() {
+    prop_in(active(),ix,iz)
+}
+pub(crate) fn prop_in(world:&EnvironmentSnapshot,ix:i32,iz:i32)->Option<Prop>{
+    if world.preset.legacy {
         return None;
     }
-    let seed = active().preset.seed;
+    let seed = world.preset.seed;
     let x = ix as f64 * 128. + 24. + hash(ix, iz, seed + 17) * 80.;
     let z = iz as f64 * 128. + 24. + hash(ix, iz, seed + 29) * 80.;
     if x.abs() < 250. && z.abs() < 1600. {
         return None;
     }
-    let (h, cover, water, _) = active().raw(point(x, z, 0., radius()));
+    let (h, cover, water, _) = world.raw(point(x, z, 0., world.preset.planet.radius));
     if water.is_some() {
         return None;
     }
-    let chance = hash(ix, iz, seed + 67) / active().preset.vegetation.prop_density.max(1e-12);
+    let chance = hash(ix, iz, seed + 67) / world.preset.vegetation.prop_density.max(1e-12);
     let rock = match cover {
         LandCover::Rock => chance < 0.25,
         LandCover::Trees => chance < 0.035,
@@ -455,7 +461,7 @@ pub fn prop(ix: i32, iz: i32) -> Option<Prop> {
         DVec3::new(5., 4., 8.)
     };
     Some(Prop {
-        position: point(x, z, h + half.y, radius()),
+        position: point(x, z, h + half.y, world.preset.planet.radius),
         half,
         rock,
     })

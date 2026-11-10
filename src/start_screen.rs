@@ -475,6 +475,9 @@ pub fn controls(
             234 => {if let Some(crew)=crew.as_mut(){let enabled=!crew.cockpit_g_effects;crew.set_cockpit_g_effects(enabled);}},
             300 => view.high_quality = !view.high_quality,
             304 => {if let Some(g)=graphics.as_mut(){g.0.render_scale=if g.0.render_scale<0.59{0.67}else if g.0.render_scale<0.74{0.75}else if g.0.render_scale<0.99{1.}else{0.5};}},
+            305 => {if let Some(g)=graphics.as_mut(){
+                (g.0.grass_distance,g.0.grass_density)=if g.0.grass_density==0.||g.0.grass_distance==0.{(112.,0.65)}else if g.0.grass_density<0.8{(160.,0.85)}else{(0.,0.)};
+            }},
             301 => audio.menu_volume(-0.1),
             302 => audio.menu_volume(0.1),
             303 => audio.menu_mute(),
@@ -629,6 +632,8 @@ pub fn ui(
             heading(p,"PRESENTATION");
             let scale=graphics.as_ref().map_or(1.,|g|g.0.render_scale);
             button(p,304,&format!("WORLD RESOLUTION: {}% / UI NATIVE",(scale*100.).round()),false);
+            let grass=graphics.as_ref().map_or(0.65,|g|if g.0.grass_distance==0.{0.}else{g.0.grass_density});
+            button(p,305,&format!("GROUND COVER: {}",if grass==0.{"OFF"}else if grass<0.8{"BALANCED"}else{"DENSE"}),grass>0.);
             label(p,&crate::environment::active().preset.label,15.,Color::srgb(0.64,0.78,0.82));
             button(p,300,if view.high_quality {"GRAPHICS: HIGH"}else{"GRAPHICS: STANDARD"},view.high_quality);
             heading(p,&format!("MASTER AUDIO  /  {}%",(audio.menu_level()*100.).round()));

@@ -430,7 +430,7 @@ impl Combat {
                 && self
                     .bvr
                     .as_ref()
-                    .is_none_or(|b| index < b.enemies && b.radar.tracks[index].valid(self.clock))
+                    .is_none_or(|b| index < b.enemies && (b.mountain||b.radar.tracks[index].valid(self.clock)))
             {
                 self.selected = index;
                 break;
@@ -1941,6 +1941,7 @@ pub fn draw(
     v: Res<ViewState>,
     combat: Res<Combat>,
     camera: Query<(&Camera, &GlobalTransform), With<FlightCamera>>,
+    windows:Query<&Window,With<bevy::window::PrimaryWindow>>,
     mut panels: Query<&mut Node, (With<CombatPanel>, Without<TargetMarker>)>,
     mut markers: Query<
         (&TargetMarker, &mut Node, &mut BorderColor, &mut Visibility),
@@ -1969,8 +1970,9 @@ pub fn draw(
             if v.index == 3 && !guidance::terrain_visible(f.position, t.position) {
                 continue;
             }
-            if let Ok(p) = camera.world_to_viewport(transform, world::local(t.position, &f)) {
-                if let Some(size) = camera.logical_viewport_size() {
+            let size=windows.single().map(|w|Vec2::new(w.width(),w.height())).unwrap_or(Vec2::new(1440.,900.));
+            if let Some(p) = crate::environment::graphics::project_to_ui(camera,transform,world::local(t.position,&f),size) {
+                {
                     let top = if v.index == 3 { 45. } else { 165. };
                     let bottom = if v.index == 3 { 30. } else { 240. };
                     let (left, right) = if v.index == 3 { (45., 95.) } else { (20., 150.) };

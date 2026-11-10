@@ -28,7 +28,7 @@ pub(crate) struct Vegetation {
 pub struct VegetationPlugin;
 impl Plugin for VegetationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, setup)
+        app.add_plugins(super::grass::GrassPlugin).add_systems(PostStartup, setup)
             .add_systems(Update, update.in_set(crate::FlightStage::World));
     }
 }
@@ -197,7 +197,7 @@ fn setup(mut c:Commands,mut materials:ResMut<Assets<StandardMaterial>>) {
 #[derive(Component)]struct Canopy {near:Handle<Mesh>,far:Handle<Mesh>,distant:bool,anchor:DVec3}
 fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graphics>,
     state:Option<ResMut<Vegetation>>,mut meshes:ResMut<Assets<Mesh>>,
-    mut canopy:Query<(Entity,&mut Canopy,&mut Mesh3d)>) {
+    mut canopy:Query<(&mut Canopy,&mut Mesh3d)>) {
     use bevy::tasks::{block_on,poll_once,AsyncComputeTaskPool};
     let Some(mut state)=state else{return;};
     let cell=((f.position.x/CELL as f64).floor()as i32,(f.position.z/CELL as f64).floor()as i32);
@@ -229,9 +229,29 @@ fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graph
                 .with_rotation(world::local_rot(DQuat::IDENTITY,&f)),Visibility::Inherited,
                 WorldObject{position:built.anchor,rotation:DQuat::IDENTITY})).id();
             if has_trees {
-                let tree=c.spawn((Mesh3d(if distant{far.clone()}else{near.clone()}),MeshMaterial3d(state.material.clone()),
-                    Transform::default(),Canopy{near:near.clone(),far:far.clone(),distant,anchor:built.anchor},ChildOf(root))).id();
-                if distant{c.entity(tree).insert(bevy::light::NotShadowCaster);}
+                c.spawn((
+                    Mesh3d(if distant { far.clone() } else { near.clone() }),
+                    MeshMaterial3d(state.material.clone()),
+                    Transform::IDENTITY,
+                    Canopy {
+                        near: near.clone(),
+                        far: far.clone(),
+                        distant,
+                        anchor: built.anchor,
+                    },
+                    bevy::light::NotShadowCaster,
+                    ChildOf(root),
+                ));
+                // Reuse the lightweight canopy mesh as a fixed caster at
+                // both visual LODs. Camera draws never include this entity.
+                c.spawn((
+                    Mesh3d(far.clone()),
+                    MeshMaterial3d(state.material.clone()),
+                    Transform::IDENTITY,
+                    bevy::camera::visibility::RenderLayers::layer(super::SHADOW_LAYER),
+                    bevy::light::NotShadowReceiver,
+                    ChildOf(root),
+                ));
             }
             if has_props{c.spawn((Mesh3d(props.clone()),MeshMaterial3d(state.prop_material.clone()),Transform::default(),ChildOf(root)));}
             state.cells.insert(key,Cell{entity:Some(root),near,far,props});
@@ -243,11 +263,10 @@ fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graph
     for key in missing.into_iter().take(2usize.saturating_sub(state.jobs.len())) {
         let source=state.source.clone();state.jobs.insert(key,AsyncComputeTaskPool::get().spawn(async move{build_cell(key.0,key.1,&source)}));
     }
-    for(entity,mut tree,mut mesh)in &mut canopy {
+    for(mut tree,mut mesh)in &mut canopy {
         let distance=tree.anchor.distance(f.position);
         let distant=if tree.distant{distance>750.}else{distance>950.};
-        if distant!=tree.distant {tree.distant=distant;mesh.0=if distant{tree.far.clone()}else{tree.near.clone()};
-            if distant{c.entity(entity).insert(bevy::light::NotShadowCaster);}else{c.entity(entity).remove::<bevy::light::NotShadowCaster>();}}
+        if distant!=tree.distant {tree.distant=distant;mesh.0=if distant{tree.far.clone()}else{tree.near.clone()};}
     }
 }
 #[cfg(test)]mod tests {

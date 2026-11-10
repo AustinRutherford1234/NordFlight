@@ -275,3 +275,38 @@ of a general speedup. The p95/p99 acceptance targets are still unmet in that
 sample. Earlier AC-power and different-display runs are recorded separately;
 live-flight timing and long-duration soak acceptance are outside this focused
 surface-color validation.
+## Nearby 2D ground cover
+
+Flight Setup → Settings → **Ground Cover** cycles Off, Balanced, and Dense.
+This control is independent of world-render resolution and the main graphics
+tier. Existing graphics files load the new optional `grass_distance` (112 m)
+and `grass_density` (0.65) fields automatically. Dense uses 160 m / 0.85;
+advanced configuration accepts a maximum range of 192 m and density 0–1.
+
+Grass and broadleaf undergrowth use two crossed, alpha-masked cards per tuft,
+batched into 64 m cells with one shared, procedurally generated 256 × 128
+mipmapped atlas. They do not cast or receive shadows and have no collision
+shapes. There are no imported assets, per-blade entities, alpha blending, or
+per-frame camera-facing updates. Palette, seed, and vegetation height come from
+the active planet preset, including sci-fi Earth.
+
+Placement uses authoritative land cover, slope, water levels, snow line, airport
+pavement exclusions, and shared building/rock footprints. Airport verges have
+shorter grass. Stable clustering and varied size, heading, and color avoid
+regular placement bands. Cosmetic roots match the triangles of the published
+terrain mesh; this does not change the authoritative contact surface.
+
+Balanced has at most nine cell batches and 1,024 tufts per cell: about 3.8 MiB
+of active mesh payload at the cap, plus roughly 171 KiB for the shared texture.
+Dense has at most 21 batches; the maximum configurable layout has 29. These
+are source payload bounds, not measurements of total GPU allocation. Generation
+uses the existing background worker with at most two jobs and one pending GPU
+publication. Retirement is bounded to four cells per frame. Cache keys include
+planet identity, environment revision, density, and the local terrain layout;
+obsolete jobs are cancelled and meshes wait for GPU dependencies before showing.
+
+The ground-cover radius contracts with aircraft height and disappears above its
+configured range. Distant vegetation remains the existing tree/canopy system.
+`tests/grass/validate.py` records sequential on/off release profiles, a moving
+streaming sample, and Earth/sci-fi/menu captures. Disposable diagnostics can use
+`NORD_GRASS_OFF=1`; normal users should use the in-game control.

@@ -189,12 +189,44 @@ fn sample_directional_cascade(
     return sample_shadow_map(light_local.xy, light_local.z, array_index, texel_size);
 }
 
+fn terrain_sun_visibility(light_id: u32, frag_position: vec4<f32>) -> f32 {
+    let field = view_bindings::lights.terrain_sun_shadow;
+    if (light_id != 0u || field[3].w == 0.0) {
+        return 1.0;
+    }
+    let p = field * frag_position;
+    let edge = max(abs(p.x - 0.5), abs(p.z - 0.5)) * 2.0;
+    if (edge >= 1.0) {
+        return 1.0;
+    }
+    // Some Metal material pipelines already use all 16 sampler slots.
+    let size = vec2<i32>(textureDimensions(view_bindings::terrain_sun_shadow));
+    let texel = p.xz * vec2<f32>(size) - vec2<f32>(0.5);
+    let lo = clamp(vec2<i32>(floor(texel)), vec2<i32>(0), max(vec2<i32>(0), size - vec2<i32>(2)));
+    let hi = min(lo + vec2<i32>(1), size - vec2<i32>(1));
+    let f = clamp(texel - vec2<f32>(lo), vec2<f32>(0.0), vec2<f32>(1.0));
+    let heights = mix(
+        mix(textureLoad(view_bindings::terrain_sun_shadow, lo, 0),
+            textureLoad(view_bindings::terrain_sun_shadow, vec2<i32>(hi.x, lo.y), 0), f.x),
+        mix(textureLoad(view_bindings::terrain_sun_shadow, vec2<i32>(lo.x, hi.y), 0),
+            textureLoad(view_bindings::terrain_sun_shadow, hi, 0), f.x),
+        f.y,
+    );
+    let decode = vec2<f32>(127.5, 32640.0);
+    let blocker = dot(heights.rg, decode);
+    let ground = dot(heights.ba, decode);
+    let clearance = blocker - max(ground, p.y);
+    let occlusion = smoothstep(5.0, 22.0, clearance) * (1.0 - smoothstep(0.8, 1.0, edge));
+    return 1.0 - occlusion;
+}
+
 fn fetch_directional_shadow(light_id: u32, frag_position: vec4<f32>, surface_normal: vec3<f32>, view_z: f32) -> f32 {
+    let terrain = terrain_sun_visibility(light_id, frag_position);
     let light = &view_bindings::lights.directional_lights[light_id];
     let cascade_index = get_cascade_index(light_id, view_z);
 
     if (cascade_index >= (*light).num_cascades) {
-        return 1.0;
+        return terrain;
     }
 
     var shadow = sample_directional_cascade(light_id, cascade_index, frag_position, surface_normal);
@@ -208,8 +240,17 @@ fn fetch_directional_shadow(light_id: u32, frag_position: vec4<f32>, surface_nor
             let next_shadow = sample_directional_cascade(light_id, next_cascade_index, frag_position, surface_normal);
             shadow = mix(shadow, next_shadow, (-view_z - next_near_bound) / (this_far_bound - next_near_bound));
         }
+    } else {
+        // Give nearby object shadows a wide fade into the terrain field.
+        // Only views with that field need the wider blend.
+        let far_bound = (*light).cascades[cascade_index].far_bound;
+        let has_terrain = view_bindings::lights.terrain_sun_shadow[3].w != 0.0;
+        let fade_start = far_bound * select(1.0 - (*light).cascades_overlap_proportion, 0.55, has_terrain);
+        if (-view_z > fade_start) {
+            shadow = mix(shadow, 1.0, smoothstep(fade_start, far_bound, -view_z));
+        }
     }
-    return shadow;
+    return min(terrain, shadow);
 }
 
 fn cascade_debug_visualization(

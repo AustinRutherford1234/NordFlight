@@ -245,6 +245,7 @@ struct UiFont(Handle<Font>);
 enum FlightStage { Controls, Simulation, World, Camera, Presentation, Interface, Capture }
 fn main() {
     if let Err(error)=environment::initialize().and_then(|_|scenarios::validate()){eprintln!("Environment configuration: {error}");std::process::exit(2);}
+    if std::env::args().any(|a|a=="--study-ground-cover"){terrain::grass::study();return;}
     if std::env::args().any(|a|a=="--export-f22-nozzle"){aircraft::visual::raptor_detail::export_nozzle_preview();return;}
     if std::env::args().any(|a|a=="--study-sr71-engines"){
         let output=std::env::args().find_map(|a|a.strip_prefix("--sr71-output=").map(str::to_owned)).unwrap_or_else(||"tests/sr71-engine-study".into());
@@ -1385,9 +1386,24 @@ fn main() {
         initial_flight.paused=true;initial_view.index=1;initial_view.help=false;
     }
     if preview.as_deref()==Some("terrain-mountain-combat") {
-        reset(&mut initial_flight,combat::mountain::Setup{force:4,entry:0,difficulty:combat::dogfight::Difficulty::Balanced}.id(),&mut initial_view);
+        let review=std::env::var("NORD_TARGETING_CAPTURE").unwrap_or_default();
+        let entry=if review=="tail"{1}else if review.contains("gun")||review=="pursuit"{2}else{0};
+        reset(&mut initial_flight,combat::mountain::Setup{force:if review.contains("gun"){0}else{4},entry,difficulty:combat::dogfight::Difficulty::Balanced}.id(),&mut initial_view);
         combat::mountain::start(&mut combat,&initial_flight,initial_view.generation,combat::mountain::Setup::decode(initial_view.scenario).unwrap());
         initial_flight.paused=true;initial_view.index=1;initial_view.help=false;
+        if review.contains("gun"){
+            initial_view.index=0;initial_view.yaw=0.;initial_view.pitch=0.;initial_view.zoom=1.;
+            if review=="gun-caged-far"{let up=initial_flight.up();initial_flight.position+=up*2500.;}
+            let t=&mut combat.targets[0];
+            t.position=initial_flight.position+initial_flight.forward()*if review=="gun-caged-far"{3500.}else{800.}+initial_flight.orientation*DVec3::X*20.;
+            t.velocity=initial_flight.velocity+initial_flight.orientation*DVec3::X*80.;
+            t.orientation=initial_flight.orientation;combat::ai::initialize(t);
+            if matches!(review.as_str(),"gun-cockpit"|"gun-caged"|"gun-caged-air"|"gun-caged-far"){
+                initial_view.index=3;
+                initial_flight.hornet.hud.mode=if review=="gun-caged-air"{cockpit::hornet_hud::MasterMode::Air}else{cockpit::hornet_hud::MasterMode::Gun};
+                initial_flight.hornet.hud.caged=review!="gun-cockpit";
+            }
+        }
     }
     let initial_warp=benchmark::configured_warp(render_benchmark.is_some());
     let initial_shadow_size=if std::env::var_os("NORD_DETAIL_QUALITY").is_some(){2048}else{1024};
@@ -1653,7 +1669,7 @@ fn benchmark_ablation(
         }
     }
 }
-fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<ViewState>, warp: Res<warp::Warp>, windows: Query<&Window>, session: Res<benchmark::Session>, diagnostics: Res<DiagnosticsStore>, mut benchmark: ResMut<RenderBenchmark>, clock: Res<SimClock>, images:Res<Assets<Image>>, meshes:Res<Assets<Mesh>>, server:Res<AssetServer>) {
+fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<ViewState>, warp: Res<warp::Warp>, windows: Query<&Window>, session: Res<benchmark::Session>, diagnostics: Res<DiagnosticsStore>, mut benchmark: ResMut<RenderBenchmark>, clock: Res<SimClock>, images:Res<Assets<Image>>, meshes:Res<Assets<Mesh>>, server:Res<AssetServer>,grass:Option<Res<terrain::grass::Grass>>) {
     let Some(mode) = benchmark.mode.clone() else {
         return;
     };
@@ -1695,6 +1711,7 @@ fn benchmark_render(time: Res<Time<bevy::time::Real>>, f: Res<Flight>, v: Res<Vi
     let asset_memory=serde_json::json!({"cpu_image_bytes":image_bytes,"cpu_mesh_bytes":mesh_bytes,"largest_cpu_images":&cpu_images[..cpu_images.len().min(12)],"note":"Retained main-world asset bytes, not total process or GPU footprint"});
     let report = serde_json::json!({"environment":environment::active().preset.id,"terrain_bytes":environment::active().data.bytes,"world_render_scale":environment::active().graphics.render_scale,"profile":profile,"mode":mode,"scene":std::env::var("NORD_BENCH_SCENE").ok(),"paused":f.paused,"resolution":resolution,"quality":v.high_quality,"timestep":warp.timestep,"simulation_timing":clock.report(),"asset_memory":asset_memory,"warp_rates":warp.rates,"exercise_events":session.events,"warmup_seconds":warmup,"sample_seconds":elapsed-warmup,"frames":frames.len(),"mean_ms":mean,"p50_ms":p50,"p95_ms":p95,"p99_ms":p99,"mean_fps":1000.0/mean,
         "simulated_seconds":simulated_seconds,"simulation_rate":simulated_seconds/(elapsed-warmup),"over_25_ms":frames.iter().filter(|&&t|t>25.).count(),"over_50_ms":frames.iter().filter(|&&t|t>50.).count(),"measurements":performance::report(&diagnostics),
+        "ground_cover":terrain::grass::report(grass.as_deref()),
         "workers":{"compute":bevy::tasks::ComputeTaskPool::get().thread_num(),"async_compute":bevy::tasks::AsyncComputeTaskPool::get().thread_num(),"io":bevy::tasks::IoTaskPool::get().thread_num()},
         "note":"Frame intervals include VSync and scheduling; CPU spans may be nested and must not be summed"});
     std::fs::write(
@@ -1755,6 +1772,9 @@ fn setup_view(
         Msaa::Sample2,
         Fxaa::default(),
     )).id();
+    c.entity(camera).insert(bevy::pbr::DirectionalShadowLayers(
+        bevy::camera::visibility::RenderLayers::from_layers(&[0, terrain::SHADOW_LAYER]),
+    ));
     c.entity(camera).insert(bevy::core_pipeline::tonemapping::DebandDither::Disabled);
     // Developer comparison: reject hidden opaque fragments before their full
     // material shaders, without changing geometry, MSAA or lighting quality.
@@ -3015,7 +3035,7 @@ fn update_camera(
             fog.falloff = FogFalloff::Exponential { density: fog_density };
         }
     }
-    let dir = (frame(&f).conjugate() * e.sun_direction()).as_vec3();
+    let sun_rotation = world::local_rot(environment::shadows::sun_rotation(e.sun_direction()), &f);
     for (mut t, mut light) in &mut suns {
         if light.shadows_enabled==v.map { light.shadows_enabled=!v.map; }
         let illuminance = if surface_scene {
@@ -3024,7 +3044,7 @@ fn update_camera(
             95000.0
         };
         if light.illuminance!=illuminance { light.illuminance=illuminance; }
-        t.set_if_neq(Transform::from_translation(dir * 10000.0).looking_at(Vec3::ZERO, Vec3::Y));
+        t.set_if_neq(Transform::from_rotation(sun_rotation));
     }
     for (mut t, mut vis) in &mut sunbody {
         if let Some(pose) = sun_pose { t.set_if_neq(pose); }
@@ -3497,7 +3517,7 @@ fn capture_visual_check(
     loading: Res<loading::Loading>,
     mut f: ResMut<Flight>,
     mut view: ResMut<ViewState>,
-    mut canopy_reset: Local<(u8,f32)>,
+    (mut canopy_reset,mut targeting_map_frames):(Local<(u8,f32)>,Local<u8>),
     canopy_nodes: Query<(Entity,&Name,&Visibility)>,
     canopy_roots: Query<(),With<aircraft::visual::hornet::ImportedHornet>>,
     canopy_parents: Query<&ChildOf>,
@@ -3544,6 +3564,10 @@ fn capture_visual_check(
     if std::env::var_os("NORD_MENU_CAPTURE").is_some()&&!start_screen::preview_ready(&menu){return;}
     if loading.active || *captured || time.elapsed_secs() < 8.0 {
         return;
+    }
+    if std::env::var("NORD_TARGETING_CAPTURE").as_deref()==Ok("map"){
+        if !view.map{view.map=true;return;}
+        if *targeting_map_frames<3{*targeting_map_frames+=1;return;}
     }
     *captured = true;
     if mode.starts_with("terrain-") {

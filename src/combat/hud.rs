@@ -18,11 +18,15 @@ pub struct GunSolution {
     pub aligned: bool,
 }
 pub fn gun_solution(f: &Flight, target: &Target) -> Option<GunSolution> {
+    if !target.alive{return None;}
+    gun_intercept(f,target.position,target.velocity)
+}
+pub(crate) fn gun_intercept(f:&Flight,position:DVec3,velocity:DVec3)->Option<GunSolution>{
     let muzzle = f.position + f.orientation * crate::aircraft::gun_origin(f.aircraft);
-    let r = target.position - muzzle;
-    let v = target.velocity - f.velocity;
+    let r = position - muzzle;
+    let v = velocity - f.velocity;
     let g = -f.up() * 9.81;
-    if !target.alive || r.length() > 2000.0 || r.length() < 30.0 {
+    if !r.is_finite()||!v.is_finite()||r.length() > 2000.0 || r.length() < 30.0 {
         return None;
     }
     let displacement = |t: f64| r + v * t - g * (0.5 * t * t);
@@ -54,6 +58,30 @@ pub fn gun_solution(f: &Flight, target: &Target) -> Option<GunSolution> {
         range: r.length(),
         aligned: direction.dot(f.forward()) > (0.0025 + 3.0 / r.length()).cos(),
     })
+}
+
+/// Gun ranging is independent of missile lock; ignore allies and terrain-masked
+/// aircraft. Prefer the designation, then the hostile nearest the firing axis.
+pub fn gun_target<'a>(c:&'a Combat,f:&Flight)->Option<(usize,&'a Target)>{
+    if !c.active{return None;}
+    let usable=|i:usize,t:&Target|t.alive&&!c.bvr.as_ref().is_some_and(|b|b.friendly(i))
+        && {let r=t.position-f.position;let range=r.length();
+            (30. ..=2000.).contains(&range)&&r.dot(f.forward())>range*0.5}
+        && super::guidance::terrain_visible(f.position,t.position);
+    if let Some(t)=c.targets.get(c.selected).filter(|t|usable(c.selected,t)){return Some((c.selected,t));}
+    c.targets.iter().enumerate().filter(|(i,t)|usable(*i,t)).max_by(|(_,a),(_,b)|{
+        let alignment=|t:&Target|(t.position-f.position).normalize().dot(f.forward());
+        alignment(a).total_cmp(&alignment(b))
+    })
+}
+
+/// Keep the designated aircraft visible before it enters cannon range. When
+/// the gun ranges another usable hostile, its diamond follows that same target.
+pub fn cockpit_target<'a>(c:&'a Combat,f:&Flight)->Option<(usize,&'a Target)>{
+    if !c.active||f.crashed{return None;}
+    gun_target(c,f).or_else(||c.targets.get(c.selected).filter(|t|t.alive
+        &&!c.bvr.as_ref().is_some_and(|b|b.friendly(c.selected))
+        &&super::guidance::terrain_visible(f.position,t.position)).map(|t|(c.selected,t)))
 }
 
 /// A director cue: put `impact` over the target's CURRENT image. It represents
@@ -153,10 +181,8 @@ pub fn cockpit_lines(combat: &Combat, f: &Flight) -> Option<[String; 2]> {
                 "MISSILE / BKSP CHAFF".into()
             }
         } else {
-            combat
-                .targets
-                .get(combat.selected)
-                .and_then(|t| gun_solution(f, t))
+            gun_target(combat,f)
+                .and_then(|(_,t)| gun_solution(f, t))
                 .map_or_else(
                     || format!("GUN {}  V/BKSP CM", gun),
                     |s| format!("GUN {}  TOF {:.2}S  U", gun, s.time),
@@ -220,7 +246,7 @@ pub fn setup(mut c: Commands) {
             ZIndex(if i % 2 == 0 { 25 } else { 26 }),
         ));
     }
-    for i in 0..5 {
+    for i in 0..20 {
         c.spawn((
             Caption(i),
             Text::new(""),
@@ -266,6 +292,7 @@ pub fn draw(
     v: Res<ViewState>,
     combat: Res<Combat>,
     cameras: Query<(&Camera, &GlobalTransform), With<FlightCamera>>,
+    windows:Query<&Window,With<bevy::window::PrimaryWindow>>,
     mut strokes: Query<
         (&Stroke, &mut Node, &mut UiTransform, &mut BackgroundColor),
         Without<Caption>,
@@ -279,20 +306,19 @@ pub fn draw(
     ),
 ) {
     ink.0.clear();
-    let mut labels: [Option<(Vec2, String, Color)>; 5] = std::array::from_fn(|_|None);
+    let mut labels: [Option<(Vec2, String, Color)>; 20] = std::array::from_fn(|_|None);
     let mut threat_docked = false;
     let active = combat.active
         && v.ship_follow.is_none()
         && v.index != 3
-        && combat.bvr.is_none()
+        && combat.bvr.as_ref().is_none_or(|b|b.mountain)
         && !v.map
         && !f.crashed
         && f.vehicle == Vehicle::Gripen
         && v.missile_follow.is_none();
     if let Some((camera, transform)) = cameras.iter().next().filter(|_| active) {
-        let size = camera
-            .logical_viewport_size()
-            .unwrap_or(Vec2::new(1440.0, 900.0));
+        let size = windows.single().map(|w|Vec2::new(w.width(),w.height()))
+            .unwrap_or(Vec2::new(1440.,900.));
         let min = if v.simple {
             Vec2::new(32.0, 70.0)
         } else {
@@ -307,30 +333,38 @@ pub fn draw(
             )
         };
         let project = |point| {
-            camera
-                .world_to_viewport(transform, world::local(point, &f))
-                .ok()
+            crate::environment::graphics::project_to_ui(camera,transform,world::local(point,&f),size)
         };
-        if let Some(target) = combat.targets.get(combat.selected).filter(|t| t.alive) {
+        let mountain=combat.bvr.as_ref().is_some_and(|b|b.mountain);
+        for(index,target)in combat.targets.iter().enumerate().filter(|(i,t)|t.alive
+            && if mountain{!combat.bvr.as_ref().unwrap().friendly(*i)}else{*i==combat.selected}).take(16){
+            let selected=index==combat.selected;
+            let label=if selected{0}else{4+index.min(15)};
             let screen =
                 project(target.position).filter(|p| p.cmpge(min).all() && p.cmple(max).all());
-            let color = if combat.cue(&f).is_err() {
+            let color = if !selected{RED}else if combat.cue(&f).is_err() {
                 AMBER
             } else {
                 GREEN
             };
             if let Some(p) = screen {
-                let progress = (combat.lock / combat.weapon.lock_time()).clamp(0.0, 1.0) as f32;
-                ink.ring(p, 24.0, 1.0, DIM);
-                ink.ring(p, 28.0, progress, color);
-                labels[0] = Some((
+                let progress = if selected{(combat.lock / combat.weapon.lock_time()).clamp(0.0, 1.0) as f32}else{0.};
+                if selected{
+                    ink.ring(p, 24.0, 1.0, DIM);
+                    ink.ring(p, 28.0, progress, color);
+                }else{
+                    for(a,b)in [(Vec2::X,Vec2::Y),(Vec2::Y,-Vec2::X),(-Vec2::X,-Vec2::Y),(-Vec2::Y,Vec2::X)]{
+                        ink.line(p+a*12.,p+b*12.,color);
+                    }
+                }
+                labels[label] = Some((
                     p + Vec2::new(if p.x > max.x - 160.0 { -175.0 } else { 35.0 }, 12.0),
                     format!(
                         "T{:02}  {:.2} km\nVc {:+.0} m/s  {}",
-                        combat.selected + 1,
+                        index + 1,
                         target.position.distance(f.position) / 1000.0,
                         closing(&f, target),
-                        if progress >= 1.0 { "LOCK" } else { "TRACK" }
+                        if progress >= 1.0 { "LOCK" } else if selected{"SELECTED"}else{"HOSTILE"}
                     ),
                     color,
                 ));
@@ -345,14 +379,16 @@ pub fn draw(
                     .min(half.y / direction.y.abs().max(0.001));
                 let p = centre + direction * (factor - 18.0);
                 let side = Vec2::new(-direction.y, direction.x);
-                ink.line(p, p - direction * 14.0 + side * 7.0, AMBER);
-                ink.line(p, p - direction * 14.0 - side * 7.0, AMBER);
-                labels[0] = Some((
+                let arrow_color=if selected{AMBER}else{RED};
+                ink.line(p, p - direction * 14.0 + side * 7.0, arrow_color);
+                ink.line(p, p - direction * 14.0 - side * 7.0, arrow_color);
+                labels[label] = Some((
                     (p + Vec2::new(-55.0, 18.0))
                         .clamp(min, (max - Vec2::new(150.0, 45.0)).max(min)),
                     format!(
-                        "T{:02}  {:.1} km\n{}",
-                        combat.selected + 1,
+                        "{}T{:02}  {:.1} km\n{}",
+                        if selected{"* "}else{""},
+                        index + 1,
                         target.position.distance(f.position) / 1000.0,
                         if local.z > 0.0 {
                             "BEHIND"
@@ -360,8 +396,27 @@ pub fn draw(
                             "OFF SCREEN"
                         }
                     ),
-                    AMBER,
+                    arrow_color,
                 ));
+            }
+        }
+        // Separate closely spaced formation labels without moving their
+        // geographic anchors or the direction arrows.
+        let mut occupied:Vec<Vec2>=Vec::new();
+        for index in std::iter::once(0).chain(4..labels.len()){
+            if let Some((p,_,color))=&mut labels[index]{
+                let original=*p;
+                for row in 0..12{
+                    let offset=if row%2==0{(row/2)as f32}else{-((row+1)/2)as f32}*46.;
+                    let candidate=(original+Vec2::Y*offset).clamp(Vec2::new(24.,75.),(size-Vec2::new(220.,145.)).max(Vec2::new(24.,75.)));
+                    let over_status=mountain&&candidate.x+205.>size.x-450.&&candidate.x<size.x-20.
+                        &&candidate.y+43.>165.&&candidate.y<260.;
+                    if !over_status&&occupied.iter().all(|q|(q.x-candidate.x).abs()>205.||(q.y-candidate.y).abs()>43.){
+                        *p=candidate;break;
+                    }
+                }
+                if p.distance(original)>8.{ink.line(original,*p,*color);}
+                occupied.push(*p);
             }
         }
         if combat.fight.is_some() {
@@ -496,6 +551,33 @@ pub fn draw(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn close_gun_lead_subtracts_shooters_inherited_lateral_velocity(){
+        let mut f=super::super::flight();
+        f.velocity+=f.orientation*DVec3::X*250.;
+        let position=f.position+f.forward()*1000.;
+        let solution=gun_intercept(&f,position,f.velocity).unwrap();
+        assert!(solution.direction.dot(f.orientation*DVec3::X).abs()<0.002,
+            "co-moving aircraft must not require lateral lead");
+        let crossing=gun_intercept(&f,position,f.velocity+f.orientation*DVec3::X*100.).unwrap();
+        assert!(crossing.direction.dot(f.orientation*DVec3::X)>0.02);
+    }
+    #[test]
+    fn gun_ranging_skips_friendlies_rear_destroyed_and_terrain_masked_targets(){
+        let setup=super::super::mountain::Setup{force:3,entry:0,difficulty:super::super::dogfight::Difficulty::Balanced};
+        let mut f=super::super::flight();f.position=f.position.normalize()*(planet_radius()+5000.);
+        let mut c=Combat::default();super::super::mountain::start(&mut c,&f,1,setup);
+        for t in &mut c.targets{t.position=f.position-f.forward()*1000.;}
+        c.targets[0].position=f.position+f.forward()*900.;
+        c.targets[1].position=f.position+f.forward()*1000.+f.orientation*DVec3::X*200.;
+        c.targets[2].position=f.position+f.forward()*300.; // friendly wingman
+        c.selected=2;
+        assert_eq!(gun_target(&c,&f).map(|(i,_)|i),Some(0));
+        c.selected=1;assert_eq!(gun_target(&c,&f).map(|(i,_)|i),Some(1));
+        c.targets[1].alive=false;assert_eq!(gun_target(&c,&f).map(|(i,_)|i),Some(0));
+        c.targets[0].position=f.position.normalize()*(planet_radius()-100.);
+        assert!(gun_target(&c,&f).is_none());
+    }
     #[test]
     fn director_on_current_target_corresponds_to_a_round_hitting_future_target() {
         let mut f = super::super::flight();

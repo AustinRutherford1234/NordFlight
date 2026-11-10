@@ -480,7 +480,9 @@ pub fn draw(
         let readout = format!(
             "TACTICAL / SHARED PICTURE\n{}\nMAP: {}\nSpan {:.0} km / north up\n\nClick contact: designate\nEnter: single-target lock\nWASD / arrows: pan\nRight-drag: pan\nWheel: zoom\nM: return to flight\n\nScenario configuration is\nunder FLIGHT SETUP.",
             radar,
-            if menu.reveal {
+            if combat.bvr.as_ref().is_some_and(|b|b.mountain){
+                "MOUNTAIN COMBAT / ALL AIRCRAFT"
+            } else if menu.reveal {
                 "REVEAL ALL / TRAINING"
             } else {
                 "SENSOR CONTACTS"

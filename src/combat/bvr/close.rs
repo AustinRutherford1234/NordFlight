@@ -37,12 +37,11 @@ pub(super) fn advance(c: &mut Combat, b: &mut Battle, f: &mut Flight, _dt: f64) 
             a.heat -= 1;
             a.launch = c.clock + 8.;
         }
-        let lead = (target.position + target.velocity * (range / CANNON_MUZZLE_SPEED) - t.position)
-            .normalize_or(forward);
         if a.gun > 0
             && c.clock > a.gun_at
             && range < 1400.
-            && forward.dot(lead) > 1.8_f64.to_radians().cos()
+            && super::super::hud::gun_intercept(&t.dynamics,target.position,target.velocity)
+                .is_some_and(|s|forward.dot(s.direction)>1.8_f64.to_radians().cos())
         {
             if let Some(fight) = &mut c.fight {
                 if fight.rounds.len() < 256 {
@@ -219,6 +218,7 @@ mod tests {
         t.position = f.position + f.forward() * 1200.;
         t.orientation = facing(-f.forward(), t.position.normalize());
         t.velocity = -f.forward() * 230.;
+        ai::initialize(t);
         t.brain.mode = "TRACK";
         b.ai[0].memory = Some((None, f.position, f.velocity, c.clock));
         let ammo = c.ammo;

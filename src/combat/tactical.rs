@@ -44,7 +44,9 @@ pub fn contacts(c: &Combat, f: &Flight, reveal: bool) -> Vec<Contact> {
                 )
             })
         });
-        let estimate = if reveal || friend {
+        // Location aids are a mountain-scenario display policy, not radar tracks.
+        let mountain=c.bvr.as_ref().is_some_and(|b|b.mountain);
+        let estimate = if reveal || friend || mountain {
             Some((t.position, 0.))
         } else {
             match (local, fleet) {
@@ -60,7 +62,7 @@ pub fn contacts(c: &Combat, f: &Flight, reveal: bool) -> Vec<Contact> {
                 aircraft: Some(i),
                 label: format!(
                     "{} {:02}{}",
-                    if friend { "ALLY" } else { "CONTACT" },
+                    if friend { "ALLY" } else if mountain { "HOSTILE" } else { "CONTACT" },
                     i + 1,
                     if age > 3. { " COAST" } else { "" }
                 ),
@@ -153,7 +155,9 @@ pub fn draw_scope(data: &mut [u8], c: &Combat, f: &Flight, range: f64) {
     let dim = [25, 85, 72, 255];
     text(
         data,
-        if c.map_reveal {
+        if c.bvr.as_ref().is_some_and(|b|b.mountain){
+            "TACTICAL / ALL AIRCRAFT"
+        }else if c.map_reveal {
             "TACTICAL / ALL CONTACTS"
         } else {
             "TACTICAL / SHARED SENSORS"
@@ -217,6 +221,24 @@ pub fn draw_scope(data: &mut [u8], c: &Combat, f: &Flight, range: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mountain_map_aids_show_every_live_aircraft_without_creating_sensor_tracks(){
+        let f=super::super::flight();
+        for force in 0..5{for entry in 0..3{
+            let setup=super::super::mountain::Setup{force,entry,difficulty:dogfight::Difficulty::Balanced};
+            let mut c=Combat::default();super::super::mountain::start(&mut c,&f,1,setup);
+            let marks=contacts(&c,&f,false);
+            let (enemies,allies)=super::super::mountain::FORCES[force];
+            assert_eq!(marks.iter().filter(|m|m.category==Category::Aircraft&&!m.friendly).count(),enemies);
+            assert_eq!(marks.iter().filter(|m|m.category==Category::Aircraft&&m.friendly).count(),allies);
+            assert!(c.bvr.as_ref().unwrap().radar.tracks.iter().all(|t|!t.valid(c.clock)));
+            for expected in (1..enemies).chain(std::iter::once(0)){
+                c.cycle();assert_eq!(c.selected,expected,"mountain designation cannot require a radar track");
+            }
+            c.targets[0].alive=false;
+            assert!(!contacts(&c,&f,false).iter().any(|m|m.aircraft==Some(0)));
+        }}
+    }
     #[test]
     fn shared_ship_tracks_reveal_only_confirmed_contacts_and_expire_without_truth_leaks() {
         let f = naval::flight(false);

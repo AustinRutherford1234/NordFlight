@@ -14,6 +14,7 @@ struct State {
     ids: Vec<AssetId<Mesh>>,
     images: Vec<AssetId<Image>>,
     materials: Vec<UntypedAssetId>,
+    requested: bool,
     ready: bool,
 }
 #[derive(Resource, Clone, Default)]
@@ -22,6 +23,7 @@ impl TerrainReady {
     pub fn request(&self, ids: Vec<AssetId<Mesh>>) {
         *self.0.lock().unwrap() = State {
             ids,
+            requested: true,
             ready: false,
             ..Default::default()
         };
@@ -31,6 +33,27 @@ impl TerrainReady {
         s.images = images;
         s.materials = materials;
         s.ready = false;
+    }
+    /// Replace a complete loading snapshot when its assets change. Set order
+    /// and duplicate scene references do not invalidate renderer readiness.
+    pub(crate) fn request_if_changed(
+        &self,
+        mut ids: Vec<AssetId<Mesh>>,
+        mut images: Vec<AssetId<Image>>,
+        mut materials: Vec<UntypedAssetId>,
+    ) -> bool {
+        ids.sort_unstable();
+        ids.dedup();
+        images.sort_unstable();
+        images.dedup();
+        materials.sort_unstable();
+        materials.dedup();
+        let mut state = self.0.lock().unwrap();
+        if state.requested && state.ids == ids && state.images == images && state.materials == materials {
+            return false;
+        }
+        *state = State { ids, images, materials, requested: true, ready: false };
+        true
     }
     pub fn ready(&self) -> bool {
         self.0.lock().unwrap().ready
@@ -49,7 +72,7 @@ impl TerrainReady {
         materials: impl Fn(UntypedAssetId) -> bool,
     ) {
         let mut s = self.0.lock().unwrap();
-        if !s.ready && !s.ids.is_empty() {
+        if s.requested && !s.ready {
             s.ready = s.ids.iter().copied().all(meshes)
                 && s.images.iter().copied().all(images)
                 && s.materials.iter().copied().all(materials);
@@ -114,5 +137,16 @@ mod tests {
         state.clear();
         assert!(!state.ready());
         assert!(state.0.lock().unwrap().ids.is_empty());
+    }
+    #[test]
+    fn an_explicit_empty_request_can_complete_but_a_cleared_request_cannot() {
+        let state = TerrainReady::default();
+        assert!(state.request_if_changed(vec![], vec![], vec![]));
+        state.poll(|_| false);
+        assert!(state.ready());
+        assert!(!state.request_if_changed(vec![], vec![], vec![]));
+        state.clear();
+        state.poll(|_| true);
+        assert!(!state.ready());
     }
 }

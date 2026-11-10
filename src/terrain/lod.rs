@@ -12,7 +12,42 @@ pub(super) struct Tile {
 /// once an ancestor is an active leaf. Decisions remain per quadtree node, so
 /// the result is always a complete, non-overlapping partition.
 pub(super) type Active<'a> = Option<&'a dyn Fn(&Tile) -> bool>;
-fn leaves(tile: Tile, p: DVec3, agl: f64, active: Active, coarser: bool, out: &mut HashSet<Tile>) {
+
+struct Detail {
+    agl: f64,
+    real: bool,
+    shadow_radius: f64,
+    pixels_per_radian: f64,
+    error_pixels: f64,
+}
+
+pub(super) fn shadow_radius(real: bool) -> f64 {
+    // Off-axis rays and streaming latency need coverage outside the cascade.
+    if real {
+        f64::from(crate::environment::graphics::shadow_distance()) * 2. + 1024.
+    } else {
+        // Legacy terrain protects its near cascade with 512 m forest tiles.
+        768.
+    }
+}
+
+pub(super) fn shadow_detail(agl: f64, radius: f64) -> bool {
+    agl <= radius + 2000.
+}
+
+fn leaves(
+    tile: Tile,
+    p: DVec3,
+    detail: &Detail,
+    active: Active,
+    coarser: bool,
+    out: &mut HashSet<Tile>,
+) {
+    let min_size = if detail.real { 2048 } else { 512 };
+    if tile.size <= min_size {
+        out.insert(tile);
+        return;
+    }
     let dx = (tile.x as f64 - p.x)
         .max(0.)
         .max(p.x - (tile.x + tile.size) as f64);
@@ -22,14 +57,17 @@ fn leaves(tile: Tile, p: DVec3, agl: f64, active: Active, coarser: bool, out: &m
     let leaf = active.is_some_and(|has| has(&tile));
     let split = active.is_some_and(|_| !coarser && !leaf);
     let reach = if split { 0.95 } else { 0.85 };
-    let split_needed = if crate::environment::real() {
-        let distance = dx.hypot(dz).hypot(agl.max(10.));
-        let pixels = estimated_error(tile) * crate::environment::graphics::render_height()
-            / (distance * 0.577350269 * 2.);
-        tile.size > 2048
-            && pixels > crate::environment::graphics::lod_error() * if split { 0.75 } else { 1. }
+    let horizontal = dx.hypot(dz);
+    let keep_shadow_detail =
+        horizontal <= detail.shadow_radius && shadow_detail(detail.agl, detail.shadow_radius);
+    let split_needed = if keep_shadow_detail {
+        true
+    } else if detail.real {
+        let distance = horizontal.hypot(detail.agl.max(10.));
+        let pixels = estimated_error(tile) * detail.pixels_per_radian / distance;
+        pixels > detail.error_pixels * if split { 0.75 } else { 1. }
     } else {
-        tile.size > 512 && dx.hypot(dz) < tile.size as f64 * reach && agl < tile.size as f64 * 2.
+        horizontal < tile.size as f64 * reach && detail.agl < tile.size as f64 * 2.
     };
     if split_needed {
         let half = tile.size / 2;
@@ -42,7 +80,7 @@ fn leaves(tile: Tile, p: DVec3, agl: f64, active: Active, coarser: bool, out: &m
             leaves(
                 Tile { x, z, size: half },
                 p,
-                agl,
+                detail,
                 active,
                 coarser || leaf,
                 out,
@@ -56,8 +94,16 @@ pub(super) fn layout(p: DVec3, agl: f64) -> HashSet<Tile> {
     layout_from(p, agl, None)
 }
 pub(super) fn layout_from(p: DVec3, agl: f64, active: Active) -> HashSet<Tile> {
+    let real = crate::environment::real();
+    let detail = Detail {
+        agl,
+        real,
+        shadow_radius: shadow_radius(real),
+        pixels_per_radian: crate::environment::graphics::render_height() / (0.577350269 * 2.),
+        error_pixels: crate::environment::graphics::lod_error(),
+    };
     let mut out = HashSet::new();
-    let (cx, cz) = if crate::environment::real() {
+    let (cx, cz) = if real {
         ((p.x / 32768.).floor() as i32, (p.z / 32768.).floor() as i32)
     } else {
         (3, -2)
@@ -71,7 +117,7 @@ pub(super) fn layout_from(p: DVec3, agl: f64, active: Active) -> HashSet<Tile> {
                     size: 32768,
                 },
                 p,
-                agl,
+                &detail,
                 active,
                 false,
                 &mut out,
@@ -116,4 +162,45 @@ fn estimated_error(tile: Tile) -> f64 {
     }
     cache.insert(tile, error);
     error
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shadow_coverage_keeps_the_same_fine_tiles_through_an_approach() {
+        let tile = Tile {
+            x: 0,
+            z: 0,
+            size: 32768,
+        };
+        let detail = Detail {
+            agl: 800.,
+            real: true,
+            shadow_radius: 4624.,
+            pixels_per_radian: 0., // Isolate the shadow rule from screen error.
+            error_pixels: 4.,
+        };
+        let protected = Tile {
+            x: 4096,
+            z: 4096,
+            size: 2048,
+        };
+        let mut active = HashSet::new();
+        for x in [0., 500., 2100., 4096.] {
+            let mut next = HashSet::new();
+            leaves(
+                tile,
+                DVec3::new(x, 0., 4096.),
+                &detail,
+                Some(&|t| active.contains(t)),
+                false,
+                &mut next,
+            );
+            assert!(next.contains(&protected));
+            assert!(next.iter().any(|t| t.size >= 8192));
+            active = next;
+        }
+    }
 }

@@ -103,3 +103,28 @@ Final lake, mountain and cockpit images were inspected. The lake surface is
 continuous in the captured shore views, with smoother aircraft/terrain edges and
 no enlarged camera-dither grain. Coastline shape still reflects the finite
 source/mask resolution; this update does not add survey-grade shoreline data.
+
+## Loading-only terrain scheduling (2026-11-05)
+
+After pulling `8fc656e`, profiling found that destination tile construction still
+used flight's one-tile-per-frame dispatch and headroom waits while the loading
+screen held simulation frozen. Loading now sends that same ordered queue to the
+existing single worker as one task. Completed and already-running tiles are
+retained. Ordinary flight keeps its original scheduling, staging, publication,
+and retirement budgets; terrain resolution and graphics quality are unchanged.
+GPU resource readiness, complete coverage, and both two-second fades remain required.
+
+Two sequential runs per condition on the same release executable measured the
+Sweden-to-Norway transition at **13.88 s mean before / 10.12 s after**, a **27.1%**
+reduction. Every release retained identical aircraft position and zero elapsed
+simulation time. Phase timings now distinguish terrain, vegetation, water, and
+graphics preparation in `NORD_LOADING_REPORT` and the loading log.
+
+A separate moving-terrain profile (230 m/s, 260 m AGL, 1440 × 900 window,
+20 s warm-up, 30 s sample) recorded 60.72 / 59.94 mean FPS before / after.
+Both samples staged exactly 27 meshes, with the same total bytes and four-mesh
+per-frame limit. This controlled profile moves a paused aircraft; it does not
+establish live combat performance. The regression suite passed 909 tests, with
+two diagnostic studies ignored. Evidence is recorded locally in
+`tests/loading-speed/validation.json`; rerun `tests/loading-speed/compare.py`
+with a fresh output label and a release executable to regenerate the comparison.

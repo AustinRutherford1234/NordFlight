@@ -49,7 +49,7 @@ use crate::{
     GpuClusterableObjects, GpuFog, GpuLights, LightMeta, LightProbesBuffer, LightProbesUniform,
     MeshPipeline, MeshPipelineKey, RenderViewLightProbes, ScreenSpaceAmbientOcclusionResources,
     ScreenSpaceReflectionsBuffer, ScreenSpaceReflectionsUniform, ShadowSamplers,
-    ViewClusterBindings, ViewShadowBindings, CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT,
+    TerrainSunShadow, ViewClusterBindings, ViewShadowBindings, CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT,
 };
 
 #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
@@ -410,6 +410,9 @@ fn layout_entries(
         ));
     }
 
+    entries = entries.extend_with_indices((
+        (32, texture_2d(TextureSampleType::Float { filterable: false })),
+    ));
     let mut binding_array_entries = DynamicBindGroupLayoutEntries::new(ShaderStages::FRAGMENT);
     binding_array_entries = binding_array_entries.extend_with_indices((
         (0, environment_map_entries[0]),
@@ -586,6 +589,7 @@ pub fn prepare_mesh_view_bind_groups(
         Has<OrderIndependentTransparencySettings>,
         Option<&AtmosphereTextures>,
         Has<ExtractedAtmosphere>,
+        Option<&TerrainSunShadow>,
     )>,
     (images, mut fallback_images, fallback_image, fallback_image_zero): (
         Res<RenderAssets<GpuImage>>,
@@ -641,6 +645,7 @@ pub fn prepare_mesh_view_bind_groups(
             has_oit,
             atmosphere_textures,
             has_atmosphere,
+            terrain_sun_shadow,
         ) in &views
         {
             let fallback_ssao = fallback_images
@@ -720,6 +725,10 @@ pub fn prepare_mesh_view_bind_groups(
 
             entries =
                 entries.extend_with_indices(((24, transmission_view), (25, transmission_sampler)));
+            let terrain_shadow = terrain_sun_shadow
+                .and_then(|shadow| images.get(&shadow.image))
+                .unwrap_or(&fallback_image_zero);
+            entries = entries.extend_with_indices(((32, &terrain_shadow.texture_view),));
 
             if has_oit
                 && let (

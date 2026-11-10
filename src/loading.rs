@@ -10,9 +10,23 @@ impl Resources {pub fn extend(&mut self,other:Self){self.meshes.extend(other.mes
 #[derive(Resource,Default)]
 pub(crate) struct Loading {
     pub active:bool,
-    generation:Option<u64>,resume_paused:bool,requested:bool,settled:u8,
+    generation:Option<u64>,resume_paused:bool,settled:u8,
     frames:u64,started:Option<std::time::Instant>,fade_started_at:f64,fade_out_started:Option<f64>,
     message:String,winit:Option<bevy::winit::WinitSettings>,
+    phases:Vec<(String,f64)>,
+}
+impl Loading {
+    fn waiting(&mut self, message: &str) {
+        self.settled = 0;
+        self.message(message);
+    }
+    fn message(&mut self,message:&str){
+        if self.message!=message {
+            let seconds=self.started.map_or(0.,|t|t.elapsed().as_secs_f64());
+            info!("Scene loading {:?}: {message} at {seconds:.3}s",self.generation);
+            self.phases.push((message.into(),seconds));self.message=message.into();
+        }
+    }
 }
 #[derive(Resource,Default)]struct HiddenUi(std::collections::HashMap<Entity,Visibility>);
 #[derive(Resource,Clone,Default)]struct Ready(crate::terrain_ready::TerrainReady);
@@ -66,9 +80,9 @@ fn begin(mut diagnostic_transition:Local<bool>,mut loading:ResMut<Loading>,mut f
     }
     if loading.generation!=Some(v.generation){
         loading.generation=Some(v.generation);loading.resume_paused=f.paused;
-        loading.active=true;loading.requested=false;loading.settled=0;loading.frames=0;
+        loading.active=true;loading.settled=0;loading.frames=0;
         loading.started=Some(std::time::Instant::now());loading.fade_started_at=time.elapsed_secs_f64();loading.fade_out_started=None;
-        loading.message="Preparing landscape…".into();ready.0.clear();
+        loading.phases.clear();loading.message.clear();loading.message("Preparing landscape…");ready.0.clear();
         if let Some(settings)=settings.as_mut(){
             if loading.winit.is_none(){loading.winit=Some((**settings).clone());}
             **settings=bevy::winit::WinitSettings::continuous();
@@ -79,8 +93,10 @@ fn begin(mut diagnostic_transition:Local<bool>,mut loading:ResMut<Loading>,mut f
 fn finish(mut loading:ResMut<Loading>,mut f:ResMut<Flight>,time:Res<Time<Real>>,
     terrain:Option<Res<crate::terrain::Landscape>>,
     vegetation:Option<Res<crate::terrain::vegetation::Vegetation>>,
+    grass:Option<Res<crate::terrain::grass::Grass>>,
     water:Option<Res<crate::ocean::WaterGrid>>,ready:Res<Ready>,
-    server:Res<AssetServer>,scenes:Query<&SceneRoot>,meshes:Query<(&Mesh3d,Option<&Visibility>)>,
+    (server, relief): (Res<AssetServer>, Option<Res<crate::environment::relief_shadow::ReliefShadow>>),
+    scenes:Query<&SceneRoot>,meshes:Query<(&Mesh3d,Option<&Visibility>)>,
     materials:Query<(&MeshMaterial3d<StandardMaterial>,Option<&Visibility>)>,
     mut keys:ResMut<ButtonInput<KeyCode>>,mut mouse:ResMut<ButtonInput<MouseButton>>,
     mut settings:Option<ResMut<bevy::winit::WinitSettings>>) {
@@ -89,28 +105,36 @@ fn finish(mut loading:ResMut<Loading>,mut f:ResMut<Flight>,time:Res<Time<Real>>,
     if loading.fade_out_started.is_none(){
     if opacity(&loading,&time)<1.{return;}
     if scenes.iter().any(|scene|!server.is_loaded_with_dependencies(scene.0.id())){
-        loading.message="Loading aircraft and textures…".into();return;
+        loading.waiting("Loading aircraft and textures…");return;
     }
     let Some(mut resources)=crate::terrain::loading_resources(&f,terrain.as_deref())else{
-        loading.message="Building terrain…".into();return;
+        loading.waiting("Building terrain…");return;
     };
     let Some(trees)=crate::terrain::vegetation::loading_resources(&f,vegetation.as_deref())else{
-        loading.message="Preparing nearby vegetation…".into();return;
+        loading.waiting("Preparing nearby vegetation…");return;
     };resources.extend(trees);
+    let Some(ground_cover)=crate::terrain::grass::loading_resources(&f,grass.as_deref())else{
+        loading.waiting("Preparing nearby ground cover…");return;
+    };resources.extend(ground_cover);
     let Some(water)=crate::ocean::loading_resources(&f,water.as_deref())else{
-        loading.message="Preparing shorelines and water…".into();return;
+        loading.waiting("Preparing shorelines and water…");return;
     };resources.extend(water);
-    if !loading.requested {
-        resources.meshes.extend(meshes.iter().filter(|(_,v)|!v.is_some_and(|v|*v==Visibility::Hidden)).map(|(m,_)|m.0.id()));
-        resources.materials.extend(materials.iter().filter(|(_,v)|!v.is_some_and(|v|*v==Visibility::Hidden)).map(|(m,_)|m.0.id().untyped()));
-        ready.0.request(resources.meshes);ready.0.dependencies(resources.images,resources.materials);
-        loading.requested=true;loading.message="Preparing graphics…".into();return;
+    let Some(shadow_image) = crate::environment::relief_shadow::loading_image(relief.as_deref()) else {
+        loading.waiting("Preparing landscape shadows…");
+        return;
+    };
+    resources.images.extend(shadow_image);
+    resources.meshes.extend(meshes.iter().filter(|(_,v)|!v.is_some_and(|v|*v==Visibility::Hidden)).map(|(m,_)|m.0.id()));
+    resources.materials.extend(materials.iter().filter(|(_,v)|!v.is_some_and(|v|*v==Visibility::Hidden)).map(|(m,_)|m.0.id().untyped()));
+    if ready.0.request_if_changed(resources.meshes, resources.images, resources.materials) {
+        loading.waiting("Preparing graphics…");
+        return;
     }
     if !ready.0.ready(){return;}
     // Let scene spawning, transforms and visibility settle before revealing.
     loading.settled+=1;
     if loading.settled<3{return;}
-    loading.fade_out_started=Some(time.elapsed_secs_f64());loading.message="Scene ready".into();
+    loading.fade_out_started=Some(time.elapsed_secs_f64());loading.message("Scene ready");
     return;
     }
     if opacity(&loading,&time)>0.{return;}
@@ -120,7 +144,7 @@ fn finish(mut loading:ResMut<Loading>,mut f:ResMut<Flight>,time:Res<Time<Real>>,
     if let Ok(path)=std::env::var("NORD_LOADING_REPORT"){
         let report=serde_json::json!({"generation":loading.generation,"loading_frames":loading.frames,
             "loading_wall_s":loading.started.map(|t|t.elapsed().as_secs_f64()),"flight_elapsed_at_release":f.elapsed,
-            "position_at_release":f.position.to_array(),"resumed_paused":f.paused});
+            "position_at_release":f.position.to_array(),"resumed_paused":f.paused,"phases":loading.phases});
         if let Err(error)=std::fs::write(path,serde_json::to_string_pretty(&report).unwrap()) {error!("Loading report: {error}");}
     }
     info!("Scene ready: generation {:?}, flight held at {:.3}s",loading.generation,f.elapsed);
@@ -325,5 +349,32 @@ fn ui(mut c:Commands,mut captured:Local<bool>,mut captured_early:Local<bool>,mut
         assert!(app.world().resource::<Loading>().active);
         assert!(!app.world().resource::<Ready>().0.ready());
         assert_eq!(app.world().resource::<Loading>().settled,0);
+    }
+    #[test]
+    fn replaced_mesh_in_same_scene_requires_fresh_readiness() {
+        let mut app = app(false);
+        for _ in 0..150 {
+            app.update();
+        }
+        let mesh = app.world_mut().query_filtered::<Entity, With<Mesh3d>>().single(app.world()).unwrap();
+        let old_id = app.world().get::<Mesh3d>(mesh).unwrap().0.id();
+        let ready = app.world().resource::<Ready>().0.clone();
+        ready.poll(|id| id == old_id);
+        app.update();
+        assert_eq!(app.world().resource::<Loading>().settled, 1);
+
+        let replacement = Handle::<Mesh>::Uuid(bevy::asset::uuid::Uuid::from_u128(42), default());
+        let new_id = replacement.id();
+        app.world_mut().entity_mut(mesh).insert(Mesh3d(replacement));
+        app.update();
+        assert_eq!(app.world().resource::<Loading>().settled, 0);
+        assert!(app.world().resource::<Loading>().fade_out_started.is_none());
+        ready.poll(|id| id == old_id);
+        assert!(!ready.ready());
+        ready.poll(|id| id == new_id);
+        for _ in 0..3 {
+            app.update();
+        }
+        assert!(app.world().resource::<Loading>().fade_out_started.is_some());
     }
 }

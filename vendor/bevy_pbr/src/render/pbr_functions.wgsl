@@ -525,9 +525,14 @@ fn apply_pbr_lighting(
 #endif  // LIGHTMAP
 
         var shadow: f32 = 1.0;
-        if ((in.flags & MESH_FLAGS_SHADOW_RECEIVER_BIT) != 0u
-                && (view_bindings::lights.directional_lights[i].flags & mesh_view_types::DIRECTIONAL_LIGHT_FLAGS_SHADOWS_ENABLED_BIT) != 0u) {
-            shadow = shadows::fetch_directional_shadow(i, in.world_position, in.world_normal, view_z);
+        if (((*light).flags & mesh_view_types::DIRECTIONAL_LIGHT_FLAGS_SHADOWS_ENABLED_BIT) != 0u) {
+            if ((in.flags & MESH_FLAGS_SHADOW_RECEIVER_BIT) != 0u) {
+                shadow = shadows::fetch_directional_shadow(i, in.world_position, in.world_normal, view_z);
+            } else {
+                // Small ground cover skips local maps but still lies in the
+                // shadow of the surrounding landscape.
+                shadow = shadows::terrain_sun_visibility(i, in.world_position);
+            }
         }
 
         var light_contrib = lighting::directional_light(i, &lighting_input, enable_diffuse);

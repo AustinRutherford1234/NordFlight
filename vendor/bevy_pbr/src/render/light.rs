@@ -1,5 +1,6 @@
 use crate::*;
-use bevy_asset::UntypedAssetId;
+use bevy_asset::{Handle, UntypedAssetId};
+use bevy_image::Image;
 use bevy_camera::primitives::{
     face_index_to_name, CascadesFrusta, CubeMapFace, CubemapFrusta, Frustum, HalfSpace,
     CUBE_MAP_FACES,
@@ -65,6 +66,22 @@ use decal::clustered::RenderClusteredDecals;
 #[cfg(feature = "trace")]
 use tracing::info_span;
 use tracing::{error, warn};
+
+/// Optional caster layer mask for a camera's directional shadows. The light's
+/// own mask still applies. Ordinary camera rendering and local lights continue
+/// to use the camera's RenderLayers.
+#[derive(Component, Clone, bevy_render::extract_component::ExtractComponent)]
+pub struct DirectionalShadowLayers(pub RenderLayers);
+
+/// Optional world-space sunlight occlusion field for the primary directional
+/// light of a view. The transform produces texture UV in x/z and height in y.
+/// RG and BA store the blocking height and ground height respectively, each
+/// as two little-endian bytes in half-metre units.
+#[derive(Component, Clone, bevy_render::extract_component::ExtractComponent)]
+pub struct TerrainSunShadow {
+    pub image: Handle<Image>,
+    pub field_from_world: Mat4,
+}
 
 #[derive(Component)]
 pub struct ExtractedPointLight {
@@ -171,6 +188,7 @@ pub struct GpuLights {
     // offset from spot light's light index to spot light's shadow map index
     spot_light_shadowmap_offset: i32,
     ambient_light_affects_lightmapped_meshes: u32,
+    terrain_sun_shadow: Mat4,
 }
 /// Exact light values consumed by atmosphere scattering (not shadow matrices).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -732,6 +750,7 @@ pub fn prepare_lights(
             Option<&RenderLayers>,
             Has<NoIndirectDrawing>,
             Option<&AmbientLight>,
+            Option<&TerrainSunShadow>,
         ),
         With<Camera3d>,
     >,
@@ -1001,6 +1020,7 @@ pub fn prepare_lights(
         maybe_layers,
         _no_indirect_drawing,
         _maybe_ambient_override,
+        _terrain_sun_shadow,
     ) in sorted_cameras
         .0
         .iter()
@@ -1139,6 +1159,7 @@ pub fn prepare_lights(
         maybe_layers,
         no_indirect_drawing,
         maybe_ambient_override,
+        terrain_sun_shadow,
     ) in sorted_cameras
         .0
         .iter()
@@ -1259,6 +1280,7 @@ pub fn prepare_lights(
                 - point_light_count as i32,
             ambient_light_affects_lightmapped_meshes: ambient_light.affects_lightmapped_meshes
                 as u32,
+            terrain_sun_shadow: terrain_sun_shadow.map_or(Mat4::ZERO, |shadow| shadow.field_from_world),
         };
 
         // TODO: this should select lights based on relevance to the view instead of the first ones that show up in a query
@@ -1965,7 +1987,15 @@ pub fn queue_shadows(
     mut shadow_render_phases: ResMut<ViewBinnedRenderPhases<Shadow>>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
     mesh_allocator: Res<MeshAllocator>,
-    view_lights: Query<(Entity, &ViewLightEntities, Option<&RenderLayers>), With<ExtractedView>>,
+    view_lights: Query<
+        (
+            Entity,
+            &ViewLightEntities,
+            Option<&RenderLayers>,
+            Option<&DirectionalShadowLayers>,
+        ),
+        With<ExtractedView>,
+    >,
     view_light_entities: Query<(&LightEntity, &ExtractedView)>,
     point_light_entities: Query<&RenderCubemapVisibleEntities, With<ExtractedPointLight>>,
     directional_light_entities: Query<
@@ -1975,7 +2005,7 @@ pub fn queue_shadows(
     spot_light_entities: Query<&RenderVisibleMeshEntities, With<ExtractedPointLight>>,
     specialized_material_pipeline_cache: Res<SpecializedShadowMaterialPipelineCache>,
 ) {
-    for (entity, view_lights, camera_layers) in &view_lights {
+    for (entity, view_lights, camera_layers, directional_layers) in &view_lights {
         for view_light_entity in view_lights.lights.iter().copied() {
             let Ok((light_entity, extracted_view_light)) =
                 view_light_entities.get(view_light_entity)
@@ -2018,6 +2048,13 @@ pub fn queue_shadows(
                     .expect("Failed to get spot light visible entities"),
             };
 
+            let caster_layers = if matches!(light_entity, LightEntity::Directional { .. }) {
+                directional_layers.map(|layers| &layers.0).or(camera_layers)
+            } else {
+                camera_layers
+            }
+            .unwrap_or_default();
+
             for (entity, main_entity) in visible_entities.iter().copied() {
                 let Some((current_change_tick, pipeline_id)) =
                     view_specialized_material_pipeline_cache.get(&main_entity)
@@ -2042,9 +2079,7 @@ pub fn queue_shadows(
                     .as_ref()
                     .unwrap_or_default();
 
-                let camera_layers = camera_layers.unwrap_or_default();
-
-                if !camera_layers.intersects(mesh_layers) {
+                if !caster_layers.intersects(mesh_layers) {
                     continue;
                 }
 
