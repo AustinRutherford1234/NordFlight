@@ -143,6 +143,9 @@ impl Batch {
         let Some(VertexAttributeValues::Float32x3(n))=mesh.attribute(Mesh::ATTRIBUTE_NORMAL)else{return;};
         let color=match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {Some(VertexAttributeValues::Float32x4(c))=>Some(c),_=>None};
         let base=self.positions.len()as u32;
+        let vertices=p.len().min(n.len());
+        self.positions.reserve(vertices);self.normals.reserve(vertices);self.colors.reserve(vertices);
+        self.indices.reserve(mesh.indices().map_or(vertices,|indices|indices.len()));
         for (i,(p,n))in p.iter().zip(n).enumerate() {
             self.positions.push(transform.transform_point(Vec3::from_array(*p)).to_array());
             self.normals.push((transform.rotation*(Vec3::from_array(*n)/transform.scale)).normalize_or_zero().to_array());
@@ -152,11 +155,16 @@ impl Batch {
         else{self.indices.extend(base..self.positions.len()as u32);}
     }
     fn mesh(self)->Mesh {
+        // Keep wide indices for unusually large batches. Ordinary cells fit
+        // in u16 without changing vertex attributes or triangle ordering.
+        let indices=if self.positions.len()<=usize::from(u16::MAX)+1 {
+            Indices::U16(self.indices.into_iter().map(|index|index as u16).collect())
+        }else{Indices::U32(self.indices)};
         Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION,self.positions)
             .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL,self.normals)
             .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR,self.colors)
-            .with_inserted_indices(Indices::U32(self.indices))
+            .with_inserted_indices(indices)
     }
 }
 fn build_cell(cx:i32,cz:i32,models:&Models)->BuiltCell {
@@ -197,15 +205,17 @@ fn setup(mut c:Commands,mut materials:ResMut<Assets<StandardMaterial>>) {
 #[derive(Component)]struct Canopy {near:Handle<Mesh>,far:Handle<Mesh>,distant:bool,anchor:DVec3}
 fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graphics>,
     state:Option<ResMut<Vegetation>>,mut meshes:ResMut<Assets<Mesh>>,
-    mut canopy:Query<(&mut Canopy,&mut Mesh3d)>) {
+    mut canopy:Query<(&mut Canopy,&mut Mesh3d)>,
+    mut wanted:Local<HashSet<(i32,i32)>>) {
     use bevy::tasks::{block_on,poll_once,AsyncComputeTaskPool};
     let Some(mut state)=state else{return;};
     let cell=((f.position.x/CELL as f64).floor()as i32,(f.position.z/CELL as f64).floor()as i32);
-    let radius=if f.agl()>3500.||f.vehicle==crate::physics::Vehicle::Spacecraft{0.}
-        else{graphics.0.vegetation_distance.min(2400.+f.agl().max(0.)*0.2)};
+    let agl=f.agl();
+    let radius=if agl>3500.||f.vehicle==crate::physics::Vehicle::Spacecraft{0.}
+        else{graphics.0.vegetation_distance.min(2400.+agl.max(0.)*0.2)};
     state.radius=radius;
     let n=(radius/CELL as f64).ceil()as i32;
-    let mut wanted=HashSet::new();
+    wanted.clear();
     for z in -n..=n {for x in -n..=n {if radius>0.&&((x*x+z*z)as f64).sqrt()*CELL as f64<=radius{wanted.insert((cell.0+x,cell.1+z));}}}
     let old:Vec<_>=state.cells.keys().filter(|k|!wanted.contains(k)).copied().take(4).collect();
     let retired=!old.is_empty();
@@ -257,10 +267,13 @@ fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graph
             state.cells.insert(key,Cell{entity:Some(root),near,far,props});
         }
     }
-    let mut missing:Vec<_>=wanted.into_iter().filter(|k|!state.cells.contains_key(k)&&!state.jobs.contains_key(k)).collect();
-    missing.sort_by_key(|(x,z)|(x-cell.0).pow(2)+(z-cell.1).pow(2));
-    // At most two jobs and one cell upload per frame; construction never blocks flight.
-    for key in missing.into_iter().take(2usize.saturating_sub(state.jobs.len())) {
+    // At most two jobs and one cell upload per frame. Choose the closest
+    // candidate only when a worker is free instead of sorting the whole list.
+    let slots=2usize.saturating_sub(state.jobs.len());
+    for _ in 0..slots {
+        let Some(key)=wanted.iter().copied()
+            .filter(|k|!state.cells.contains_key(k)&&!state.jobs.contains_key(k))
+            .min_by_key(|(x,z)|(x-cell.0).pow(2)+(z-cell.1).pow(2)) else {break;};
         let source=state.source.clone();state.jobs.insert(key,AsyncComputeTaskPool::get().spawn(async move{build_cell(key.0,key.1,&source)}));
     }
     for(mut tree,mut mesh)in &mut canopy {

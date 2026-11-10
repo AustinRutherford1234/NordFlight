@@ -119,6 +119,7 @@ impl Canvas<'_> {
         let a = a * 2.;
         let b = b * 2.;
         let ab = b - a;
+        let length_squared = ab.length_squared().max(0.01);
         let min = (a.min(b) - Vec2::splat(2.)).max(Vec2::ZERO).as_ivec2();
         let max = (a.max(b) + Vec2::splat(2.))
             .min(Vec2::new(WIDTH as f32 - 1., HEIGHT as f32 - 1.))
@@ -126,7 +127,7 @@ impl Canvas<'_> {
         for y in min.y..=max.y {
             for x in min.x..=max.x {
                 let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
-                let t = ((p - a).dot(ab) / ab.length_squared().max(0.01)).clamp(0., 1.);
+                let t = ((p - a).dot(ab) / length_squared).clamp(0., 1.);
                 let alpha =
                     ((1.65 - p.distance(a + ab * t)).clamp(0., 1.) * 255. * self.gain) as u8;
                 if alpha > 0 {

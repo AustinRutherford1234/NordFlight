@@ -13,6 +13,10 @@ struct Pending {key:Key,entity:Entity,mesh:Handle<Mesh>,vertices:usize}
     material:Handle<StandardMaterial>,image:Handle<Image>,enabled:bool,
 }
 #[derive(Resource,Clone,Default)]struct Ready(crate::terrain_ready::TerrainReady);
+#[derive(Default)]
+struct StreamScratch {
+    tiles:Vec<super::Tile>,shared_tiles:Arc<Vec<super::Tile>>,wanted:Vec<Key>,retired:Vec<Key>,missing:Vec<Key>,
+}
 pub struct GrassPlugin;
 impl Plugin for GrassPlugin{
     fn build(&self,app:&mut App){
@@ -92,15 +96,19 @@ fn surface(world:&environment::EnvironmentSnapshot,x:f64,z:f64,tiles:&[super::Ti
 }
 fn build(world:&environment::EnvironmentSnapshot,key:Key,density:f64,tiles:&[super::Tile])->Built{
     let anchor=environment::point((key.0*CELL+CELL/2)as f64,(key.1*CELL+CELL/2)as f64,0.,world.preset.planet.radius);
-    let(mut positions,mut normals,mut colors,mut uv,mut indices)=(Vec::new(),Vec::new(),Vec::new(),Vec::new(),Vec::<u32>::new());
     let mut heights=HashMap::new();
     let mut tufts=ground_cover::placements(world,key.0,key.1,density);
     // Stable spatially scattered thinning, rather than keeping just one side
     // of a cell when the geometric budget is reached.
     if tufts.len()>1024{
-        tufts.sort_by_key(|t|environment::hash(t.position.x.floor()as i32,t.position.z.floor()as i32,
+        tufts.sort_by_cached_key(|t|environment::hash(t.position.x.floor()as i32,t.position.z.floor()as i32,
             world.preset.seed.wrapping_add(0x72616e6b)).to_bits());tufts.truncate(1024);
     }
+    // Two quads per tuft, capped at 8192 vertices. Compact indices preserve
+    // every triangle while halving the index upload and GPU index storage.
+    let vertices=tufts.len()*8;
+    let(mut positions,mut normals,mut colors,mut uv,mut indices)=(Vec::with_capacity(vertices),
+        Vec::with_capacity(vertices),Vec::with_capacity(vertices),Vec::with_capacity(vertices),Vec::<u16>::with_capacity(tufts.len()*12));
     for mut tuft in tufts{
         // Match the published mesh's actual triangle interpolation. Cosmetic
         // roots must not float above or disappear below a coarse render LOD.
@@ -108,7 +116,7 @@ fn build(world:&environment::EnvironmentSnapshot,key:Key,density:f64,tiles:&[sup
         let up=tuft.position.normalize();let tangent=DQuat::from_rotation_arc(DVec3::Y,up);
         for angle in [tuft.heading,tuft.heading+std::f64::consts::FRAC_PI_2]{
             let right=tangent*DVec3::new(angle.cos(),0.,angle.sin())*tuft.width as f64*0.5;
-            let bottom=tuft.position;let top=bottom+up*tuft.height as f64;let base=positions.len()as u32;
+            let bottom=tuft.position;let top=bottom+up*tuft.height as f64;let base=positions.len()as u16;
             let u=if tuft.broadleaf{0.5}else{0.};
             for (p,tex,shade)in [(bottom-right,[u+0.015,1.],0.65),(bottom+right,[u+0.485,1.],0.65),
                 (top+right,[u+0.485,0.],1.1),(top-right,[u+0.015,0.],1.1)]{
@@ -121,7 +129,7 @@ fn build(world:&environment::EnvironmentSnapshot,key:Key,density:f64,tiles:&[sup
     Built{anchor,mesh:Mesh::new(PrimitiveTopology::TriangleList,RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION,positions).with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL,normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR,colors).with_inserted_attribute(Mesh::ATTRIBUTE_UV_0,uv)
-        .with_inserted_indices(Indices::U32(indices))}
+        .with_inserted_indices(Indices::U16(indices))}
 }
 fn stamp(world:&environment::EnvironmentSnapshot,density:f64)->u64{
     let mut h=std::collections::hash_map::DefaultHasher::new();
@@ -132,13 +140,18 @@ fn layout_key(mut key:Key,tiles:&[super::Tile])->Key{
     for tile in tiles.iter().filter(|t|t.x<x+CELL&&t.x+t.size>x&&t.z<z+CELL&&t.z+t.size>z){tile.hash(&mut h);}
     key.2^=h.finish();key
 }
-fn keys(position:DVec3,agl:f64,distance:f64,density:f64,stamp:u64)->Vec<Key>{
-    if density<=0.||distance<=0.||agl>=distance{return vec![];}
+fn keys_into(position:DVec3,agl:f64,distance:f64,density:f64,stamp:u64,keys:&mut Vec<Key>){
+    keys.clear();
+    if density<=0.||distance<=0.||agl>=distance{return;}
     let radius=(distance*distance-agl.max(0.).powi(2)).sqrt();
     let(cx,cz)=((position.x/CELL as f64).floor()as i32,(position.z/CELL as f64).floor()as i32);
-    let n=(radius/CELL as f64).ceil()as i32;let mut keys=Vec::new();
+    let n=(radius/CELL as f64).ceil()as i32;
     for z in -n..=n{for x in -n..=n{if ((x*x+z*z)as f64).sqrt()*CELL as f64<=radius{keys.push(Key(cx+x,cz+z,stamp));}}}
-    keys.sort_by_key(|k|(k.0-cx).pow(2)+(k.1-cz).pow(2));keys.truncate(29);keys
+    keys.sort_by_key(|k|(k.0-cx).pow(2)+(k.1-cz).pow(2));keys.truncate(29);
+}
+#[cfg(test)]
+fn keys(position:DVec3,agl:f64,distance:f64,density:f64,stamp:u64)->Vec<Key>{
+    let mut keys=Vec::new();keys_into(position,agl,distance,density,stamp,&mut keys);keys
 }
 fn setup(mut c:Commands,mut images:ResMut<Assets<Image>>,mut materials:ResMut<Assets<StandardMaterial>>){
     if !environment::real(){return;}
@@ -150,25 +163,41 @@ fn setup(mut c:Commands,mut images:ResMut<Assets<Image>>,mut materials:ResMut<As
         material,image,enabled:std::env::var_os("NORD_GRASS_OFF").is_none()});
 }
 fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graphics>,state:Option<ResMut<Grass>>,
-    mut meshes:ResMut<Assets<Mesh>>,ready:Res<Ready>,terrain:Option<Res<super::Landscape>>){
+    mut meshes:ResMut<Assets<Mesh>>,ready:Res<Ready>,terrain:Option<Res<super::Landscape>>,mut scratch:Local<StreamScratch>){
     let Some(mut state)=state else{return;};let world=environment::active();
     let density=graphics.0.grass_density;
     let agl=f.agl();let active=state.enabled&&f.vehicle!=Vehicle::Spacecraft&&density>0.&&agl<graphics.0.grass_distance;
     if !active&&state.cells.is_empty()&&state.jobs.is_empty()&&state.pending.is_none(){state.wanted.clear();return;}
-    let mut tiles=if active{terrain.as_deref().map_or_else(Vec::new,|t|t.tiles.keys().filter(|t|
+    let StreamScratch{tiles,shared_tiles,wanted,retired,missing}=&mut *scratch;
+    tiles.clear();
+    if active && let Some(terrain)=terrain.as_deref(){
+        tiles.extend(terrain.tiles.keys().filter(|t|
         (t.x as f64-f.position.x).max(0.).max(f.position.x-(t.x+t.size)as f64)<graphics.0.grass_distance+CELL as f64
-        &&(t.z as f64-f.position.z).max(0.).max(f.position.z-(t.z+t.size)as f64)<graphics.0.grass_distance+CELL as f64).copied().collect())}else{vec![]};
-    tiles.sort_by_key(|t|(t.size,t.x,t.z));
-    let tag=stamp(world,density);let tiles=Arc::new(tiles);
-    let wanted=if active{keys(f.position,agl,graphics.0.grass_distance,density,tag).into_iter().map(|k|layout_key(k,&tiles)).collect()}else{vec![]};
-    state.wanted=wanted.iter().copied().collect();
-    let wanted_set=state.wanted.clone();state.jobs.retain(|key,_|wanted_set.contains(key));
+        &&(t.z as f64-f.position.z).max(0.).max(f.position.z-(t.z+t.size)as f64)<graphics.0.grass_distance+CELL as f64).copied());
+    }
+    // Each tile key is unique, so an unstable sort gives the same order
+    // without needing scratch storage for a stable sort.
+    tiles.sort_unstable_by_key(|t|(t.size,t.x,t.z));
+    // Workers share an immutable snapshot. Refresh it only when the nearby
+    // published terrain changes; keep all main-thread scratch allocations.
+    if tiles.as_slice()!=shared_tiles.as_slice(){*shared_tiles=Arc::new(tiles.clone());}
+    if active {
+        keys_into(f.position,agl,graphics.0.grass_distance,density,stamp(world,density),wanted);
+        for key in wanted.iter_mut(){*key=layout_key(*key,tiles);}
+    }else{wanted.clear();}
+    // Reuse the set allocation and split the field borrows instead of cloning
+    // the entire wanted set just to cancel obsolete jobs.
+    {
+        let Grass{wanted:wanted_set,jobs,..}=&mut *state;
+        wanted_set.clear();wanted_set.extend(wanted.iter().copied());
+        jobs.retain(|key,_|wanted_set.contains(key));
+    }
     if state.pending.as_ref().is_some_and(|p|!state.wanted.contains(&p.key)){
         let p=state.pending.take().unwrap();c.entity(p.entity).despawn();meshes.remove(p.mesh.id());ready.0.clear();
     }
-    let old=state.cells.keys().filter(|k|!state.wanted.contains(k)).copied().take(4).collect::<Vec<_>>();
-    for key in &old{if let Some(cell)=state.cells.remove(key){if let Some((e,m))=cell.object{c.entity(e).despawn();meshes.remove(m.id());}}}
-    if !old.is_empty(){return;}
+    retired.clear();retired.extend(state.cells.keys().filter(|k|!state.wanted.contains(k)).copied().take(4));
+    for key in retired.iter(){if let Some(cell)=state.cells.remove(key){if let Some((e,m))=cell.object{c.entity(e).despawn();meshes.remove(m.id());}}}
+    if !retired.is_empty(){return;}
     if state.pending.is_some()&&ready.0.ready(){
         let p=state.pending.take().unwrap();c.entity(p.entity).insert(Visibility::Inherited);
         state.cells.insert(p.key,Cell{object:Some((p.entity,p.mesh)),vertices:p.vertices});ready.0.clear();
@@ -188,9 +217,10 @@ fn update(mut c:Commands,f:Res<Flight>,graphics:Res<environment::graphics::Graph
             }
         }
     }
-    for key in wanted.into_iter().filter(|k|!state.cells.contains_key(k)&&!state.jobs.contains_key(k)
-        &&!state.pending.as_ref().is_some_and(|p|p.key==*k)).take(2usize.saturating_sub(state.jobs.len())).collect::<Vec<_>>(){
-        let world=Arc::clone(world);let tiles=Arc::clone(&tiles);
+    missing.clear();missing.extend(wanted.iter().copied().filter(|k|!state.cells.contains_key(k)&&!state.jobs.contains_key(k)
+        &&!state.pending.as_ref().is_some_and(|p|p.key==*k)).take(2usize.saturating_sub(state.jobs.len())));
+    for key in missing.drain(..){
+        let world=Arc::clone(world);let tiles=Arc::clone(shared_tiles);
         state.jobs.insert(key,AsyncComputeTaskPool::get().spawn(async move{build(&world,key,density,&tiles)}));
     }
 }
@@ -209,7 +239,7 @@ pub fn report(state:Option<&Grass>)->serde_json::Value{
     state.map_or(serde_json::Value::Null,|s|serde_json::json!({"enabled":s.enabled,"cells":s.cells.len(),"wanted":s.wanted.len(),"jobs":s.jobs.len(),
         "pending":s.pending.is_some(),"draw_batches":s.cells.values().filter(|c|c.object.is_some()).count(),
         "vertices":s.cells.values().map(|c|c.vertices).sum::<usize>(),
-        "active_mesh_payload_bytes":s.cells.values().map(|c|c.vertices*54).sum::<usize>()}))
+        "active_mesh_payload_bytes":s.cells.values().map(|c|c.vertices*51).sum::<usize>()}))
 }
 pub fn study(){
     let world=environment::active();let mut cases=Vec::new();
@@ -218,7 +248,7 @@ pub fn study(){
         let b=build(world,key,0.65,&[]);let h=world.height_xz(x,z);
         cases.push(serde_json::json!({"x":x,"z":z,"height":h,"vertices":b.mesh.count_vertices(),
             "tufts":b.mesh.count_vertices()/8,"land_cover":format!("{:?}",world.raw(environment::point(x,z,h,world.preset.planet.radius)).1),
-            "source_bytes":b.mesh.attributes().map(|(_,v)|v.get_bytes().len()).sum::<usize>()+b.mesh.indices().unwrap().len()*4}));
+            "source_bytes":b.mesh.attributes().map(|(_,v)|v.get_bytes().len()).sum::<usize>()+b.mesh.indices().unwrap().len()*2}));
     }
     std::fs::create_dir_all("tests/grass").unwrap();
     std::fs::write("tests/grass/placement.json",serde_json::to_string_pretty(&cases).unwrap()).unwrap();

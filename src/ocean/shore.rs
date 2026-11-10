@@ -10,12 +10,14 @@ pub(super) struct BuiltWater {
     pub anchor: DVec3,
 }
 fn triangle_level(samples: [Option<f64>; 3], sea: f64) -> Option<f64> {
-    let wet: Vec<_> = samples.into_iter().flatten().collect();
-    if wet.is_empty() || wet.iter().all(|h| (*h-sea).abs()<1.) { return None; }
+    // This runs twice per lake grid cell. Iterate the three stack-resident
+    // corners directly instead of allocating a Vec for every triangle.
+    let wet = samples.into_iter().flatten();
+    if wet.clone().next().is_none() || wet.clone().all(|h| (h-sea).abs()<1.) { return None; }
     // Do not bridge two unrelated water bodies across a narrow ridge.
-    let low=wet.iter().copied().fold(f64::INFINITY,f64::min);
-    let high=wet.iter().copied().fold(f64::NEG_INFINITY,f64::max);
-    (high-low<4.).then(||wet.iter().sum::<f64>()/wet.len() as f64)
+    let low=wet.clone().fold(f64::INFINITY,f64::min);
+    let high=wet.clone().fold(f64::NEG_INFINITY,f64::max);
+    (high-low<4.).then(||wet.clone().sum::<f64>()/wet.count() as f64)
 }
 pub(super) fn build(x:f64,z:f64)->BuiltWater {
     let n=384;let step=64.;
@@ -76,7 +78,9 @@ pub(super) fn build(x:f64,z:f64)->BuiltWater {
     lakes.insert_attribute(Mesh::ATTRIBUTE_COLOR,vec![[1.;4];count]);
     lakes.insert_attribute(Mesh::ATTRIBUTE_UV_0,uv);
     lakes.insert_attribute(Mesh::ATTRIBUTE_UV_1,levels);
-    lakes.insert_indices(Indices::U32(indices));
+    lakes.insert_indices(if count<=usize::from(u16::MAX)+1 {
+        Indices::U16(indices.into_iter().map(|index|index as u16).collect())
+    }else{Indices::U32(indices)});
     BuiltWater{near,coarse,bounds,far,lakes,anchor}
 }
 #[cfg(test)]mod tests {

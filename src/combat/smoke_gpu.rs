@@ -188,20 +188,29 @@ fn encode(asset: &mut Mesh, m: &Missile, anchor: DVec3) -> Aabb {
     up.clear();
     let tail = (m.gnc.thrust > 0.).then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * m.gnc.exhaust_offset);
     let count = m.trail.len() + usize::from(tail.is_some());
+    let vertices = count.saturating_sub(1) * 24;
+    p.reserve(vertices);
+    normals.reserve(vertices);
+    colors.reserve(vertices);
+    uv.reserve(vertices);
+    up.reserve(vertices);
     let points = m.trail.iter().copied().chain(tail);
     let mut margin = 20_f32;
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {
         let dynamic = tail.is_some() && i == count - 2;
         margin = margin.max((b - a).length() as f32 + 20.);
+        let tangent = (b - a).as_vec3().to_array();
+        let radial = a.normalize().as_vec3().extend(1.).to_array();
         for j in 0..6 {
             let t = (j as f64 + 0.5) / 6.;
             let behind = (count - 2 - i) as f64 + 1. - t;
             let birth = m.age - m.trail_clock - behind * 0.075;
             let center = if dynamic { a } else { a.lerp(b, t) };
+            let position = (center - anchor).as_vec3().to_array();
             let phase = (a.x * 0.13 + a.z * 0.19 + j as f64 * 2.4) as f32;
             for corner in [[0., 0.], [1., 0.], [1., 1.], [0., 1.]] {
-                p.push((center - anchor).as_vec3().to_array());
-                normals.push((b - a).as_vec3().to_array());
+                p.push(position);
+                normals.push(tangent);
                 colors.push([
                     birth as f32,
                     phase,
@@ -209,7 +218,7 @@ fn encode(asset: &mut Mesh, m: &Missile, anchor: DVec3) -> Aabb {
                     if dynamic { t as f32 } else { -1. },
                 ]);
                 uv.push(corner);
-                up.push(a.normalize().as_vec3().extend(1.).to_array());
+                up.push(radial);
             }
         }
     }

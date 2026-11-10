@@ -55,6 +55,12 @@ fn texel(
     ]
 }
 fn mip(previous: &[u8], n: usize) -> Vec<u8> {
+    // Input channels are bytes, so the exact sRGB conversion has only 256
+    // possible inputs. Reuse those values across every mip and atlas layer.
+    static LINEAR: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
+    let linear = LINEAR.get_or_init(|| {
+        std::array::from_fn(|value| crate::environment::srgb_to_linear(value as f32 / 255.))
+    });
     let m = (n / 2).max(1);
     let mut out = vec![0; m * m * 4];
     for y in 0..m {
@@ -63,12 +69,9 @@ fn mip(previous: &[u8], n: usize) -> Vec<u8> {
                 let mut sum = 0.;
                 for dy in 0..2 {
                     for dx in 0..2 {
-                        sum += crate::environment::srgb_to_linear(
-                            previous
-                                [(((y * 2 + dy).min(n - 1) * n + (x * 2 + dx).min(n - 1)) * 4) + c]
-                                as f32
-                                / 255.,
-                        );
+                        let value = previous
+                            [(((y * 2 + dy).min(n - 1) * n + (x * 2 + dx).min(n - 1)) * 4) + c];
+                        sum += linear[value as usize];
                     }
                 }
                 out[(y * m + x) * 4 + c] = linear_to_byte(sum * 0.25);
@@ -181,13 +184,17 @@ pub fn load(world: &EnvironmentSnapshot, images: &mut Assets<Image>) -> CoverAtl
         lookup[((89 - south) * 360 + west + 180) as usize] = (layer + 1) as u8;
         let grid = &world.data.grids[&(west, south)];
         let class_inner = (class_n - 2 * BORDER) as f64;
-        for y in 0..class_n {
-            for x in 0..class_n {
-                let u = (x as f64 - BORDER as f64 + 0.5) / class_inner;
-                let v = (y as f64 - BORDER as f64 + 0.5) / class_inner;
-                let id = if (0. ..=1.).contains(&u) && (0. ..=1.).contains(&v) {
-                    let ix = (u * (grid.cover_n - 1) as f64).round() as usize;
-                    let iy = (v * (grid.cover_n - 1) as f64).round() as usize;
+        // The source coordinate for a column/row repeats across the layer.
+        // Precompute its exact rounding once, including the geographic border.
+        let coordinates: Vec<_> = (0..class_n).map(|i| {
+            let u = (i as f64 - BORDER as f64 + 0.5) / class_inner;
+            let index = (0. ..=1.).contains(&u)
+                .then(|| (u * (grid.cover_n - 1) as f64).round() as usize);
+            (u, index)
+        }).collect();
+        for &(v, iy) in &coordinates {
+            for &(u, ix) in &coordinates {
+                let id = if let (Some(ix), Some(iy)) = (ix, iy) {
                     clean_class(grid, ix, iy)
                 } else {
                     class_at(world, west as f64 + u, south as f64 + 1. - v)

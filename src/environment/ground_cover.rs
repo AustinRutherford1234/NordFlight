@@ -15,6 +15,7 @@ fn suitability(cover:LandCover,water:bool,slope:f64)->f64{
 pub fn placements(world:&EnvironmentSnapshot,cx:i32,cz:i32,density:f64)->Vec<Tuft>{
     if density<=0.||world.preset.vegetation.density<=0.{return vec![];}
     let seed=world.preset.seed.wrapping_add(0x6772617373);
+    let scale=world.preset.vegetation.height_scale.clamp(0.5,2.)as f32;
     let mut out=Vec::with_capacity(256);
     // Large props share their authoritative deterministic placement service.
     let mut props=Vec::new();
@@ -34,18 +35,25 @@ pub fn placements(world:&EnvironmentSnapshot,cx:i32,cz:i32,density:f64)->Vec<Tuf
         let h=world.height_xz(px,pz);
         if h>world.preset.terrain.snow_line{continue;}
         let position=point(px,pz,h,world.preset.planet.radius);
-        let sample=world.sample_surface(position);
-        if chance>density*cluster*suitability(sample.land_cover,sample.water_surface.is_some(),1.-sample.normal.dot(position.normalize())){continue;}
+        // Props use only x/z bounds. Reject their covered tufts before the
+        // terrain samples needed to classify and calculate a surface normal.
         if props.iter().any(|p|(position.x-p.position.x).abs()<p.half.x+0.5&&(position.z-p.position.z).abs()<p.half.z+0.5){continue;}
-        let broadleaf=matches!(sample.land_cover,LandCover::Shrub|LandCover::Trees|LandCover::Wetland)
+        let(_,cover,water,_)=world.raw(position);
+        // A slope can only reduce suitability. Use its upper bound before
+        // paying for four neighbouring height queries; keep the same strict
+        // comparison so deterministic placement at the threshold is retained.
+        if chance>density*cluster*suitability(cover,water.is_some(),0.){continue;}
+        let up=position.normalize();
+        let normal=world.surface_normal(position);
+        if chance>density*cluster*suitability(cover,water.is_some(),1.-normal.dot(up)){continue;}
+        let broadleaf=matches!(cover,LandCover::Shrub|LandCover::Trees|LandCover::Wetland)
             &&hash(ix,iz,seed.wrapping_add(4))<0.28;
-        let scale=world.preset.vegetation.height_scale.clamp(0.5,2.)as f32;
         let height=(if broadleaf{0.5}else{0.22})+hash(ix,iz,seed.wrapping_add(5))as f32*if broadleaf{0.4}else{0.43};
         let shade=1.1+hash(ix,iz,seed.wrapping_add(6))as f32*0.45;
-        let color=world.preset.palette[if sample.land_cover==LandCover::Cropland{1}else{0}]
+        let color=world.preset.palette[if cover==LandCover::Cropland{1}else{0}]
             .map(|c|super::srgb_to_linear((c*shade).min(0.95)));
         let mown=if px.abs()<105.&&pz.abs()<1450.{0.4}else{1.};
-        out.push(Tuft{position:position-position.normalize()*0.06,heading:hash(ix,iz,seed.wrapping_add(7))*std::f64::consts::TAU,
+        out.push(Tuft{position:position-up*0.06,heading:hash(ix,iz,seed.wrapping_add(7))*std::f64::consts::TAU,
             height:height*scale*mown,width:(0.75+hash(ix,iz,seed.wrapping_add(8))as f32*0.5)*scale,color,broadleaf});
     }}
     out

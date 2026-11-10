@@ -220,18 +220,35 @@ async fn build(
         previous.clone()
     } else {
         let mut values = Vec::with_capacity((INPUT_SIDE * INPUT_SIDE) as usize);
+        let sample = |x: i32, z: i32| {
+            let metres = (first + IVec2::new(x, z)).as_dvec2() * STEP;
+            let h = world.height_xz(metres.x, metres.y);
+            (super::point(metres.x, metres.y, h, radius).y - radius) as f32
+        };
         for z in 0..INPUT_SIDE {
-            for x in 0..INPUT_SIDE {
-                let cell = first + IVec2::new(x, z);
-                let value = previous
-                    .as_ref()
-                    .and_then(|grid| grid.get(cell))
-                    .unwrap_or_else(|| {
-                        let metres = cell.as_dvec2() * STEP;
-                        let h = world.height_xz(metres.x, metres.y);
-                        super::point(metres.x, metres.y, h, radius).y - radius
-                    });
-                values.push(value as f32);
+            // Adjacent regions share most of their height field. Copy each
+            // overlapping row as a contiguous f32 slice, and sample only the
+            // newly exposed strips. No per-cell bounds checks or conversions
+            // are needed for the retained heights.
+            let overlap = previous.as_ref().and_then(|grid| {
+                let row = first.y + z - grid.lower.y;
+                if !(0..INPUT_SIDE).contains(&row) {
+                    return None;
+                }
+                let start = (grid.lower.x - first.x).clamp(0, INPUT_SIDE);
+                let end = (grid.lower.x + INPUT_SIDE - first.x).clamp(0, INPUT_SIDE);
+                if start >= end {
+                    return None;
+                }
+                let offset = (row * INPUT_SIDE + first.x + start - grid.lower.x) as usize;
+                Some((start, end, &grid.values[offset..offset + (end - start) as usize]))
+            });
+            if let Some((start, end, retained)) = overlap {
+                values.extend((0..start).map(|x| sample(x, z)));
+                values.extend_from_slice(retained);
+                values.extend((end..INPUT_SIDE).map(|x| sample(x, z)));
+            } else {
+                values.extend((0..INPUT_SIDE).map(|x| sample(x, z)));
             }
             // Share the terrain worker with ordinary streaming during travel.
             if z % 16 == 15 {
@@ -300,22 +317,30 @@ fn scan(
     let shear = |i: i32| (f64::from(i) * ratio).round() as i32;
     let a = shear(low.x);
     let b = shear(high.x);
-    let mut peaks = VecDeque::<(i32, f64)>::new();
-    for ray in low.y - a.max(b)..=high.y - a.min(b) {
-        peaks.clear();
-        for step in 0..side {
+    // Every ray visits the same columns in the same order. Compute rounding
+    // and sun-height offsets once per column, preserving the absolute grid
+    // phase and the exact arithmetic used by the shadow field.
+    let columns: Vec<_> = (0..side)
+        .map(|step| {
             let x = if major >= 0. {
                 high.x - step
             } else {
                 low.x + step
             };
-            let y = ray + shear(x);
+            (x, shear(x), f64::from(step) * rise)
+        })
+        .collect();
+    let mut peaks = VecDeque::<(i32, f64)>::new();
+    for ray in low.y - a.max(b)..=high.y - a.min(b) {
+        peaks.clear();
+        for (step, &(x, shift, offset)) in columns.iter().enumerate() {
+            let step = step as i32;
+            let y = ray + shift;
             if !(low.y..=high.y).contains(&y) {
                 continue;
             }
             let point = axes(IVec2::new(x, y));
             let ground = height(point);
-            let offset = f64::from(step) * rise;
             while peaks
                 .front()
                 .is_some_and(|&(index, _)| step - index > range)

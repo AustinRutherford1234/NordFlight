@@ -1239,14 +1239,14 @@ pub fn update(
     }
     cache.previous = Some((f.vehicle, signature, view.generation));
     let mut radar_ready = [false; 2];
-    let orbit = Orbit::from_flight(&f);
+    let mut orbit = None;
     let green = [100, 245, 165, 255];
+    let daylight =
+        ((environment.sun_direction().dot(f.up()) as f32 + 0.06) / 0.18).clamp(0.0, 1.0);
     for screen in &screens {
         if screen.vehicle != f.vehicle || (f.vehicle==Vehicle::Gripen && screen.aircraft!=f.aircraft) {
             continue;
         }
-        let daylight =
-            ((environment.sun_direction().dot(f.up()) as f32 + 0.06) / 0.18).clamp(0.0, 1.0);
         let intensity = (if screen.kind == 3 {6.0} else {2.0}) * (0.055 + 0.945 * daylight);
         let emissive = LinearRgba::new(intensity, intensity, intensity, 1.0);
         if materials
@@ -1350,6 +1350,8 @@ pub fn update(
             ],
             _ => {
                 if f.vehicle == Vehicle::Spacecraft {
+                    // Only the orbital navigation page uses these elements.
+                    let orbit = orbit.get_or_insert_with(|| Orbit::from_flight(&f));
                     vec![
                         format!("{} NAVIGATION", f.space.body.label()),
                         format!("PE {:.1} KM", orbit.periapsis / 1000.0),

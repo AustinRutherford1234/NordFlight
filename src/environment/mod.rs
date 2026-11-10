@@ -192,6 +192,17 @@ impl EnvironmentSnapshot {
     }
     pub fn sample_surface(&self, p: DVec3) -> SurfaceSample {
         let (h, c, w, d) = self.raw(p);
+        SurfaceSample {
+            ground_height: h,
+            normal: self.surface_normal(p),
+            land_cover: c,
+            water_surface: w,
+            detailed: d,
+        }
+    }
+    /// The same four neighbouring samples used by `sample_surface`, exposed
+    /// separately so placement can reject unsuitable land cover first.
+    pub(crate) fn surface_normal(&self, p: DVec3) -> DVec3 {
         let right = if p.normalize().dot(DVec3::X).abs() < 0.9 {
             DVec3::X
         } else {
@@ -223,13 +234,7 @@ impl EnvironmentSnapshot {
                         * self.preset.planet.radius,
                 )
                 .0;
-        SurfaceSample {
-            ground_height: h,
-            normal: (up - tx * hx / (2. * delta) - tz * hz / (2. * delta)).normalize(),
-            land_cover: c,
-            water_surface: w,
-            detailed: d,
-        }
+        (up - tx * hx / (2. * delta) - tz * hz / (2. * delta)).normalize()
     }
     pub fn raw(&self, p: DVec3) -> (f64, LandCover, Option<f64>, bool) {
         if self.preset.legacy {
@@ -310,14 +315,20 @@ pub fn point(x: f64, z: f64, h: f64, r: f64) -> DVec3 {
     DVec3::new(x, ((r + h).powi(2) - x * x - z * z).max(0.).sqrt(), z)
 }
 fn geographic_frame() -> DMat3 {
-    let b = 58.428333_f64.to_radians();
-    let l = 12.711111_f64.to_radians();
-    let a = 184.59_f64.to_radians();
-    let up = DVec3::new(b.cos() * l.cos(), b.sin(), -b.cos() * l.sin());
-    let north = DVec3::new(-b.sin() * l.cos(), b.cos(), b.sin() * l.sin());
-    let east = DVec3::new(-l.sin(), 0., -l.cos());
-    let forward = north * a.cos() + east * a.sin();
-    DMat3::from_cols(forward.cross(up), up, -forward)
+    // The geographic reference is fixed for every planet and terrain worker.
+    // Retain the computed matrix rather than rebuilding its trigonometry for
+    // each height, normal, colour and texture-coordinate query.
+    static FRAME: OnceLock<DMat3> = OnceLock::new();
+    *FRAME.get_or_init(|| {
+        let b = 58.428333_f64.to_radians();
+        let l = 12.711111_f64.to_radians();
+        let a = 184.59_f64.to_radians();
+        let up = DVec3::new(b.cos() * l.cos(), b.sin(), -b.cos() * l.sin());
+        let north = DVec3::new(-b.sin() * l.cos(), b.cos(), b.sin() * l.sin());
+        let east = DVec3::new(-l.sin(), 0., -l.cos());
+        let forward = north * a.cos() + east * a.sin();
+        DMat3::from_cols(forward.cross(up), up, -forward)
+    })
 }
 pub fn geo_to_local(lon: f64, lat: f64, h: f64, r: f64) -> DVec3 {
     let (lon, lat) = (lon.to_radians(), lat.to_radians());

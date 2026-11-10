@@ -2227,6 +2227,7 @@ pub(crate) fn smoke_clearance(distance: f64) -> f32 {
 }
 /// Distance of each smoke point from the nozzle, along the trail: the gap
 /// from the nozzle to the newest point plus arc length back from there.
+#[cfg(test)]
 pub(crate) fn smoke_distances(points: &[DVec3], nozzle: DVec3) -> Vec<f64> {
     let mut d = vec![0.0; points.len()];
     let Some(last) = points.len().checked_sub(1) else {
@@ -2237,6 +2238,42 @@ pub(crate) fn smoke_distances(points: &[DVec3], nozzle: DVec3) -> Vec<f64> {
         d[i] = d[i + 1] + points[i].distance(points[i + 1]);
     }
     d
+}
+thread_local! {
+    static SMOKE_DISTANCE_SCRATCH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// Temporary distances shared by sequential smoke batches on this worker.
+/// Returning the allocation on drop also supports nested calls without holding
+/// a RefCell borrow while the mesh is generated.
+pub(crate) struct SmokeDistances(Vec<f64>);
+impl std::ops::Deref for SmokeDistances {
+    type Target = [f64];
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+impl Drop for SmokeDistances {
+    fn drop(&mut self) {
+        SMOKE_DISTANCE_SCRATCH.with(|scratch| {
+            let mut scratch = scratch.borrow_mut();
+            if self.0.capacity() > scratch.capacity() {
+                *scratch = std::mem::take(&mut self.0);
+                scratch.clear();
+            }
+        });
+    }
+}
+pub(crate) fn smoke_distances_reused(points: &[DVec3], tail: Option<DVec3>, nozzle: DVec3) -> SmokeDistances {
+    let mut distances = SMOKE_DISTANCE_SCRATCH.with(|scratch| std::mem::take(&mut *scratch.borrow_mut()));
+    let count = points.len() + usize::from(tail.is_some());
+    distances.resize(count, 0.);
+    let mut backwards = points.iter().copied().chain(tail).rev();
+    if let Some(mut next) = backwards.next() {
+        distances[count - 1] = nozzle.distance(next);
+        for (i, point) in (0..count - 1).rev().zip(backwards) {
+            distances[i] = distances[i + 1] + point.distance(next);
+            next = point;
+        }
+    }
+    SmokeDistances(distances)
 }
 /// True while the nozzle is still close enough to the trail end for the
 /// clearance ramp to depend on where the missile currently is.
@@ -2304,9 +2341,10 @@ fn write_smoke_mesh(
     let colors = colors.expect("smoke colors");
     positions.clear();
     colors.clear();
+    positions.reserve(vertices);
+    colors.reserve(vertices);
     let points = trail.iter().copied().chain(tail);
-    let all: Vec<DVec3> = points.clone().collect();
-    let distance = smoke_distances(&all, tail.unwrap_or(nozzle));
+    let distance = smoke_distances_reused(trail, tail, tail.unwrap_or(nozzle));
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {
         let tangent = (b - a).normalize_or_zero();
         let up = a.normalize();

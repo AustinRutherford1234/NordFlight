@@ -547,12 +547,16 @@ pub fn write_smoke_styled(
         .then(|| m.position - m.gnc.body.normalize_or(m.velocity.normalize_or_zero()) * m.gnc.exhaust_offset);
     let point_count = m.trail.len() + usize::from(tail.is_some());
     let points = m.trail.iter().copied().chain(tail);
-    let all: Vec<DVec3> = points.clone().collect();
-    let distance = super::smoke_distances(&all, tail.unwrap_or(m.position));
+    let distance = super::smoke_distances_reused(&m.trail, tail, tail.unwrap_or(m.position));
     let eye_distance=(basis*(m.position-origin)).as_vec3().distance_squared(eye);
     let lobes=if style.billow>0. && eye_distance>6000_f32.powi(2) {2}
         else if style.billow>0. && eye_distance>1800_f32.powi(2) {3}else{6};
+    let vertices=point_count.saturating_sub(1)*lobes*4;
+    p.reserve(vertices);col.reserve(vertices);uv.reserve(vertices);
     for (i, (a, b)) in points.clone().zip(points.skip(1)).enumerate() {
+        let up=a.normalize();
+        let tangent=(basis*(b-a)).as_vec3();
+        let segment_half=tangent.length()/(2.*lobes as f32);
         for j in 0..lobes {
             let t = (j as f64 + 0.5) / lobes as f64;
             let behind_nozzle=distance[i]+(distance[i+1]-distance[i])*t;
@@ -561,25 +565,24 @@ pub fn write_smoke_styled(
             let behind = (point_count - 2 - i) as f64 + 1. - t;
             let age = (m.trail_clock + behind * 0.075).max(0.);
             let center_world =
-                a.lerp(b, t) + a.normalize() * (age * style.rise) + DVec3::X * (age * style.drift);
+                a.lerp(b, t) + up * (age * style.rise) + DVec3::X * (age * style.drift);
             let center = (basis * (center_world - origin)).as_vec3();
             let normal = (eye - center).normalize_or(Vec3::Z);
-            let tangent = (basis * (b - a)).as_vec3();
             let along = (tangent - normal * tangent.dot(normal)).normalize_or(camera_up);
             let across = normal.cross(along).normalize_or(Vec3::X);
             let phase = (a.x * 0.13 + a.z * 0.19 + j as f64 * 2.4) as f32;
             let width = (0.10 + 0.64 * (age as f32).sqrt())
                 * (1. + 0.16 * phase.sin())
                 * if m.kind == Weapon::Radar { 1.35 } else { 1.0 } * style.width;
-            let half = (tangent.length() / (2.*lobes as f32) + width * 0.8).max(width);
+            let half = (segment_half + width * 0.8).max(width);
             let center = center + across * ((0.13+style.billow*0.35) * width * (phase + age as f32).sin())
                 + along*(style.billow*width*0.22*(phase*1.7+age as f32).cos());
             let fade=(1.-age/5.).clamp(0.,1.);
             let fade=if style.billow>0. {fade.powf(1.25)}else{fade*fade};
             let alpha=(fade as f32*0.82*clearance*style.opacity).min(1.);
+            let shade=1.-style.billow*0.12*(0.5+0.5*phase.sin());
             for (x, y) in [(-1., -1.), (1., -1.), (1., 1.), (-1., 1.)] {
                 p.push((center + along * half * y + across * width * x).to_array());
-                let shade=1.-style.billow*0.12*(0.5+0.5*phase.sin());
                 col.push([shade,shade,shade,alpha]);
                 uv.push([(x + 1.) * 0.5, (y + 1.) * 0.5]);
             }

@@ -9,8 +9,12 @@ pub(crate) struct Panel {
 fn bounds(data:&[u8],width:usize,height:usize)->Option<[usize;4]> {
     assert_eq!(data.len(),width*height*4);
     let (mut left,mut top,mut right,mut bottom)=(width,height,0,0);
-    for (i,pixel) in data.chunks_exact(4).enumerate() {
-        if pixel[3]!=0 {let x=i%width;let y=i/width;left=left.min(x);top=top.min(y);right=right.max(x+1);bottom=bottom.max(y+1);}
+    // Only a row's first and last lit pixels affect its bounds. Skip the
+    // interior of populated rows and avoid division/modulo for every lit pixel.
+    for (y,row) in data.chunks_exact(width*4).enumerate() {
+        let Some(first)=row.chunks_exact(4).position(|pixel|pixel[3]!=0)else{continue;};
+        let last=row.chunks_exact(4).rposition(|pixel|pixel[3]!=0).unwrap();
+        left=left.min(first);top=top.min(y);right=right.max(last+1);bottom=bottom.max(y+1);
     }
     (right>left && bottom>top).then(||[left.saturating_sub(2),top.saturating_sub(2),(right+2).min(width),(bottom+2).min(height)])
 }

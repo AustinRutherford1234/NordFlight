@@ -10,9 +10,15 @@ use bevy::{
 #[derive(Resource)]
 pub struct Navball {
     pub image: Handle<Image>,
-    // Geometry of the projected sphere never changes; cache square roots and
-    // shading once rather than rebuilding them on every instrument update.
-    pixels: Vec<Option<(bevy::math::DVec3, f32)>>,
+    // Keep the stationary bezel and a packed list of sphere pixels. Each
+    // update restores the base and projects only the pixels that can rotate.
+    base: Vec<u8>,
+    pixels: Vec<SpherePixel>,
+}
+struct SpherePixel {
+    direction: bevy::math::DVec3,
+    offset: usize,
+    shade: f32,
 }
 const SIZE: usize = 192;
 #[cfg(test)]
@@ -92,21 +98,27 @@ pub fn setup(mut c: Commands, mut images: ResMut<Assets<Image>>) {
         ZIndex(30),
         NavballLabel,
     ));
-    let pixels = (0..SIZE * SIZE)
-        .map(|i| {
-            let sx = (i % SIZE) as f64 - 95.5;
-            let sy = 95.5 - (i / SIZE) as f64;
-            let r2 = (sx * sx + sy * sy) / (88.0 * 88.0);
-            (r2 <= 1.0).then(|| {
-                let z = (1.0 - r2).sqrt();
-                (
-                    bevy::math::DVec3::new(sx / 88.0, sy / 88.0, -z),
-                    (0.55 + 0.45 * z) as f32,
-                )
-            })
-        })
-        .collect();
-    c.insert_resource(Navball { image, pixels });
+    let mut base = vec![0; SIZE * SIZE * 4];
+    let mut pixels = Vec::with_capacity(SIZE * SIZE * 2 / 3);
+    for (i, rgba) in base.chunks_exact_mut(4).enumerate() {
+        let x = (i % SIZE) as f64 - 95.5;
+        let y = 95.5 - (i / SIZE) as f64;
+        let sx = x / 88.0;
+        let sy = y / 88.0;
+        let screen_r2 = sx * sx + sy * sy;
+        if screen_r2 <= 1.0 {
+            let sphere_r2 = (x * x + y * y) / (88.0 * 88.0);
+            let z = (1.0 - sphere_r2).sqrt();
+            pixels.push(SpherePixel {
+                direction: bevy::math::DVec3::new(sx, sy, -z),
+                offset: i * 4,
+                shade: (0.55 + 0.45 * z) as f32,
+            });
+        } else if screen_r2 <= 1.15 {
+            rgba.copy_from_slice(&[75, 91, 104, 255]);
+        }
+    }
+    c.insert_resource(Navball { image, base, pixels });
 }
 #[derive(Component)]
 pub struct NavballLabel;
@@ -164,40 +176,28 @@ pub fn update(
             f.roll().to_degrees()
         );
     }
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let sx = (x as f64 - 95.5) / 88.0;
-            let sy = (95.5 - y as f64) / 88.0;
-            let r2 = sx * sx + sy * sy;
-            let rgba = if r2 > 1.15 {
-                [0, 0, 0, 0]
-            } else if r2 > 1.0 {
-                [75, 91, 104, 255]
-            } else {
-                let (sphere, shade) = ball.pixels[y * SIZE + x].unwrap();
-                let local = attitude * sphere;
-                let latitude = local.y.clamp(-1.0, 1.0).asin().to_degrees();
-                let longitude = local.x.atan2(-local.z).to_degrees();
-                let grid = latitude.abs() < 0.8
-                    || (latitude / 15.0 - (latitude / 15.0).round()).abs() < 0.035
-                    || (longitude / 30.0 - (longitude / 30.0).round()).abs() < 0.018;
-                let color = if grid {
-                    [185.0, 204.0, 210.0]
-                } else if latitude >= 0.0 {
-                    [37.0, 109.0, 174.0]
-                } else {
-                    [136.0, 79.0, 43.0]
-                };
-                [
-                    (color[0] * shade) as u8,
-                    (color[1] * shade) as u8,
-                    (color[2] * shade) as u8,
-                    255,
-                ]
-            };
-            let n = (y * SIZE + x) * 4;
-            data[n..n + 4].copy_from_slice(&rgba);
-        }
+    data[..ball.base.len()].copy_from_slice(&ball.base);
+    for &SpherePixel { direction, offset, shade } in &ball.pixels {
+        let local = attitude * direction;
+        let latitude = local.y.clamp(-1.0, 1.0).asin().to_degrees();
+        let parallel = latitude / 15.0;
+        let grid = latitude.abs() < 0.8 || (parallel - parallel.round()).abs() < 0.035 || {
+            let meridian = local.x.atan2(-local.z).to_degrees() / 30.0;
+            (meridian - meridian.round()).abs() < 0.018
+        };
+        let color = if grid {
+            [185.0, 204.0, 210.0]
+        } else if latitude >= 0.0 {
+            [37.0, 109.0, 174.0]
+        } else {
+            [136.0, 79.0, 43.0]
+        };
+        data[offset..offset + 4].copy_from_slice(&[
+            (color[0] * shade) as u8,
+            (color[1] * shade) as u8,
+            (color[2] * shade) as u8,
+            255,
+        ]);
     }
     let mut pixel = |x: i32, y: i32, c: [u8; 4]| {
         if x >= 0 && y >= 0 && x < SIZE as i32 && y < SIZE as i32 {

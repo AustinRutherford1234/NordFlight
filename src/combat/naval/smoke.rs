@@ -39,7 +39,7 @@ pub fn update(f:Res<Flight>,c:Res<Combat>,view:Res<ViewState>,
     mut clouds:Query<(&Mesh3d,&mut Visibility,&mut Aabb),With<LaunchCloudMesh>>) {
     let Some(n)=c.naval.as_ref().filter(|_|c.active) else {
         state.clouds.clear();state.seen.fill(0);
-        for (_,mut vis,_) in &mut clouds {*vis=Visibility::Hidden;}return;
+        for (_,mut vis,_) in &mut clouds {vis.set_if_neq(Visibility::Hidden);}return;
     };
     state.sync(n,&f,view.generation);
     if state.clouds.is_empty() {
@@ -47,6 +47,7 @@ pub fn update(f:Res<Flight>,c:Res<Combat>,view:Res<ViewState>,
     }
     let camera=cameras.iter().next().copied().unwrap_or_default();
     let basis=world::frame(&f).conjugate();let origin=world::render_origin(&f);
+    let right=camera.rotation*Vec3::X;let vertical=camera.rotation*Vec3::Y;
     for (handle,mut visible,mut bounds) in &mut clouds {
         let Some(mesh)=meshes.get_mut(&handle.0) else{continue;};
         let mut p=match mesh.remove_attribute(Mesh::ATTRIBUTE_POSITION){Some(V::Float32x3(v))=>v,_=>Vec::new()};
@@ -63,24 +64,24 @@ pub fn update(f:Res<Flight>,c:Res<Combat>,view:Res<ViewState>,
             let at=(basis*(center-origin)).as_vec3();
             let distance=at.distance_squared(camera.translation);if distance>12000_f32.powi(2){continue;}
             let lobes=if distance>2500_f32.powi(2){6}else{12};
-            let right=camera.rotation*Vec3::X;let vertical=camera.rotation*Vec3::Y;
             let growth=(age/2.).clamp(0.,1.).sqrt();let radius=(2.5+age*1.25) as f32;
             let fade=((1.-age/12.).clamp(0.,1.).powi(2)*(age/0.12).clamp(0.,1.)) as f32;
+            let hot=(-age*2.4).exp() as f32;
+            let tint=[0.93+hot*0.07,0.93-hot*0.16,0.93-hot*0.34,fade*0.72];
             for i in 0..lobes {
                 let phase=i as f32*2.39996+cloud.seed as f32*0.73;
                 let spread=(i as f32/lobes as f32).sqrt()*growth as f32;
                 let middle=at+right*(phase.cos()*radius*1.5*spread)
                     +vertical*((0.35+0.65*phase.sin())*radius*spread);
                 let size=radius*(0.7+0.25*(phase*1.7).sin());
-                let hot=(-age*2.4).exp() as f32;
                 for (x,y) in [(-1.,-1.),(1.,-1.),(1.,1.),(-1.,1.)] {
                     p.push((middle+right*size*x+vertical*size*y).to_array());
-                    color.push([0.93+hot*0.07,0.93-hot*0.16,0.93-hot*0.34,fade*0.72]);
+                    color.push(tint);
                     uv.push([(x+1.)*0.5,(y+1.)*0.5]);
                 }
             }
         }
-        *visible=if p.is_empty(){Visibility::Hidden}else{Visibility::Inherited};
+        visible.set_if_neq(if p.is_empty(){Visibility::Hidden}else{Visibility::Inherited});
         *bounds=Aabb::enclosing(p.iter().map(|v|Vec3::from(*v))).unwrap_or_else(||Aabb::from_min_max(Vec3::ZERO,Vec3::ONE));
         let count=p.len();
         if !*reported && count>0 && std::env::var("NORD_NAVAL_CAPTURE").is_ok_and(|m|m.starts_with("defense-smoke-")) {

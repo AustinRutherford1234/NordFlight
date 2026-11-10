@@ -259,21 +259,32 @@ fn mesh() -> Mesh {
     // Concentric rings share every boundary. Small near-camera cells grow
     // smoothly offshore, without tessellation, LOD cracks or mesh replacement.
     let n = 256usize;
-    let mut points = vec![[0., 0., 0.]];
-    let mut uv = vec![[0., 0.]];
-    let mut indices = Vec::new();
+    let mut radii = Vec::new();
     let mut radius = 4f32;
-    let mut rings = 0usize;
     while radius < 90000. {
-        for j in 0..n {
-            let a = j as f32 * std::f32::consts::TAU / n as f32;
-            let x = a.cos() * radius;
-            let z = a.sin() * radius;
+        radii.push(radius);
+        radius *= 1.055;
+    }
+    let rings = radii.len();
+    let vertex_count = 1 + rings * n;
+    let mut points = Vec::with_capacity(vertex_count);
+    let mut uv = Vec::with_capacity(vertex_count);
+    let mut indices = Vec::with_capacity(n * 3 + (rings - 1) * n * 6);
+    points.push([0., 0., 0.]);
+    uv.push([0., 0.]);
+    // Every ring uses the same angular samples. Retain the original f32
+    // radius sequence and multiplication order while sharing trigonometry.
+    let directions: [[f32; 2]; 256] = std::array::from_fn(|j| {
+        let a = j as f32 * std::f32::consts::TAU / n as f32;
+        [a.cos(), a.sin()]
+    });
+    for radius in radii {
+        for &[cos, sin] in &directions {
+            let x = cos * radius;
+            let z = sin * radius;
             points.push([x, 0., z]);
             uv.push([x, z]);
         }
-        radius *= 1.055;
-        rings += 1;
     }
     for j in 0..n {
         indices.extend([0, 1 + ((j + 1) % n) as u32, 1 + j as u32]);
@@ -303,7 +314,9 @@ fn mesh() -> Mesh {
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[0f32;2];uv.len()]);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uv);
-    mesh.insert_indices(Indices::U32(indices));
+    mesh.insert_indices(if vertex_count<=usize::from(u16::MAX)+1 {
+        Indices::U16(indices.into_iter().map(|index|index as u16).collect())
+    }else{Indices::U32(indices)});
     mesh
 }
 fn detail_image() -> Image {
@@ -471,7 +484,7 @@ pub fn update(
             Visibility::Hidden
         });
         if !show {
-            if let Ok((_,mut visibility,_,_))=lakes.get_mut(grid.lake_entity){*visibility=Visibility::Hidden;}
+            if let Ok((_,mut visibility,_,_))=lakes.get_mut(grid.lake_entity){visibility.set_if_neq(Visibility::Hidden);}
             continue;
         }
         let eye = camera
@@ -519,9 +532,13 @@ pub fn update(
             }
         }
         if let Ok((mut t,mut visibility,mut mesh,mut material))=lakes.get_mut(grid.lake_entity) {
-            *t=Transform::from_translation(world::local(grid.lake_anchor,&f))
-                .with_rotation(world::local_rot(DQuat::IDENTITY,&f));
-            mesh.0=grid.lake_mesh.clone();material.0=handle.0.clone();visibility.set_if_neq(*visible);
+            t.set_if_neq(Transform::from_translation(world::local(grid.lake_anchor,&f))
+                .with_rotation(world::local_rot(DQuat::IDENTITY,&f)));
+            // Mesh and material handles only change on a water publication.
+            // Avoid marking them modified (and cloning handles) every frame.
+            if mesh.0!=grid.lake_mesh {mesh.0=grid.lake_mesh.clone();}
+            if material.0!=handle.0 {material.0=handle.0.clone();}
+            visibility.set_if_neq(*visible);
         }
         let mut desired = parameters(center, f.elapsed, v.high_quality);
         desired.detail.w=crate::environment::active().preset.planet.sea_level as f32;

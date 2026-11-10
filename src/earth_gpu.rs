@@ -4,7 +4,7 @@ use crate::{
     physics::planet_radius,
 };
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::{RenderAssetUsages, load_internal_asset, uuid_handle},
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
     render::render_resource::{AsBindGroup, ShaderType},
@@ -97,6 +97,7 @@ fn convert(
                 .map(|i| [1., 1., 1., region.map_or(1., |r| r.0[i])])
                 .collect();
             m.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+            m.asset_usage = RenderAssetUsages::RENDER_WORLD;
             commands.entity(entity).remove::<MeshMaterial3d<StandardMaterial>>()
                 .insert(MeshMaterial3d::<EarthMaterial>(Handle::clone(existing)));
             continue;
@@ -114,6 +115,10 @@ fn convert(
             .map(|i| [1., 1., 1., region.map_or(1., |r| r.0[i])])
             .collect();
         m.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+        // All subsequent lighting runs in the shader for converted layers.
+        // Transfer immutable vertex/index data to the renderer without keeping
+        // a second CPU copy. The CPU fallback returns before this conversion.
+        m.asset_usage = RenderAssetUsages::RENDER_WORLD;
         let parameters = Parameters {
             eye: Vec4::ZERO,
             sun: Vec4::ZERO,

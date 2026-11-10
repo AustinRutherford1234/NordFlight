@@ -44,17 +44,20 @@ impl Upload {
     fn publish(&mut self, size: Extent3d, bytes: &[u8]) {
         assert_eq!(size.depth_or_array_layers, 1, "cockpit displays are 2D");
         assert_eq!(bytes.len(), size.width as usize * size.height as usize * 4);
-        if self.size != size {
+        if self.size != size || self.bytes.len() != bytes.len() {
             // Old pending bounds cannot be unioned into a smaller replacement.
             self.dirty = Some(Rect::full(size));
             self.size = size;
+            self.bytes.clear();
+            self.bytes.extend_from_slice(bytes);
         } else if let Some(rect) = changed_rect(&self.bytes, bytes, size) {
             self.dirty = Some(self.dirty.map_or(rect, |old| old.union(rect)));
-        } else {
-            return;
+            // Rows outside this span already match. The retained image stays
+            // complete for a later upload whose dirty bounds may be merged.
+            let stride = size.width as usize * 4;
+            let range = rect.y as usize * stride..rect.bottom as usize * stride;
+            self.bytes[range.clone()].copy_from_slice(&bytes[range]);
         }
-        self.bytes.clear();
-        self.bytes.extend_from_slice(bytes);
     }
     #[cfg(test)]
     fn prepare(&mut self, gpu_size: Extent3d) -> Option<(Rect, Vec<u8>)> {
@@ -226,7 +229,6 @@ fn flush(
     images: Res<RenderAssets<GpuImage>>,
     queue: Res<RenderQueue>,
     mut work: Local<Vec<(AssetId<Image>,Packet)>>,
-    mut staging: Local<Vec<u8>>,
 ) {
     let _measure = crate::performance::span(11);
     {
@@ -237,12 +239,17 @@ fn flush(
     // remains dirty for the next flush and cannot be overwritten by this batch.
     for (id,job) in work.drain(..) {
         let Some(gpu)=images.get(id).filter(|gpu|gpu.size==job.size) else {uploads.handoff.lock().unwrap().put(id,job);continue;};
-        staging.clear();
-        let stride=job.size.width as usize*4;
-        for y in job.rect.y..job.rect.bottom {let start=y as usize*stride+job.rect.x as usize*4;staging.extend_from_slice(&job.bytes[start..start+job.rect.width() as usize*4]);}
+        // write_texture accepts a source row stride and byte offset. Upload
+        // the dirty rectangle directly from the owned snapshot, avoiding a
+        // second CPU copy into a tightly packed staging Vec.
+        let stride = job.size.width * 4;
+        let width = job.rect.width();
+        let height = job.rect.height();
+        let start = job.rect.y as usize * stride as usize + job.rect.x as usize * 4;
+        let end = start + (height as usize - 1) * stride as usize + width as usize * 4;
         if crate::performance::enabled() {
             crate::performance::UPLOAD_BYTES
-                .fetch_add(staging.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                .fetch_add(u64::from(width) * u64::from(height) * 4, std::sync::atomic::Ordering::Relaxed);
             crate::performance::UPLOAD_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         queue.write_texture(
@@ -256,15 +263,15 @@ fn flush(
                 },
                 aspect: default(),
             },
-            &staging,
+            &job.bytes[start..end],
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(job.rect.width() * 4),
-                rows_per_image: Some(job.rect.height()),
+                bytes_per_row: Some(stride),
+                rows_per_image: Some(height),
             },
             Extent3d {
-                width: job.rect.width(),
-                height: job.rect.height(),
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
         );

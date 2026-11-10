@@ -576,11 +576,12 @@ pub(crate) fn globe_mesh(nx: usize, ny: usize) -> Mesh {
 /// Cells `cols` x `rows` of the `nx` x `ny` globe grid, with vertices computed
 /// exactly as for the whole globe.
 pub(crate) fn globe_patch(nx: usize, ny: usize, cols: std::ops::Range<usize>, rows: std::ops::Range<usize>) -> Mesh {
-    let mut p = Vec::new();
-    let mut normal = Vec::new();
-    let mut uv = Vec::new();
-    let mut idx = Vec::new();
     let width = cols.len() + 1;
+    let vertices = width * (rows.len() + 1);
+    let mut p = Vec::with_capacity(vertices);
+    let mut normal = Vec::with_capacity(vertices);
+    let mut uv = Vec::with_capacity(vertices);
+    let mut idx = Vec::with_capacity(cols.len() * rows.len() * 6);
     for j in rows.start..=rows.end {
         let lat = 90.0 - j as f64 / ny as f64 * 180.0;
         for i in cols.start..=cols.end {

@@ -112,9 +112,10 @@ pub fn setup(
     )
     .unwrap();
     if let Some(data) = cloud_image.data.as_mut() {
+        let alpha: [u8; 256] = std::array::from_fn(|value| cloud_alpha(value as u8));
         for p in data.chunks_exact_mut(4) {
-            let alpha = cloud_alpha(p[0]);
-            p.copy_from_slice(&[255, 255, 255, alpha]);
+            let opacity = alpha[p[0] as usize];
+            p.copy_from_slice(&[255, 255, 255, opacity]);
         }
     }
     cloud_image.sampler =
@@ -219,36 +220,45 @@ pub fn update(
         if haze.is_none() && !light_changed && (clouds.is_none() || !cloud_changed) {
             continue;
         }
-        if haze.is_none() { if let Some(mat) = mats.get_mut(&material.0) {
-            if !mat.unlit {
-                mat.unlit = true;
-            }
-        } }
+        if haze.is_none() && mats.get(&material.0).is_some_and(|mat| !mat.unlit) {
+            mats.get_mut(&material.0).unwrap().unlit = true;
+        }
         let Some(mesh) = mesh_assets.get_mut(&handle.0) else {
             continue;
         };
+        if !matches!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL), Some(VertexAttributeValues::Float32x3(_))) {
+            continue;
+        }
+        // These globe layers can have hundreds of thousands of vertices.
+        // Keep their colour allocation when lighting refreshes instead of
+        // constructing and dropping a full buffer every time.
+        let mut colors = match mesh.remove_attribute(Mesh::ATTRIBUTE_COLOR) {
+            Some(VertexAttributeValues::Float32x4(colors)) => colors,
+            _ => Vec::new(),
+        };
+        colors.clear();
         let Some(VertexAttributeValues::Float32x3(normals)) =
             mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
         else {
-            continue;
+            unreachable!("normal attribute was checked before removing colours");
         };
-        let colors: Vec<[f32; 4]> = normals
+        colors.reserve(normals.len());
+        let radius = planet_radius() as f32;
+        let eye_radius = eye.length();
+        let near = smoothstep(((eye_radius - radius) - 2000.0) / 12000.0);
+        let outside = haze.map_or(0., |haze| smoothstep((eye_radius - radius - haze.0) / 35000.0));
+        let column = haze.map_or(0., |haze| {
+            if haze.0 < 10000.0 { 0.035 } else if haze.0 < 30000.0 { 0.012 } else { 0.004 }
+        });
+        colors.extend(normals
             .iter()
             .enumerate()
             .map(|(index, n)| {
                 let n = Vec3::from(*n).normalize();
                 if let Some(haze) = haze {
-                    let view = (eye - n * (planet_radius() as f32 + haze.0)).normalize_or_zero();
+                    let view = (eye - n * (radius + haze.0)).normalize_or_zero();
                     let mu = n.dot(view).abs();
                     let rim = (1.0 - mu).powi(6) * smoothstep(mu / 0.16);
-                    let outside = smoothstep((eye.length() - planet_radius() as f32 - haze.0) / 35000.0);
-                    let column = if haze.0 < 10000.0 {
-                        0.035
-                    } else if haze.0 < 30000.0 {
-                        0.012
-                    } else {
-                        0.004
-                    };
                     [
                         0.20,
                         0.50,
@@ -257,8 +267,7 @@ pub fn update(
                     ]
                 } else if clouds.is_some() {
                     let shade = daylight(n.dot(sun));
-                    let near = smoothstep(((eye.length() - planet_radius() as f32) - 2000.0) / 12000.0);
-                    let distance = (eye - n * (planet_radius() as f32 + 5200.0)).length();
+                    let distance = (eye - n * (radius + 5200.0)).length();
                     [
                         shade * 0.94,
                         shade * 0.97,
@@ -269,8 +278,7 @@ pub fn update(
                     let shade = daylight(n.dot(sun));
                     [shade, shade, shade, region.map_or(1.0, |r| r.0[index])]
                 }
-            })
-            .collect();
+            }));
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     }
 }
